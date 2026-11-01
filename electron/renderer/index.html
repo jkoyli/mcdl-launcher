@@ -2863,6 +2863,40 @@
     color: rgba(255, 154, 142, .78);
   }
 
+  /* ---------------------------------------------------------
+     软件渲染降级
+     backdrop-filter 需要每帧重算背景，极光的 background-position 动画无法交给
+     合成器，两者叠加在软件光栅化下会把帧率压到 20 出头。
+     renderer 检测到没有硬件加速时给 body 加 .is-software，这里换成静态半透明底。
+     --------------------------------------------------------- */
+  body.is-software *,
+  body.is-software *::before,
+  body.is-software *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* 去掉毛玻璃后补一层半透明底，保持面板与输入框的可读性 */
+  body.is-software .rail-btn,
+  body.is-software .top-status,
+  body.is-software .console-card,
+  body.is-software .create-control,
+  body.is-software .create-submit,
+  body.is-software .create-version-type__select {
+    background-color: rgba(12, 18, 28, .8);
+  }
+
+  /* 极光层：动画改的是 background-position，软件模式下每帧重绘 + 重跑 blur */
+  body.is-software .ring {
+    animation: none !important;
+    filter: brightness(1.06) saturate(2.1);
+  }
+
+  /* 3D 方块的面是动画元素，背景模糊每帧都要重算 */
+  body.is-software .voxel__face {
+    background-color: rgba(18, 26, 40, .82);
+  }
+
   @keyframes install-sweep {
     from { left: -40%; }
     to { left: 100%; }

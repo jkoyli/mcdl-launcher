@@ -84,6 +84,12 @@ const launcherAPI = {
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
 
   /**
+   * 渲染模式：{ mode: 'gpu'|'software', software, gpuFeatureStatus, crashMarker }
+   * 软件渲染时渲染进程会启用降级样式。
+   */
+  getRenderMode: () => ipcRenderer.invoke('env:render-mode'),
+
+  /**
    * L1 标题栏帮助按钮：打开应用日志目录。
    */
   openLogFolder: () => ipcRenderer.invoke('shell:open-logs'),

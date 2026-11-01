@@ -36,8 +36,8 @@ if not exist "node_modules\electron\dist\electron.exe" (
     exit /b 1
 )
 
-rem Software rendering is the default; remove this line to try GPU acceleration.
-if not defined MCDL_DISABLE_GPU set MCDL_DISABLE_GPU=1
-
-start "" "node_modules\electron\dist\electron.exe" --no-stdio-init --no-sandbox .
+rem Hardware acceleration is the default. If the GPU process crashes, the app
+rem records it and falls back to software rendering on the next launch.
+rem Force software rendering:  启动.bat --software-render
+start "" "node_modules\electron\dist\electron.exe" --no-stdio-init --no-sandbox . %*
 endlocal

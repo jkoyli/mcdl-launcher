@@ -1730,6 +1730,26 @@
 
   loadAccounts();
 
+  // 软件渲染时启用降级样式：去掉每帧重算的 backdrop-filter 与极光动画。
+  (function detectRenderMode() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getRenderMode !== 'function') return;
+
+    api.getRenderMode()
+      .then(function (info) {
+        if (!info) return;
+        if (info.software) {
+          document.body.classList.add('is-software');
+          console.log('[render] 软件渲染模式：已启用降级样式');
+        } else {
+          document.body.classList.remove('is-software');
+        }
+      })
+      .catch(function (error) {
+        console.warn('[render] 读取渲染模式失败:', error && error.message);
+      });
+  })();
+
   // 静态截图用：打开 #stack 定格在左上拉伸
   if (window.location.hash === '#stack') {
     applyStack(-0.8, -0.8);

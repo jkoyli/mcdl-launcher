@@ -95,6 +95,24 @@ electron/
 
 `mcdl/README.md` 为上游原始文档；本仓库对它的集成说明见下一节「数据文件」。
 
+## 渲染策略
+
+界面大量使用 `backdrop-filter` 与渐变动画，走 CPU 合成时单帧成本约 40–50ms（实测 21–24fps），
+硬件加速下可稳定 60fps。因此默认启用硬件加速，并为崩溃设备保留回退：
+
+| 触发条件 | 结果 |
+| --- | --- |
+| 默认 | 硬件加速 |
+| `MCDL_RENDER=software`、`MCDL_DISABLE_GPU=1` 或 `--software-render` | 强制软件渲染 |
+| `MCDL_RENDER=gpu` | 强制硬件加速，忽略崩溃记录 |
+| 上次运行 GPU 子进程崩溃（7 天内） | 自动软件渲染 |
+
+GPU 子进程崩溃时，主进程写入 `gpu-crash.json` 并以 `--software-render` 重启一次；重启后的进程
+不会再走这条路径，因此不会循环。删除该文件（或设置 `MCDL_RENDER=gpu`）即可恢复硬件加速。
+
+软件渲染时，渲染进程会给 `body` 加 `.is-software`，由 CSS 关闭全部 `backdrop-filter`、
+停掉极光层的 `background-position` 动画，并用半透明底色替代毛玻璃，避免每帧重算背景。
+
 ## 数据文件
 
 | 路径 | 内容 |
@@ -104,6 +122,7 @@ electron/
 | `%APPDATA%\mcdl-launcher-electron\launcher-settings.json` | 内存 / Java / 窗口尺寸 / 额外 JVM 参数 |
 | `%APPDATA%\mcdl-launcher-electron\instance-display-names.json` | 实例别名 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
+| `%APPDATA%\mcdl-launcher-electron\gpu-crash.json` | 最近一次 GPU 崩溃记录（存在时下次启动走软件渲染） |
 | `<gameDir>\logs\mcdl-launcher-<时间戳>.log` | 每次启动的完整输出 |
 | `<gameDir>\logs\latest.log` | 游戏自身的日志 |
 
@@ -114,7 +133,8 @@ electron/
 | `MCDL_GAME_DIR` | 游戏目录 |
 | `MCDL_JAR` | `mcdl.jar` 路径 |
 | `MCDL_JAVA` | 运行 `mcdl.jar` 的 Java |
-| `MCDL_DISABLE_GPU` | 设为 `1` 时禁用硬件加速 |
+| `MCDL_RENDER` | `gpu` 或 `software`，覆盖渲染策略 |
+| `MCDL_DISABLE_GPU` | 设为 `1` 时禁用硬件加速（等价于 `MCDL_RENDER=software`） |
 | `MCDL_MSA_CLIENT_ID` | 覆盖微软登录使用的 client id |
 
 ## IPC 通道

@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const mcdl = require('./mcdl-service');
 const javaRuntime = require('./java-runtime');
 const launcher = require('./launch');
@@ -12,9 +13,66 @@ const IS_DEV = process.argv.includes('--dev');
 
 console.log(`[main] booting Electron app (dev=${IS_DEV})`);
 
-// 某些受限环境需要软件渲染才能启动窗口。
-// 默认使用 GPU；只有显式设置 MCDL_DISABLE_GPU=1 时才关闭硬件加速。
-if (process.env.MCDL_DISABLE_GPU === '1') {
+/**
+ * 渲染策略。
+ *
+ *   显式软件渲染：MCDL_RENDER=software / MCDL_DISABLE_GPU=1 / --software-render
+ *   显式硬件加速：MCDL_RENDER=gpu
+ *   未指定：默认硬件加速；若上次运行 GPU 子进程崩溃，7 天内自动退回软件渲染
+ *
+ * 默认走硬件加速，是因为软件合成下大面积 backdrop-filter 与渐变动画会把帧率压到 20 出头，
+ * 首屏还要补一次全窗口光栅化，表现为启动后几秒明显卡顿。
+ */
+const GPU_CRASH_MARKER_TTL = 7 * 24 * 60 * 60 * 1000;
+
+function gpuCrashMarkerFile() {
+  return path.join(app.getPath('userData'), 'gpu-crash.json');
+}
+
+function readGpuCrashMarker() {
+  try {
+    const parsed = JSON.parse(fsSync.readFileSync(gpuCrashMarkerFile(), 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function recordGpuCrash(details) {
+  try {
+    fsSync.mkdirSync(path.dirname(gpuCrashMarkerFile()), { recursive: true });
+    fsSync.writeFileSync(gpuCrashMarkerFile(), JSON.stringify({
+      at: Date.now(),
+      reason: details && details.reason,
+      exitCode: details && details.exitCode,
+      appVersion: app.getVersion()
+    }, null, 2), 'utf8');
+  } catch (error) {
+    console.warn('[gpu] 无法写入崩溃标记:', error.message);
+  }
+}
+
+function resolveRenderMode() {
+  const forced = String(process.env.MCDL_RENDER || '').trim().toLowerCase();
+
+  if (forced === 'software') return 'software';
+  if (forced === 'gpu') return 'gpu';
+  if (process.env.MCDL_DISABLE_GPU === '1') return 'software';
+  if (process.argv.includes('--software-render')) return 'software';
+
+  const marker = readGpuCrashMarker();
+  if (marker && Date.now() - Number(marker.at || 0) < GPU_CRASH_MARKER_TTL) {
+    console.warn('[gpu] 检测到 GPU 崩溃记录，本次改用软件渲染:', new Date(Number(marker.at)).toISOString());
+    return 'software';
+  }
+
+  return 'gpu';
+}
+
+const RENDER_MODE = resolveRenderMode();
+console.log(`[main] render mode: ${RENDER_MODE}`);
+
+if (RENDER_MODE === 'software') {
   app.disableHardwareAcceleration();
 }
 
@@ -29,6 +87,28 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (error) => {
   console.error('[main] unhandledRejection:', error);
+});
+
+/**
+ * GPU 子进程崩溃：记录标记后以软件渲染重启一次。
+ * 重启命令带 --software-render，因此不会再触发这条路径，不会循环。
+ */
+app.on('child-process-gone', (_event, details) => {
+  if (!details || details.type !== 'GPU') return;
+
+  console.error('[gpu] GPU 进程退出:', details.reason, details.exitCode);
+
+  if (RENDER_MODE === 'software') return;
+  if (process.argv.includes('--software-render')) return;
+  if (details.reason !== 'crashed' && details.reason !== 'abnormal-exit' && details.reason !== 'launch-failed') {
+    return;
+  }
+
+  recordGpuCrash(details);
+  console.warn('[gpu] 改用软件渲染重新启动');
+
+  app.relaunch({ args: process.argv.slice(1).concat('--software-render') });
+  app.exit(0);
 });
 
 let mainWindow = null;
@@ -537,6 +617,27 @@ function registerIpcHandlers() {
   ipcMain.handle('settings:save', async (event, patch = {}) => {
     assertAppWindow(event);
     return writeSettings(patch || {});
+  });
+
+  /**
+   * 渲染模式：渲染进程据此启用软件渲染下的降级样式（去掉每帧重算的 blur）。
+   */
+  ipcMain.handle('env:render-mode', async (event) => {
+    assertAppWindow(event);
+
+    let gpuFeatureStatus = null;
+    try {
+      gpuFeatureStatus = app.getGPUFeatureStatus();
+    } catch (error) {
+      console.warn('[gpu] 读取 GPU 状态失败:', error.message);
+    }
+
+    return {
+      mode: RENDER_MODE,
+      software: RENDER_MODE === 'software',
+      gpuFeatureStatus,
+      crashMarker: readGpuCrashMarker()
+    };
   });
 }
 

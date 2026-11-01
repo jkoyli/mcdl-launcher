@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     启动 mcdl-launcher 的 Electron UI。
@@ -10,25 +10,27 @@
 .PARAMETER Dev
     打开 DevTools（相当于 electron --dev）。
 
+.PARAMETER SoftwareRender
+    强制软件渲染（等价于设置 MCDL_RENDER=software）。默认使用硬件加速；
+    如果 GPU 子进程崩溃，主进程会自动记录并以下次启动改用软件渲染。
+
 .PARAMETER EnableGpu
-    不设置 MCDL_DISABLE_GPU。默认使用软件渲染以规避部分 Windows GPU 子进程崩溃。
+    强制硬件加速（等价于设置 MCDL_RENDER=gpu），忽略崩溃标记。
+    保留该参数是为了兼容旧用法。
 
 .EXAMPLE
     .\run-electron.ps1
     .\run-electron.ps1 -Dev
-    .\run-electron.ps1 -EnableGpu
+    .\run-electron.ps1 -SoftwareRender
 #>
 param(
     [switch]$Dev,
+    [switch]$SoftwareRender,
     [switch]$EnableGpu
 )
 
 $ErrorActionPreference = 'Stop'
-# 默认软件渲染：当前 Windows/Electron 组合在部分机器上 GPU 子进程会直接崩溃。
-# 需要硬件加速时显式加 -EnableGpu。
-if (-not $EnableGpu -and -not $env:MCDL_DISABLE_GPU) {
-    $env:MCDL_DISABLE_GPU = '1'
-}
+
 $root = $PSScriptRoot
 $appDir = Join-Path $root 'electron'
 $electron = Join-Path $appDir 'node_modules\electron\dist\electron.exe'
@@ -66,6 +68,12 @@ if (-not (Test-Path $electron)) {
 $arguments = @('--no-stdio-init', '--no-sandbox', '.')
 if ($Dev) {
     $arguments += '--dev'
+}
+if ($SoftwareRender) {
+    $arguments += '--software-render'
+}
+if ($EnableGpu) {
+    $env:MCDL_RENDER = 'gpu'
 }
 
 Write-Host "Electron: $electron" -ForegroundColor DarkGray

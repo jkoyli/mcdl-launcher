@@ -78,12 +78,42 @@ npm.cmd run dev
 
 ## 画面卡顿或动画掉帧
 
-默认软件渲染（`MCDL_DISABLE_GPU=1`）会让 `backdrop-filter`、3D 方块与流光动画明显变慢。
-确认显卡驱动正常后可用硬件加速启动：
+界面依赖 `backdrop-filter` 与渐变动画，走 CPU 合成时帧率会明显下降（实测 21–24fps），
+硬件加速下可稳定 60fps。先确认当前渲染模式：
 
 ```powershell
-.\run-electron.ps1 -EnableGpu
+# 启动终端里应出现
+[main] render mode: gpu
 ```
+
+若显示 `software`，说明硬件加速被关闭或上次 GPU 崩溃留下了记录：
+
+```powershell
+# 强制硬件加速（忽略崩溃记录）
+$env:MCDL_RENDER = 'gpu'; .\run-electron.ps1
+```
+
+```powershell
+# 或删除崩溃记录后正常启动
+Remove-Item "$env:APPDATA\mcdl-launcher-electron\gpu-crash.json" -ErrorAction SilentlyContinue
+```
+
+需要反向强制软件渲染（例如某些远程桌面/虚拟机上 GPU 不可靠）：
+
+```powershell
+.\run-electron.ps1 -SoftwareRender
+```
+
+软件渲染模式下启动器会自动关闭毛玻璃与极光动画（`body.is-software`），
+画面观感会简化，但帧率稳定。
+
+## 启动后几秒明显卡顿
+
+软件渲染下，首屏需要把所有图层从零光栅化一次（全窗口重绘实测约 120ms），
+这批欠账要几秒才能排空，之后静态层进入缓存才恢复。判断方法：
+
+- 启动终端里 `[main] render mode: software` → 属于上述情况，改用硬件加速即可；
+- `[main] render mode: gpu` 仍然卡 → 检查显卡驱动，或临时用 `-SoftwareRender` 对比确认。
 
 ## 启动游戏失败
 

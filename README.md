@@ -46,8 +46,8 @@ cd mcdl-launcher
 .\run-electron.ps1 -Dev
 ```
 
-默认使用软件渲染，以规避部分 Windows 机器上 Electron GPU 子进程崩溃的问题。需要硬件加速时加
-`-EnableGpu`。
+默认使用硬件加速。如果 GPU 子进程崩溃，启动器会记录这次崩溃，并在下次启动时自动改用软件渲染
+（软件模式下会关闭毛玻璃等每帧重算的效果以保证流畅）。需要强制软件渲染时加 `-SoftwareRender`。
 
 ## 数据位置
 
