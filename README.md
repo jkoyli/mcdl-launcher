@@ -61,8 +61,9 @@ cd mcdl-launcher
 `mcdl-launcher.json` 标记。启动时只读取该目录，不会自动扫描其他启动器。
 
 启动器自身的配置保存在 `%APPDATA%\mcdl-launcher-electron\`：账户（`accounts.json`）、
-设置（`launcher-settings.json`）、实例别名与扫描缓存。完整清单见
-[开发文档](docs/development.md#数据文件)。
+设置（`launcher-settings.json`）、实例别名与扫描缓存。该目录不可写时会自动回退到
+`%LOCALAPPDATA%` 或程序目录下的 `data/`，实际路径见启动日志的 `[data] userData:` 一行；
+也可以用 `MCDL_USER_DATA` 指定。完整清单见 [开发文档](docs/development.md#数据文件)。
 
 ## 扫描其他启动器
 

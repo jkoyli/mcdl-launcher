@@ -2,6 +2,37 @@
 
 启动器本身的实现细节见 [development.md](development.md)。
 
+## 创建账号 / 保存设置时报 EPERM（无法写入）
+
+```text
+无法写入账号文件（EPERM）：C:\Users\<user>\AppData\Roaming\mcdl-launcher-electron\accounts.json
+```
+
+说明启动器对该数据目录没有写权限。启动器已经会在启动时探测可写性并自动回退，先看启动终端里的第一行：
+
+```text
+[data] userData: <实际使用的目录>
+```
+
+| 现象 | 处理 |
+| --- | --- |
+| 打印的是 `%APPDATA%` 下的路径，但仍报 EPERM | 关闭所有启动器窗口后重试；仍不行就换目录（见下） |
+| 打印的是 `%LOCALAPPDATA%` 或程序目录 `data/` | 说明已经回退，账号会写在那里，功能正常 |
+| 打印 `no writable data directory` | 所有候选目录都不可写，检查安全软件策略 |
+
+手动指定数据目录：
+
+```powershell
+$env:MCDL_USER_DATA = "D:\MCDL\data"
+.\run-electron.ps1
+```
+
+常见原因：
+
+- 同时开了多个启动器实例，抢同一份数据目录（现版本已强制单实例，需多开可加 `--multi-instance`）；
+- 安全软件（企业策略、受控文件夹访问）禁止未签名程序写入 `%APPDATA%`；
+- 漫游配置文件/目录重定向异常。
+
 ## 启动后没有窗口，直接回到提示符
 
 1. 检查是否有残留进程占用了单实例锁（开发模式下不会触发单实例限制，但崩溃残留仍会留下孤儿进程）：

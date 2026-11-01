@@ -14,6 +14,49 @@ const IS_DEV = process.argv.includes('--dev');
 console.log(`[main] booting Electron app (dev=${IS_DEV})`);
 
 /**
+ * 数据目录选择。
+ *
+ * 默认是 %APPDATA%\mcdl-launcher-electron。少数机器上（安全软件策略、受限会话、
+ * 漫游配置异常）这个目录对 Electron 进程不可写，会导致账号 / 设置 / Chromium 缓存
+ * 全部写入失败（表现为 accounts.json 的 EPERM）。这里先做一次写探针，不可写就依次
+ * 回退到 %LOCALAPPDATA%、程序目录下的 data/、临时目录。
+ *
+ * 必须在 app ready 之前调用，否则 Chromium 已经按默认路径初始化过 session。
+ */
+function chooseUserDataDir() {
+  const candidates = [
+    process.env.MCDL_USER_DATA,
+    path.join(app.getPath('appData'), 'mcdl-launcher-electron'),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'mcdl-launcher-electron'),
+    path.join(__dirname, 'data'),
+    path.join(require('node:os').tmpdir(), 'mcdl-launcher-electron')
+  ];
+
+  for (const dir of candidates) {
+    if (!dir) continue;
+    try {
+      fsSync.mkdirSync(dir, { recursive: true });
+      const probe = path.join(dir, '.write-probe');
+      fsSync.writeFileSync(probe, '1', 'utf8');
+      fsSync.unlinkSync(probe);
+      return dir;
+    } catch (error) {
+      console.warn(`[data] not writable, trying next: ${dir} (${error.code || error.message})`);
+    }
+  }
+
+  return null;
+}
+
+const USER_DATA_DIR = chooseUserDataDir();
+if (USER_DATA_DIR) {
+  app.setPath('userData', USER_DATA_DIR);
+  console.log(`[data] userData: ${USER_DATA_DIR}`);
+} else {
+  console.error('[data] no writable data directory; accounts and settings cannot be saved');
+}
+
+/**
  * 渲染策略。
  *
  *   显式软件渲染：MCDL_RENDER=software / MCDL_DISABLE_GPU=1 / --software-render
@@ -48,7 +91,7 @@ function recordGpuCrash(details) {
       appVersion: app.getVersion()
     }, null, 2), 'utf8');
   } catch (error) {
-    console.warn('[gpu] 无法写入崩溃标记:', error.message);
+    console.warn('[gpu] cannot write crash marker:', error.message);
   }
 }
 
@@ -62,7 +105,7 @@ function resolveRenderMode() {
 
   const marker = readGpuCrashMarker();
   if (marker && Date.now() - Number(marker.at || 0) < GPU_CRASH_MARKER_TTL) {
-    console.warn('[gpu] 检测到 GPU 崩溃记录，本次改用软件渲染:', new Date(Number(marker.at)).toISOString());
+    console.warn('[gpu] previous GPU crash found, using software rendering:', new Date(Number(marker.at)).toISOString());
     return 'software';
   }
 
@@ -96,7 +139,7 @@ process.on('unhandledRejection', (error) => {
 app.on('child-process-gone', (_event, details) => {
   if (!details || details.type !== 'GPU') return;
 
-  console.error('[gpu] GPU 进程退出:', details.reason, details.exitCode);
+  console.error('[gpu] GPU process gone:', details.reason, details.exitCode);
 
   if (RENDER_MODE === 'software') return;
   if (process.argv.includes('--software-render')) return;
@@ -105,7 +148,7 @@ app.on('child-process-gone', (_event, details) => {
   }
 
   recordGpuCrash(details);
-  console.warn('[gpu] 改用软件渲染重新启动');
+  console.warn('[gpu] relaunching with software rendering');
 
   app.relaunch({ args: process.argv.slice(1).concat('--software-render') });
   app.exit(0);
@@ -186,10 +229,10 @@ async function checkUserDataWritable() {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(probe, String(Date.now()), 'utf8');
     await fs.unlink(probe);
-    console.log(`[data] userData 可写: ${dir}`);
+    console.log(`[data] userData writable: ${dir}`);
     return true;
   } catch (error) {
-    console.error(`[data] userData 不可写: ${dir} -> ${error.code || ''} ${error.message}`);
+    console.error(`[data] userData NOT writable: ${dir} -> ${error.code || ''} ${error.message}`);
     return false;
   }
 }
@@ -206,11 +249,11 @@ async function resolveJavaRuntime(options = {}) {
     const info = await javaRuntime.probe(settings.javaPath);
     if (info) {
       if (requiredMajor && info.major < requiredMajor) {
-        console.warn(`[launch] 指定 Java ${info.major} 低于版本要求的 ${requiredMajor}`);
+        console.warn(`[launch] configured Java ${info.major} is below required ${requiredMajor}`);
       }
       return info;
     }
-    console.warn('[launch] 设置的 Java 路径不可用，回退到自动探测:', settings.javaPath);
+    console.warn('[launch] configured Java unusable, falling back to auto detect:', settings.javaPath);
   }
 
   const runtimes = await javaRuntime.getJavaRuntimes(mcdl);
@@ -655,7 +698,7 @@ function registerIpcHandlers() {
     try {
       gpuFeatureStatus = app.getGPUFeatureStatus();
     } catch (error) {
-      console.warn('[gpu] 读取 GPU 状态失败:', error.message);
+      console.warn('[gpu] cannot read GPU status:', error.message);
     }
 
     return {
@@ -769,9 +812,9 @@ let gotSingleInstanceLock = allowMultipleInstances ? true : app.requestSingleIns
 // 数据目录不可写时单实例锁本身也建不起来，此时不能让它把启动挡掉。
 if (!gotSingleInstanceLock && !allowMultipleInstances) {
   if (userDataWritableSync()) {
-    console.warn('[main] 已有另一个实例在运行');
+    console.warn('[main] another instance is already running');
   } else {
-    console.warn('[main] 无法创建单实例锁（数据目录不可写），继续启动；多实例同时运行可能互相冲突');
+    console.warn('[main] cannot create instance lock (data dir not writable); starting anyway');
     gotSingleInstanceLock = true;
   }
 }

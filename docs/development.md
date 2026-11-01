@@ -113,6 +113,28 @@ GPU 子进程崩溃时，主进程写入 `gpu-crash.json` 并以 `--software-ren
 软件渲染时，渲染进程会给 `body` 加 `.is-software`，由 CSS 关闭全部 `backdrop-filter`、
 停掉极光层的 `background-position` 动画，并用半透明底色替代毛玻璃，避免每帧重算背景。
 
+## 数据目录
+
+Electron 的 `userData` 默认是 `%APPDATA%\mcdl-launcher-electron`。启动时会先做一次写探针
+（`.write-probe`），不可写就按顺序回退：
+
+```text
+MCDL_USER_DATA（环境变量，最高优先）
+→ %APPDATA%\mcdl-launcher-electron
+→ %LOCALAPPDATA%\mcdl-launcher-electron
+→ <程序目录>/data
+→ %TEMP%\mcdl-launcher-electron
+```
+
+选中的路径会在启动日志里打印：
+
+```text
+[data] userData: C:\Users\<user>\AppData\Roaming\mcdl-launcher-electron
+```
+
+之所以要回退：少数机器上安全软件策略或受限会话会让 Electron 进程没有该目录的写权限，
+表现为账号、设置、Chromium 缓存全部写入失败（`accounts.json` 的 `EPERM`）。
+
 ## 数据文件
 
 | 路径 | 内容 |
@@ -131,6 +153,7 @@ GPU 子进程崩溃时，主进程写入 `gpu-crash.json` 并以 `--software-ren
 | 变量 | 作用 |
 | --- | --- |
 | `MCDL_GAME_DIR` | 游戏目录 |
+| `MCDL_USER_DATA` | 账号 / 设置所在的数据目录（覆盖自动选择） |
 | `MCDL_JAR` | `mcdl.jar` 路径 |
 | `MCDL_JAVA` | 运行 `mcdl.jar` 的 Java |
 | `MCDL_RENDER` | `gpu` 或 `software`，覆盖渲染策略 |

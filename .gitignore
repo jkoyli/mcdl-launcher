@@ -4,6 +4,10 @@
 /electron/out/
 /electron/*.log
 
+# 数据目录回退位置（含 accounts.json 里的账号令牌，绝不入库）
+/electron/data/
+/data/
+
 # mcdl build output（mcdl.jar 本身随工程分发）
 /mcdl/build/
 /mcdl/dist/
