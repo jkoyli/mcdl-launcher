@@ -2708,6 +2708,7 @@
 
   var INSTANCE_MENU_ITEMS = [
     { action: 'detail', label: '实例详情' },
+    { action: 'launch', label: '启动游戏' },
     { action: 'test', label: '测试游戏' },
     { action: 'script', label: '生成启动脚本' },
     { action: 'rename', label: '重命名该实例' },
@@ -2922,6 +2923,11 @@
 
     if (action === 'detail') {
       openInstanceDetail(instance.id);
+      return;
+    }
+
+    if (action === 'launch') {
+      launchInstanceFlow(instance, false);
       return;
     }
 
@@ -4482,11 +4488,12 @@
       openInstanceMenu(row.getAttribute('data-instance-row'), anchor);
     });
 
+    // 双击进入该实例的管理页（启动走右侧「启动游戏」或右键菜单的「启动游戏」）
     instanceRowsEl.addEventListener('dblclick', function (event) {
       var row = event.target.closest ? event.target.closest('[data-instance-row]') : null;
       if (!row) return;
       var instance = instanceById(row.getAttribute('data-instance-row'));
-      if (instance) launchInstanceFlow(instance, false);
+      if (instance) openInstanceDetail(instance.id);
     });
   }
 

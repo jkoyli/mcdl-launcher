@@ -1235,9 +1235,9 @@ function registerIpcHandlers() {
     };
 
     try {
-      const ownDir = await mcdl.detectGameDir();
-      const cachedDirs = await readScanCache();
-      const snapshot = await buildInstanceSnapshot(ownDir, cachedDirs);
+      // 用和实例列表同一套扫描（主目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器），
+      // 否则从「添加游戏文件夹」进来的实例会找不到。
+      const snapshot = await rescanInstances();
       const instance =
         snapshot.instances.find((item) => item.id === instanceId) ||
         snapshot.instances.find((item) => item.id === snapshot.selectedId);
@@ -1245,7 +1245,7 @@ function registerIpcHandlers() {
       if (!instance) throw new Error('没有可启动的实例，请先创建一个实例');
 
       const versionId = path.basename(instance.path);
-      const gameDir = instance.gameDir || ownDir;
+      const gameDir = instance.gameDir || snapshot.gameDir;
 
       const store = getAccountStore();
       let account = await store.getSelected();
