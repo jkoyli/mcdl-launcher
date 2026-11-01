@@ -1,0 +1,7 @@
+# Windows 批处理必须是 CRLF：cmd.exe 解析 LF-only 的 .bat/.cmd 会吞掉每行开头的字符，
+# 表现为 'setlocal' 变成 'ocal' 之类的“不是内部或外部命令”。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell 不要求 CRLF，但统一成 Windows 换行便于用记事本查看。
+*.ps1 text eol=crlf
