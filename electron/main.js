@@ -10,6 +10,7 @@ const javaRuntime = require('./java-runtime');
 const launcher = require('./launch');
 const accounts = require('./accounts');
 const { createGameDirectoryStore } = require('./game-directories');
+const { createInstanceStore } = require('./instance-store');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -405,19 +406,25 @@ async function checkUserDataWritable() {
  * 选 Java：设置里指定了就用指定的，否则按版本 JSON 要求挑一个。
  * @param {{requiredMajor:number, versionId?:string}} options
  */
+/**
+ * 选 Java：实例级设置 > 全局设置 > 自动探测。
+ * @param {{requiredMajor:number, versionId?:string, javaPath?:string}} options
+ */
 async function resolveJavaRuntime(options = {}) {
   const requiredMajor = Number(options.requiredMajor) || 0;
   const settings = await readSettings();
+  // 实例级 Java 优先（由调用方把 effective settings 的 javaPath 传进来）。
+  const javaPath = String(options.javaPath || settings.javaPath || '');
 
-  if (settings.javaPath) {
-    const info = await javaRuntime.probe(settings.javaPath);
+  if (javaPath) {
+    const info = await javaRuntime.probe(javaPath);
     if (info) {
       if (requiredMajor && info.major < requiredMajor) {
         console.warn(`[launch] configured Java ${info.major} is below required ${requiredMajor}`);
       }
       return info;
     }
-    console.warn('[launch] configured Java unusable, falling back to auto detect:', settings.javaPath);
+    console.warn('[launch] configured Java unusable, falling back to auto detect:', javaPath);
   }
 
   const runtimes = await javaRuntime.getJavaRuntimes(mcdl, { cacheFile: javaRuntimeCacheFile() });
@@ -431,6 +438,42 @@ function javaRuntimeCacheFile() {
 
 function aliasFile() {
   return path.join(app.getPath('userData'), 'instance-display-names.json');
+}
+
+// ---------------- 实例级数据（设置 / 图标 / 内容） ----------------
+
+let instanceStore = null;
+
+function getInstanceStore() {
+  if (!instanceStore) {
+    instanceStore = createInstanceStore({
+      storeDir: app.getPath('userData'),
+      launcherHome: mcdl.LAUNCHER_HOME
+    });
+  }
+  return instanceStore;
+}
+
+/**
+ * 生效设置 = 全局设置 + 实例覆盖（实例优先）。
+ * 内存 / 窗口尺寸 / JVM 参数 / Java 路径都可以按实例覆盖。
+ */
+async function effectiveSettings(versionDir) {
+  const globalSettings = await readSettings();
+  let overrides = {};
+  try {
+    if (versionDir) overrides = await getInstanceStore().getSettings(versionDir);
+  } catch (error) {
+    console.warn('[instance] read instance settings failed:', error.message);
+  }
+  const merged = launcher.normalizeSettings({ ...globalSettings, ...overrides });
+  return {
+    memoryMb: merged.memoryMb,
+    width: merged.width,
+    height: merged.height,
+    jvmArgs: overrides.jvmArgs || globalSettings.jvmArgs || '',
+    javaPath: overrides.javaPath || globalSettings.javaPath || ''
+  };
 }
 
 // ---------------- 游戏目录管理 ----------------
@@ -554,6 +597,27 @@ async function findInstance(instanceId) {
   };
 }
 
+/**
+ * 给实例补上图标信息（内置图标只回 key，自定义图标回 data URL）。
+ */
+async function enrichInstanceIcons(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.instances)) return snapshot;
+
+  const store = getInstanceStore();
+  await Promise.all(snapshot.instances.map(async (instance) => {
+    try {
+      const { icon, dataUrl } = await store.iconData(instance.path);
+      instance.iconKey = icon && icon.type === 'builtin' ? icon.key : '';
+      instance.iconDataUrl = dataUrl || '';
+    } catch {
+      instance.iconKey = '';
+      instance.iconDataUrl = '';
+    }
+  }));
+
+  return snapshot;
+}
+
 async function rescanInstances(selectedId) {
   const ownDir = await mcdl.detectGameDir();
   const managed = await managedGameDirs();
@@ -561,7 +625,7 @@ async function rescanInstances(selectedId) {
   const snapshot = await buildInstanceSnapshot(ownDir, uniqueDirs([...managed.dirs, ...cachedDirs]));
   snapshot.managedDirs = managed.dirs;
   if (selectedId) snapshot.selectedId = selectedId;
-  return snapshot;
+  return enrichInstanceIcons(snapshot);
 }
 
 function sendInstallOutput(win, bufferState) {
@@ -629,7 +693,7 @@ function registerIpcHandlers() {
       const externalDirs = uniqueDirs([...managed.dirs, ...cachedDirs]);
       const snapshot = await buildInstanceSnapshot(ownDir, externalDirs);
       snapshot.managedDirs = managed.dirs;
-      return snapshot;
+      return await enrichInstanceIcons(snapshot);
     } catch (error) {
       console.error('[instance-data] failed to read instances:', error);
       throw new Error(`无法读取实例数据: ${error.message}`);
@@ -851,7 +915,7 @@ function registerIpcHandlers() {
     }
 
     const versionId = path.basename(instance.path);
-    const settings = await readSettings();
+    const settings = await effectiveSettings(instance.path);
 
     const plan = await launcher.buildLaunchPlan({
       gameDir: instance.gameDir,
@@ -859,7 +923,7 @@ function registerIpcHandlers() {
       account,
       settings,
       dataDir: app.getPath('userData'),
-      resolveJava: (options) => resolveJavaRuntime(options)
+      resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: settings.javaPath })
     });
 
     const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
@@ -940,6 +1004,133 @@ function registerIpcHandlers() {
     return result.filePaths[0];
   });
 
+  // ---------------- 实例级设置 / 图标 / 内容 ----------------
+
+  /** 按 instanceId 拿到实例，找不到就抛错。 */
+  async function requireInstance(payload) {
+    const { instance } = await findInstance(String((payload && payload.instanceId) || ''));
+    if (!instance) throw new Error('实例不存在');
+    return instance;
+  }
+
+  ipcMain.handle('instances:settings', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    return {
+      overrides: await getInstanceStore().getSettings(instance.path),
+      global: await readSettings(),
+      effective: await effectiveSettings(instance.path)
+    };
+  });
+
+  ipcMain.handle('instances:save-settings', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const patch = payload && payload.patch && typeof payload.patch === 'object' ? payload.patch : {};
+    const overrides = await getInstanceStore().saveSettings(instance.path, patch);
+    return { overrides, effective: await effectiveSettings(instance.path) };
+  });
+
+  ipcMain.handle('instances:icon-get', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    return getInstanceStore().iconData(instance.path);
+  });
+
+  ipcMain.handle('instances:icon-set-builtin', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const icon = await getInstanceStore().setBuiltinIcon(instance.path, payload.key);
+    return { icon, iconKey: icon.key, iconDataUrl: '' };
+  });
+
+  ipcMain.handle('instances:icon-pick', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const instance = await requireInstance(payload);
+
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择实例图标',
+      buttonLabel: '使用这张图片',
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+      properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+
+    const saved = await getInstanceStore().setFileIcon(instance.path, result.filePaths[0]);
+    return { icon: saved.icon, iconKey: '', iconDataUrl: saved.dataUrl };
+  });
+
+  ipcMain.handle('instances:icon-clear', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    await getInstanceStore().clearIcon(instance.path);
+    return { icon: null, iconKey: '', iconDataUrl: '' };
+  });
+
+  ipcMain.handle('instances:content-list', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const kind = String((payload && payload.kind) || 'mods');
+    return getInstanceStore().listContent(instance.gameDir, kind);
+  });
+
+  ipcMain.handle('instances:content-toggle', async (event, payload = {}) => {
+    assertAppWindow(event);
+    await requireInstance(payload);
+    return getInstanceStore().setModEnabled(String(payload.path || ''), Boolean(payload.enabled));
+  });
+
+  ipcMain.handle('instances:content-delete', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    await getInstanceStore().deleteContent({
+      gameDir: instance.gameDir,
+      kind: String(payload.kind || 'mods'),
+      target: String(payload.path || '')
+    });
+    return getInstanceStore().listContent(instance.gameDir, String(payload.kind || 'mods'));
+  });
+
+  ipcMain.handle('instances:content-import', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const kind = String((payload && payload.kind) || 'mods');
+
+    const filters = kind === 'mods'
+      ? [{ name: '模组', extensions: ['jar', 'zip', 'disabled'] }]
+      : kind === 'resourcepacks'
+        ? [{ name: '资源包', extensions: ['zip', 'jar'] }]
+        : kind === 'schematics'
+          ? [{ name: '原理图', extensions: ['schematic', 'schem', 'nbt', 'litematic'] }]
+          : [];
+
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择要导入的文件',
+      buttonLabel: '导入',
+      filters,
+      properties: ['openFile', 'multiSelections']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+
+    await getInstanceStore().importContent({
+      gameDir: instance.gameDir,
+      kind,
+      sourcePaths: result.filePaths
+    });
+
+    return getInstanceStore().listContent(instance.gameDir, kind);
+  });
+
+  /** 打开实例下的某个文件夹（内容管理页的「打开文件夹」）。 */
+  ipcMain.handle('instances:content-folder', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const folder = await getInstanceStore().folderFor(instance.gameDir, String(payload.kind || 'mods'));
+    const error = await shell.openPath(folder);
+    if (error) throw new Error(error);
+    return folder;
+  });
+
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
     const logDirectory = app.getPath('logs');
@@ -1008,7 +1199,7 @@ function registerIpcHandlers() {
         }
       }
 
-      const settings = await readSettings();
+      const settings = await effectiveSettings(instance.path);
 
       send({ phase: 'starting', instanceId, versionId, memoryMb: settings.memoryMb });
 
@@ -1017,7 +1208,7 @@ function registerIpcHandlers() {
         instanceId: versionId,
         account,
         settings,
-        resolveJava: (options) => resolveJavaRuntime(options),
+        resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: settings.javaPath }),
         onEvent: (kind, data) => {
           if (kind === 'output') {
             send({ phase: 'output', stream: data.stream, text: data.text });

@@ -58,6 +58,37 @@ const launcherAPI = {
 
   removeGameDir: (id) => ipcRenderer.invoke('gamedirs:remove', id),
 
+  /**
+   * 实例级设置（覆盖全局的内存 / Java / 窗口 / JVM 参数）。
+   */
+  getInstanceSettings: (payload) => ipcRenderer.invoke('instances:settings', payload),
+
+  saveInstanceSettings: (payload) => ipcRenderer.invoke('instances:save-settings', payload),
+
+  /**
+   * 实例图标：内置图标 / 本地图片 / 清除。
+   */
+  getInstanceIcon: (payload) => ipcRenderer.invoke('instances:icon-get', payload),
+
+  setInstanceBuiltinIcon: (payload) => ipcRenderer.invoke('instances:icon-set-builtin', payload),
+
+  pickInstanceIcon: (payload) => ipcRenderer.invoke('instances:icon-pick', payload),
+
+  clearInstanceIcon: (payload) => ipcRenderer.invoke('instances:icon-clear', payload),
+
+  /**
+   * 内容管理：模组 / 资源包 / 世界 / 原理图。
+   */
+  listInstanceContent: (payload) => ipcRenderer.invoke('instances:content-list', payload),
+
+  toggleInstanceContent: (payload) => ipcRenderer.invoke('instances:content-toggle', payload),
+
+  deleteInstanceContent: (payload) => ipcRenderer.invoke('instances:content-delete', payload),
+
+  importInstanceContent: (payload) => ipcRenderer.invoke('instances:content-import', payload),
+
+  openInstanceContentFolder: (payload) => ipcRenderer.invoke('instances:content-folder', payload),
+
   pickGameDir: () => ipcRenderer.invoke('gamedirs:pick'),
 
   /**

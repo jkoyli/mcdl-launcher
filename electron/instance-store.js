@@ -1,0 +1,329 @@
+'use strict';
+
+/**
+ * 实例级数据：单独的内存 / Java / JVM 参数、自定义图标、内容管理（模组 / 资源包 / 世界 / 原理图）。
+ *
+ * 配置文件（都在启动器数据目录）：
+ *   instance-settings.json  { "<versionDir>": { memoryMb, javaPath, jvmArgs, width, height } }
+ *   instance-icons.json     { "<versionDir>": { type:'builtin', key } | { type:'file', file } }
+ *
+ * 内容管理只碰游戏目录下固定的几个子目录，做删除 / 启停前都会校验路径。
+ */
+
+const crypto = require('node:crypto');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+
+const CONTENT_DIRS = {
+  mods: 'mods',
+  resourcepacks: 'resourcepacks',
+  saves: 'saves',
+  schematics: 'schematics',
+  shaderpacks: 'shaderpacks',
+  screenshots: 'screenshots',
+  logs: 'logs',
+  'crash-reports': 'crash-reports',
+  config: 'config'
+};
+
+const MAX_ENTRIES = 300;
+const MAX_ICON_BYTES = 4 * 1024 * 1024;
+
+function keyOf(versionDir) {
+  return path.resolve(versionDir);
+}
+
+function inside(root, target) {
+  const rel = path.relative(path.resolve(root), path.resolve(target));
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+async function readJson(file, fallback) {
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeJson(file, data) {
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    throw new Error(`无法写入 ${path.basename(file)}（${error.code || 'ERROR'}）：${file}`);
+  }
+}
+
+function normalizeSettings(raw) {
+  const value = raw && typeof raw === 'object' ? raw : {};
+  const result = {};
+
+  const memory = Number(value.memoryMb);
+  if (Number.isFinite(memory) && memory > 0) result.memoryMb = Math.round(memory);
+
+  const width = Number(value.width);
+  if (Number.isFinite(width) && width > 0) result.width = Math.round(width);
+
+  const height = Number(value.height);
+  if (Number.isFinite(height) && height > 0) result.height = Math.round(height);
+
+  if (typeof value.javaPath === 'string' && value.javaPath.trim()) result.javaPath = value.javaPath.trim();
+  if (typeof value.jvmArgs === 'string' && value.jvmArgs.trim()) result.jvmArgs = value.jvmArgs.trim();
+
+  return result;
+}
+
+function createInstanceStore({ storeDir, launcherHome }) {
+  const settingsFile = path.join(storeDir, 'instance-settings.json');
+  const iconsFile = path.join(storeDir, 'instance-icons.json');
+  const iconsDir = path.join(storeDir, 'icons');
+  const home = launcherHome ? path.resolve(launcherHome) : null;
+
+  let settingsCache = null;
+  let iconsCache = null;
+
+  async function loadSettings() {
+    if (!settingsCache) settingsCache = await readJson(settingsFile, {});
+    return settingsCache;
+  }
+
+  async function loadIcons() {
+    if (!iconsCache) iconsCache = await readJson(iconsFile, {});
+    return iconsCache;
+  }
+
+  function contentRoot(gameDir, kind) {
+    const sub = CONTENT_DIRS[kind];
+    if (!sub) throw new Error(`不支持的内容类型：${kind}`);
+    return path.join(path.resolve(gameDir), sub);
+  }
+
+  return {
+    // ---------------- 实例级设置 ----------------
+
+    async getSettings(versionDir) {
+      const all = await loadSettings();
+      return normalizeSettings(all[keyOf(versionDir)]);
+    },
+
+    /**
+     * 只覆盖 patch 里出现的字段；空字符串 / 空值表示「改回继承全局」。
+     */
+    async saveSettings(versionDir, patch) {
+      const all = await loadSettings();
+      const key = keyOf(versionDir);
+      const next = normalizeSettings(all[key]);
+
+      const apply = (name, parse) => {
+        if (!patch || !(name in patch)) return;
+        const value = parse(patch[name]);
+        if (value === undefined) delete next[name];
+        else next[name] = value;
+      };
+
+      apply('memoryMb', (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? Math.round(number) : undefined;
+      });
+
+      apply('width', (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? Math.round(number) : undefined;
+      });
+
+      apply('height', (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? Math.round(number) : undefined;
+      });
+
+      apply('javaPath', (value) => (typeof value === 'string' && value.trim() ? value.trim() : undefined));
+      apply('jvmArgs', (value) => (typeof value === 'string' && value.trim() ? value.trim() : undefined));
+
+      if (Object.keys(next).length === 0) delete all[key];
+      else all[key] = next;
+
+      await writeJson(settingsFile, all);
+      return next;
+    },
+
+    // ---------------- 实例图标 ----------------
+
+    async getIcon(versionDir) {
+      const all = await loadIcons();
+      const entry = all[keyOf(versionDir)];
+      if (!entry || typeof entry !== 'object') return null;
+      if (entry.type === 'builtin' && entry.key) return { type: 'builtin', key: String(entry.key) };
+      if (entry.type === 'file' && entry.file) return { type: 'file', file: String(entry.file) };
+      return null;
+    },
+
+    /** 返回可直接给 <img> 用的 data URL。 */
+    async iconData(versionDir) {
+      const icon = await this.getIcon(versionDir);
+      if (!icon || icon.type !== 'file') return { icon, dataUrl: null };
+      try {
+        const file = path.join(iconsDir, icon.file);
+        const buffer = await fs.readFile(file);
+        return { icon, dataUrl: `data:${mimeOf(icon.file)};base64,${buffer.toString('base64')}` };
+      } catch {
+        return { icon, dataUrl: null };
+      }
+    },
+
+    async setBuiltinIcon(versionDir, key) {
+      const all = await loadIcons();
+      all[keyOf(versionDir)] = { type: 'builtin', key: String(key || 'grass') };
+      await writeJson(iconsFile, all);
+      return { type: 'builtin', key: String(key || 'grass') };
+    },
+
+    async setFileIcon(versionDir, sourcePath) {
+      const buffer = await fs.readFile(sourcePath);
+      if (buffer.length === 0) throw new Error('图标文件是空的');
+      if (buffer.length > MAX_ICON_BYTES) throw new Error('图标不能超过 4 MB');
+
+      const ext = (path.extname(sourcePath) || '.png').toLowerCase();
+      if (!['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) {
+        throw new Error('图标需要是 PNG / JPG / WebP / GIF');
+      }
+
+      await fs.mkdir(iconsDir, { recursive: true });
+      const file = crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16) + ext;
+      await fs.writeFile(path.join(iconsDir, file), buffer);
+
+      const all = await loadIcons();
+      all[keyOf(versionDir)] = { type: 'file', file };
+      await writeJson(iconsFile, all);
+
+      return {
+        icon: { type: 'file', file },
+        dataUrl: `data:${mimeOf(file)};base64,${buffer.toString('base64')}`
+      };
+    },
+
+    async clearIcon(versionDir) {
+      const all = await loadIcons();
+      delete all[keyOf(versionDir)];
+      await writeJson(iconsFile, all);
+      return null;
+    },
+
+    // ---------------- 内容管理 ----------------
+
+    async folderFor(gameDir, kind) {
+      const root = contentRoot(gameDir, kind);
+      await fs.mkdir(root, { recursive: true }).catch(() => {});
+      return root;
+    },
+
+    /**
+     * 列出某个内容目录。
+     * @returns {Promise<{root:string, entries:Array}>}
+     */
+    async listContent(gameDir, kind) {
+      const root = contentRoot(gameDir, kind);
+      let dirents = [];
+      try {
+        dirents = await fs.readdir(root, { withFileTypes: true });
+      } catch {
+        return { root, entries: [] };
+      }
+
+      const entries = [];
+
+      for (const dirent of dirents) {
+        if (entries.length >= MAX_ENTRIES) break;
+        if (dirent.name.startsWith('.')) continue;
+
+        const full = path.join(root, dirent.name);
+        let stat = null;
+        try {
+          stat = await fs.stat(full);
+        } catch {
+          continue;
+        }
+
+        const isDisabled = kind === 'mods' && dirent.name.toLowerCase().endsWith('.disabled');
+        if (kind !== 'mods' && (dirent.name.endsWith('.disabled'))) continue;
+
+        entries.push({
+          name: dirent.name.replace(/\.disabled$/i, ''),
+          rawName: dirent.name,
+          path: full,
+          isDirectory: stat.isDirectory(),
+          size: stat.isDirectory() ? 0 : stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          enabled: kind === 'mods' ? !isDisabled : true
+        });
+      }
+
+      entries.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hans-CN'));
+      return { root, entries };
+    },
+
+    /** 模组启用 / 禁用：改扩展名，不动文件内容。 */
+    async setModEnabled(filePath, enabled) {
+      const target = path.resolve(filePath);
+      const name = path.basename(target);
+      const isDisabled = name.toLowerCase().endsWith('.disabled');
+
+      if (enabled && !isDisabled) return { path: target, enabled: true };
+      if (!enabled && isDisabled) return { path: target, enabled: false };
+
+      const nextName = enabled ? name.replace(/\.disabled$/i, '') : `${name}.disabled`;
+      const nextPath = path.join(path.dirname(target), nextName);
+      await fs.rename(target, nextPath);
+      return { path: nextPath, enabled: Boolean(enabled) };
+    },
+
+    /** 删除前必须确认目标在对应内容目录内。 */
+    async deleteContent({ gameDir, kind, target }) {
+      const root = contentRoot(gameDir, kind);
+      const resolved = path.resolve(target);
+      if (!inside(root, resolved)) throw new Error('只能删除该内容目录内的文件');
+      await fs.rm(resolved, { recursive: true, force: true });
+      return true;
+    },
+
+    /** 导入：把选中的文件复制到对应内容目录（重名自动加序号）。 */
+    async importContent({ gameDir, kind, sourcePaths }) {
+      const root = contentRoot(gameDir, kind);
+      await fs.mkdir(root, { recursive: true });
+
+      const imported = [];
+
+      for (const sourcePath of sourcePaths || []) {
+        const name = path.basename(sourcePath);
+        let target = path.join(root, name);
+
+        for (let index = 1; index < 100; index += 1) {
+          try {
+            await fs.access(target);
+            const ext = path.extname(name);
+            target = path.join(root, `${path.basename(name, ext)} (${index})${ext}`);
+          } catch {
+            break;
+          }
+        }
+
+        await fs.copyFile(sourcePath, target);
+        imported.push(target);
+      }
+
+      return imported;
+    }
+  };
+}
+
+function mimeOf(file) {
+  const ext = path.extname(String(file)).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.gif') return 'image/gif';
+  return 'image/png';
+}
+
+module.exports = { createInstanceStore, CONTENT_DIRS };

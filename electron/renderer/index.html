@@ -1894,7 +1894,9 @@
   .main-stage.is-instances .stage-hero,
   .main-stage.is-instances .stage-news,
   .main-stage.is-gamedir .stage-hero,
-  .main-stage.is-gamedir .stage-news {
+  .main-stage.is-gamedir .stage-news,
+  .main-stage.is-detail .stage-hero,
+  .main-stage.is-detail .stage-news {
     opacity: 0;
     transform: translateY(-10px);
     visibility: hidden;
@@ -2741,7 +2743,9 @@
   .main-stage.is-instances .stage-hero,
   .main-stage.is-instances .stage-news,
   .main-stage.is-gamedir .stage-hero,
-  .main-stage.is-gamedir .stage-news {
+  .main-stage.is-gamedir .stage-news,
+  .main-stage.is-detail .stage-hero,
+  .main-stage.is-detail .stage-news {
     opacity: 0;
     transform: translateY(-10px);
     visibility: hidden;
@@ -3242,6 +3246,20 @@
     color: #e8f2ff;
     font-size: 12px;
     letter-spacing: .02em;
+    overflow: hidden;
+  }
+
+  .ilist-row__avatar img,
+  .ilist-row__avatar svg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 3px;
+  }
+
+  /* 「当前配置」卡可以点进去看实例详情 */
+  .console-card--config {
+    cursor: pointer;
   }
 
   .ilist-row__main {
@@ -3565,6 +3583,355 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  /* 详情页里右侧控制台会压住内容，打开时先收起 */
+  body[data-panel="detail"] .right-console {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  #stageInstanceDetail .create-title {
+    font-size: clamp(30px, 2.8vw, 46px);
+    line-height: 1.02;
+    overflow-wrap: anywhere;
+  }
+
+  #stageInstanceDetail .create-desc {
+    max-width: 320px;
+    overflow-wrap: anywhere;
+  }
+  /* ---------------------------------------------------------
+     实例详情（6 页签）与实例图标
+     --------------------------------------------------------- */
+  .main-stage.is-detail #stageInstanceDetail {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition:
+      opacity 420ms 80ms ease,
+      transform 420ms 80ms cubic-bezier(.22, .8, .3, 1),
+      visibility 0s;
+  }
+
+  .detail-icon {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 14px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .26);
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .01)),
+      rgba(9, 15, 24, .45);
+    color: #eaf3ff;
+    font-size: 24px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 160ms linear, box-shadow 200ms ease, transform 200ms ease;
+  }
+
+  .detail-icon:hover,
+  .detail-icon:focus-visible {
+    border-color: rgba(159, 208, 255, .6);
+    box-shadow: 0 0 28px rgba(94, 142, 207, .22);
+    outline: none;
+  }
+
+  .detail-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+  }
+
+  .detail-icon__hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 3px 0;
+    background: rgba(6, 10, 16, .78);
+    font-size: 7px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 220, 243, .72);
+    opacity: 0;
+    transition: opacity 160ms linear;
+  }
+
+  .detail-icon:hover .detail-icon__hint,
+  .detail-icon:focus-visible .detail-icon__hint {
+    opacity: 1;
+  }
+
+  .detail-body {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    min-width: 0;
+    max-height: 66vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    padding-left: clamp(22px, 2.6vw, 40px);
+    border-left: 1px solid rgba(255, 255, 255, .09);
+  }
+
+  .detail-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+  }
+
+  .detail-tab {
+    padding: 7px 11px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(199, 212, 230, .52);
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    cursor: pointer;
+    transition: color 140ms linear, background-color 140ms linear, border-color 140ms linear;
+  }
+
+  .detail-tab:hover,
+  .detail-tab:focus-visible {
+    color: #eaf3ff;
+    outline: none;
+  }
+
+  .detail-tab[aria-selected="true"] {
+    border-color: rgba(159, 208, 255, .34);
+    background: rgba(159, 208, 255, .1);
+    color: #f4faff;
+  }
+
+  .detail-panel {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+  }
+
+  .detail-panel[hidden] {
+    display: none;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+  }
+
+  .detail-field--wide {
+    grid-column: 1 / -1;
+  }
+
+  .detail-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .detail-status {
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .4);
+    overflow-wrap: anywhere;
+  }
+
+  .detail-status.is-error {
+    color: rgba(255, 154, 142, .82);
+  }
+
+  .detail-status.is-ok {
+    color: rgba(176, 232, 203, .78);
+  }
+
+  .detail-note {
+    margin: 0;
+    font-size: 8.5px;
+    line-height: 1.65;
+    letter-spacing: .03em;
+    color: rgba(199, 212, 230, .38);
+  }
+
+  .detail-foot {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+  }
+
+  .detail-chip {
+    padding: 6px 10px;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 999px;
+    background: rgba(159, 208, 255, .03);
+    color: rgba(206, 223, 242, .7);
+    font-family: inherit;
+    font-size: 8px;
+    letter-spacing: .06em;
+    cursor: pointer;
+    transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .detail-chip:hover,
+  .detail-chip:focus-visible {
+    color: #f4faff;
+    border-color: rgba(159, 208, 255, .46);
+    background: rgba(159, 208, 255, .08);
+    outline: none;
+  }
+
+  /* 内容列表（模组 / 资源包 / 世界 / 原理图） */
+  .content-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .content-count {
+    margin-left: auto;
+    font-size: 7.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .42);
+  }
+
+  .content-list {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+  }
+
+  .content-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(159, 208, 255, .14);
+    border-radius: 3px;
+    background: rgba(159, 208, 255, .022);
+  }
+
+  .content-row.is-disabled {
+    opacity: .58;
+  }
+
+  .content-row__main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .content-row__name {
+    font-size: 10.5px;
+    letter-spacing: .02em;
+    color: #e9f3ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .content-row__meta {
+    font-size: 7.5px;
+    letter-spacing: .08em;
+    color: rgba(199, 212, 230, .38);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .content-row__actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 6px;
+  }
+
+  .content-row__tag {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid rgba(176, 232, 203, .3);
+    border-radius: 999px;
+    font-size: 7px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(176, 232, 203, .82);
+  }
+
+  .content-row__tag.is-off {
+    border-color: rgba(199, 212, 230, .24);
+    color: rgba(199, 212, 230, .45);
+  }
+
+  .content-empty {
+    padding: 14px 0;
+    font-size: 9px;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .32);
+  }
+
+  /* 图标选择弹窗 */
+  .icon-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .icon-tile {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 8px;
+    background: rgba(9, 15, 24, .45);
+    color: #e8f2ff;
+    font-size: 18px;
+    cursor: pointer;
+    transition: border-color 150ms linear, box-shadow 180ms ease, transform 180ms ease;
+  }
+
+  .icon-tile:hover,
+  .icon-tile:focus-visible {
+    border-color: rgba(159, 208, 255, .5);
+    box-shadow: 0 0 22px rgba(94, 142, 207, .18);
+    transform: translateY(-2px);
+    outline: none;
+  }
+
+  .icon-tile.is-active {
+    border-color: rgba(159, 208, 255, .7);
+    box-shadow: 0 0 24px rgba(94, 142, 207, .3);
+  }
+
+  .icon-tile svg {
+    width: 60%;
+    height: 60%;
   }
 
   .account-section-head {
@@ -4514,6 +4881,144 @@
       </form>
     </section>
 
+    <!-- 二级页面：实例详情（对照清单 [L3] 实例详情：6 页签 + 浏览/管理项） -->
+    <section class="stage-create" id="stageInstanceDetail" aria-hidden="true" inert>
+      <div class="create-head">
+        <button class="create-back" id="detailBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 5 8 12l7 7"/>
+            <path d="M8 12h9"/>
+          </svg>
+          <span>返回</span>
+        </button>
+        <span class="create-index">Instances / 01·2</span>
+      </div>
+
+      <div class="create-intro">
+        <button class="detail-icon" id="detailIconBtn" type="button" aria-label="更换实例图标" title="更换实例图标">
+          <span class="detail-icon__letter" id="detailIconLetter">?</span>
+          <img id="detailIconImage" alt="" hidden>
+          <span class="detail-icon__hint">更换</span>
+        </button>
+        <p class="create-kicker">Instance</p>
+        <h2 class="create-title" id="detailName">实例</h2>
+        <p class="create-desc" id="detailMeta">—</p>
+      </div>
+
+      <div class="detail-body">
+        <div class="detail-tabs" role="tablist" aria-label="实例详情">
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="game" data-control-key="settings.game" aria-selected="true">游戏设置</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="installers" data-control-key="settings.tabs.installers" aria-selected="false">自动安装</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="mods" data-control-key="mods.manage" aria-selected="false">模组管理</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="resourcepacks" data-control-key="resourcepack.manage" aria-selected="false">资源包</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="worlds" data-control-key="world.manage" aria-selected="false">世界</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="schematics" data-control-key="schematics.manage" aria-selected="false">原理图</button>
+        </div>
+
+        <!-- 页签：游戏设置（实例级，覆盖全局） -->
+        <form class="detail-panel detail-form" id="detailSettingsForm" data-detail-panel="game" novalidate>
+          <div class="detail-grid">
+            <label class="create-field" for="detailMemory">
+              <span class="create-label">Memory / 最大内存 (MB)</span>
+              <input class="create-control" id="detailMemory" type="number" min="512" max="32768" step="256" inputmode="numeric">
+            </label>
+
+            <label class="create-field" for="detailJava">
+              <span class="create-label">Java / 运行时</span>
+              <span class="create-control-wrap">
+                <select class="create-control" id="detailJava">
+                  <option value="">继承全局设置</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+            </label>
+
+            <label class="create-field" for="detailWidth">
+              <span class="create-label">Window width / 窗口宽</span>
+              <input class="create-control" id="detailWidth" type="number" min="320" max="7680" step="1" inputmode="numeric">
+            </label>
+
+            <label class="create-field" for="detailHeight">
+              <span class="create-label">Window height / 窗口高</span>
+              <input class="create-control" id="detailHeight" type="number" min="320" max="7680" step="1" inputmode="numeric">
+            </label>
+
+            <label class="create-field detail-field--wide" for="detailJvmArgs">
+              <span class="create-label">Extra JVM args / 额外 JVM 参数</span>
+              <input class="create-control" id="detailJvmArgs" type="text" placeholder="留空继承全局设置" autocomplete="off">
+            </label>
+          </div>
+
+          <div class="detail-actions">
+            <button class="create-submit" type="submit"><span>保存设置</span><span aria-hidden="true">↗</span></button>
+            <button class="dialog-btn" id="detailSettingsReset" type="button">全部继承全局</button>
+            <span class="detail-status" id="detailSettingsStatus" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+
+        <!-- 页签：自动安装（加载器安装待接入） -->
+        <div class="detail-panel" data-detail-panel="installers" hidden>
+          <div class="content-list" id="detailInstallerList"></div>
+          <p class="detail-note">内置下载器 mcdl 目前只处理原版文件；下面的加载器安装入口保持禁用，避免假安装。</p>
+        </div>
+
+        <!-- 页签：模组 / 资源包 / 世界 / 原理图 -->
+        <div class="detail-panel" data-detail-panel="mods" hidden>
+          <div class="content-toolbar">
+            <button class="dialog-btn" type="button" data-content-import="mods">导入模组</button>
+            <button class="dialog-btn" type="button" data-content-refresh="mods">刷新</button>
+            <button class="dialog-btn" type="button" data-content-folder="mods">打开文件夹</button>
+            <span class="content-count" id="contentCountMods">0</span>
+          </div>
+          <div class="content-list" id="contentListMods" role="list"></div>
+        </div>
+
+        <div class="detail-panel" data-detail-panel="resourcepacks" hidden>
+          <div class="content-toolbar">
+            <button class="dialog-btn" type="button" data-content-import="resourcepacks">导入资源包</button>
+            <button class="dialog-btn" type="button" data-content-refresh="resourcepacks">刷新</button>
+            <button class="dialog-btn" type="button" data-content-folder="resourcepacks">打开文件夹</button>
+            <span class="content-count" id="contentCountResourcepacks">0</span>
+          </div>
+          <div class="content-list" id="contentListResourcepacks" role="list"></div>
+        </div>
+
+        <div class="detail-panel" data-detail-panel="worlds" hidden>
+          <div class="content-toolbar">
+            <button class="dialog-btn" type="button" data-content-refresh="saves">刷新</button>
+            <button class="dialog-btn" type="button" data-content-folder="saves">打开文件夹</button>
+            <span class="content-count" id="contentCountSaves">0</span>
+          </div>
+          <div class="content-list" id="contentListSaves" role="list"></div>
+        </div>
+
+        <div class="detail-panel" data-detail-panel="schematics" hidden>
+          <div class="content-toolbar">
+            <button class="dialog-btn" type="button" data-content-import="schematics">导入原理图</button>
+            <button class="dialog-btn" type="button" data-content-refresh="schematics">刷新</button>
+            <button class="dialog-btn" type="button" data-content-folder="schematics">打开文件夹</button>
+            <span class="content-count" id="contentCountSchematics">0</span>
+          </div>
+          <div class="content-list" id="contentListSchematics" role="list"></div>
+        </div>
+
+        <p class="detail-status" id="detailContentStatus" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="detail-foot" aria-label="文件夹与实例操作">
+        <button class="detail-chip" type="button" data-detail-folder="game" data-control-key="folder.game">实例运行文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="config" data-control-key="folder.config">配置文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="mods" data-control-key="folder.mod">模组文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="resourcepacks" data-control-key="folder.resourcepacks">资源包文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="saves" data-control-key="folder.saves">世界文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="schematics" data-control-key="folder.schematics">原理图文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="shaderpacks" data-control-key="folder.shaderpacks">光影包文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="screenshots" data-control-key="folder.screenshots">截图文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="logs" data-control-key="folder.logs">日志文件夹</button>
+        <button class="detail-chip" type="button" data-detail-folder="crash-reports" data-control-key="folder.crash-reports">崩溃报告</button>
+      </div>
+    </section>
+
     <!-- 二级页面：新建实例 -->
     <section class="stage-create" id="stageCreate" aria-hidden="true" inert>
       <div class="create-head">
@@ -4969,6 +5474,31 @@
         </div>
         <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
         <button class="dialog-btn dialog-btn--primary" id="instanceDelete" type="button">删除</button>
+      </div>
+    </section>
+
+    <!-- L5 实例图标选择（对照清单 [L5] 实例图标选择 / GameInstanceIconDialog） -->
+    <section class="dialog dialog--wide" id="dlgIcon" role="dialog" aria-modal="true" aria-labelledby="dlgIconTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgIconTitle">实例图标</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text">选一个内置图标，或从本地挑一张图片。图标只影响启动器里的显示，不改游戏文件。</p>
+
+        <div class="icon-grid" id="iconGrid" role="group" aria-label="内置图标"></div>
+
+        <div class="dialog-actions">
+          <button class="dialog-btn" id="iconPickFile" type="button">选择本地图片…</button>
+        </div>
+
+        <p class="dialog-status" id="iconDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn" id="iconReset" type="button">恢复默认</button>
+        </div>
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
       </div>
     </section>
 

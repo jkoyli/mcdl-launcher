@@ -1042,6 +1042,7 @@
   // ---------------------------------------------------------
   var PANEL_ELEMENTS = {
     instances: 'stageInstances',
+    detail: 'stageInstanceDetail',
     create: 'stageCreate',
     gamedir: 'stageGameDir',
     account: 'stageAccount',
@@ -1049,6 +1050,7 @@
   };
   var PANEL_STATES = {
     instances: 'is-instances',
+    detail: 'is-detail',
     create: 'is-create',
     gamedir: 'is-gamedir',
     account: 'is-account',
@@ -1072,6 +1074,7 @@
     overlayPanel = null;
 
     if (mainStage) mainStage.classList.remove(PANEL_STATES[closing]);
+    delete document.body.dataset.panel;
     if (element) {
       element.setAttribute('inert', '');
       element.setAttribute('aria-hidden', 'true');
@@ -1102,6 +1105,7 @@
     overlayPanel = (name === 'account' || name === 'settings') ? name : null;
 
     mainStage.classList.add(PANEL_STATES[name]);
+    document.body.dataset.panel = name;
     element.removeAttribute('inert');
     element.setAttribute('aria-hidden', 'false');
     setHomeInert(true);
@@ -1122,7 +1126,8 @@
     if (activePanel === 'create' && installInProgress) return;
 
     // 游戏目录页是从实例列表进来的，返回时回到列表而不是主视区。
-    if (activePanel === 'gamedir') {
+    // 游戏目录页 / 实例详情页都是从实例列表进来的，返回时回到列表。
+    if (activePanel === 'gamedir' || activePanel === 'detail') {
       showPanel('instances');
       renderInstancePanel();
       if (options.focus !== false) {
@@ -1473,7 +1478,8 @@
     server: document.getElementById('dlgServer'),
     skin: document.getElementById('dlgSkin'),
     confirm: document.getElementById('dlgConfirm'),
-    instance: document.getElementById('dlgInstance')
+    instance: document.getElementById('dlgInstance'),
+    icon: document.getElementById('dlgIcon')
   };
   var openDialogName = null;
   var dialogReturnFocus = null;
@@ -2701,9 +2707,11 @@
   var dialogInstanceId = null;
 
   var INSTANCE_MENU_ITEMS = [
+    { action: 'detail', label: '实例详情' },
     { action: 'test', label: '测试游戏' },
     { action: 'script', label: '生成启动脚本' },
     { action: 'rename', label: '重命名该实例' },
+    { action: 'icon', label: '更换图标' },
     { action: 'duplicate', label: '复制游戏实例' },
     { action: 'delete', label: '删除该实例', danger: true },
     { action: 'export', label: '导出整合包', disabled: true, hint: '导出整合包待接入' },
@@ -2789,7 +2797,7 @@
       var avatar = document.createElement('span');
       avatar.className = 'ilist-row__avatar';
       avatar.setAttribute('aria-hidden', 'true');
-      avatar.textContent = instanceLabel(instance).slice(0, 1).toUpperCase();
+      fillInstanceIcon(avatar, instance);
 
       var main = document.createElement('div');
       main.className = 'ilist-row__main';
@@ -2911,6 +2919,16 @@
 
     var instance = instanceById(id);
     if (!instance) return;
+
+    if (action === 'detail') {
+      openInstanceDetail(instance.id);
+      return;
+    }
+
+    if (action === 'icon') {
+      openIconDialog(instance.id);
+      return;
+    }
 
     if (action === 'test') {
       launchInstanceFlow(instance, true);
@@ -3341,6 +3359,766 @@
       gameDirAddMode = false;
       renderGameDirList();
       applyGameDirForm();
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 实例详情（[L3] 6 页签）+ 实例图标（[L5]）
+  // ---------------------------------------------------------
+  var detailInstanceId = null;
+  var detailTab = 'game';
+  var iconTargetId = null;
+
+  var CONTENT_KINDS = {
+    mods: { list: 'contentListMods', count: 'contentCountMods', label: '模组' },
+    resourcepacks: { list: 'contentListResourcepacks', count: 'contentCountResourcepacks', label: '资源包' },
+    saves: { list: 'contentListSaves', count: 'contentCountSaves', label: '世界' },
+    schematics: { list: 'contentListSchematics', count: 'contentCountSchematics', label: '原理图' }
+  };
+
+  var TAB_CONTENT_KIND = {
+    mods: 'mods',
+    resourcepacks: 'resourcepacks',
+    worlds: 'saves',
+    schematics: 'schematics'
+  };
+
+  // 内置图标：等距立方体，用三种颜色区分。
+  var ICON_PRESETS = [
+    { key: 'grass', label: '草方块', top: '#7cc46a', left: '#4f7d43', right: '#659e55' },
+    { key: 'chest', label: '箱子', top: '#c8a06a', left: '#7d5c39', right: '#a07d51' },
+    { key: 'furnace', label: '熔炉', top: '#9aa0a6', left: '#5c6166', right: '#7a8085' },
+    { key: 'craft', label: '工作台', top: '#c9a273', left: '#8a6440', right: '#a97f56' },
+    { key: 'command', label: '命令方块', top: '#e2a06a', left: '#9d5f36', right: '#c07f4d' },
+    { key: 'ender', label: '末影箱', top: '#5f6f8a', left: '#33404f', right: '#46566a' }
+  ];
+
+  function cubeSvg(preset) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M12 3 20 7.5 12 12 4 7.5Z" fill="' + preset.top + '"/>' +
+      '<path d="M4 7.5 12 12v9l-8-4.5Z" fill="' + preset.left + '"/>' +
+      '<path d="M20 7.5 20 16.5 12 21v-9Z" fill="' + preset.right + '"/>' +
+      '</svg>';
+  }
+
+  function presetByKey(key) {
+    for (var i = 0; i < ICON_PRESETS.length; i += 1) {
+      if (ICON_PRESETS[i].key === key) return ICON_PRESETS[i];
+    }
+    return null;
+  }
+
+  /** 把实例图标画进任意容器：自定义图片 > 内置图标 > 名字首字母。 */
+  function fillInstanceIcon(node, instance) {
+    if (!node || !instance) return;
+    node.innerHTML = '';
+
+    if (instance.iconDataUrl) {
+      var img = document.createElement('img');
+      img.src = instance.iconDataUrl;
+      img.alt = '';
+      node.appendChild(img);
+      return;
+    }
+
+    var preset = presetByKey(instance.iconKey);
+    if (preset) {
+      node.innerHTML = cubeSvg(preset);
+      return;
+    }
+
+    var letter = document.createElement('span');
+    letter.textContent = instanceLabel(instance).slice(0, 1).toUpperCase();
+    node.appendChild(letter);
+  }
+
+  function setDetailStatus(text, tone) {
+    var node = document.getElementById('detailContentStatus');
+    if (!node) return;
+    node.textContent = text || '';
+    node.classList.toggle('is-error', tone === 'error');
+    node.classList.toggle('is-ok', tone === 'ok');
+  }
+
+  function setDetailSettingsStatus(text, tone) {
+    var node = document.getElementById('detailSettingsStatus');
+    if (!node) return;
+    node.textContent = text || '';
+    node.classList.toggle('is-error', tone === 'error');
+    node.classList.toggle('is-ok', tone === 'ok');
+  }
+
+  function detailInstance() {
+    return instanceById(detailInstanceId);
+  }
+
+  function renderDetailHeader() {
+    var instance = detailInstance();
+    if (!instance) return;
+
+    var name = document.getElementById('detailName');
+    var meta = document.getElementById('detailMeta');
+    var letterNode = document.getElementById('detailIconLetter');
+    var imageNode = document.getElementById('detailIconImage');
+
+    if (name) name.textContent = instanceLabel(instance);
+
+    if (meta) {
+      var parts = [];
+      if (instance.versionName) parts.push(instance.versionName);
+      var loader = loaderLabel(instance);
+      if (loader && loader !== 'Vanilla') parts.push(loader);
+      if (instance.origin === 'external') parts.push('外部目录');
+      if (instance.gameDir) parts.push(instance.gameDir);
+      meta.textContent = parts.join(' · ') || '—';
+    }
+
+    if (letterNode && imageNode) {
+      var preset = presetByKey(instance.iconKey);
+      if (instance.iconDataUrl) {
+        imageNode.src = instance.iconDataUrl;
+        imageNode.hidden = false;
+        letterNode.hidden = true;
+        letterNode.innerHTML = '';
+      } else if (preset) {
+        imageNode.hidden = true;
+        letterNode.hidden = false;
+        letterNode.innerHTML = cubeSvg(preset);
+      } else {
+        imageNode.hidden = true;
+        letterNode.hidden = false;
+        letterNode.textContent = instanceLabel(instance).slice(0, 1).toUpperCase();
+      }
+    }
+  }
+
+  function openInstanceDetail(id) {
+    var instance = instanceById(id) || getSelectedInstance();
+    if (!instance) {
+      setInstancePanelStatus('还没有实例，先创建一个', 'error');
+      return;
+    }
+
+    detailInstanceId = instance.id;
+    selectInstance(instance.id);
+    showPanel('detail');
+    renderDetailHeader();
+    setDetailTab(detailTab || 'game');
+  }
+
+  function setDetailTab(tab) {
+    detailTab = tab;
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-detail-tab]'), function (button) {
+      button.setAttribute('aria-selected', button.getAttribute('data-detail-tab') === tab ? 'true' : 'false');
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-detail-panel]'), function (panel) {
+      panel.hidden = panel.getAttribute('data-detail-panel') !== tab;
+    });
+
+    if (tab === 'game') {
+      loadDetailSettings();
+      return;
+    }
+    if (tab === 'installers') {
+      renderInstallerList();
+      return;
+    }
+
+    var kind = TAB_CONTENT_KIND[tab];
+    if (kind) loadInstanceContent(kind);
+  }
+
+  // ---------------- 页签：游戏设置（实例级） ----------------
+
+  function fillDetailJavaOptions(runtimes, currentPath) {
+    var select = document.getElementById('detailJava');
+    if (!select) return;
+
+    select.innerHTML = '';
+
+    var inherit = document.createElement('option');
+    inherit.value = '';
+    inherit.textContent = '继承全局设置';
+    select.appendChild(inherit);
+
+    (runtimes || []).forEach(function (runtime) {
+      var option = document.createElement('option');
+      option.value = runtime.path;
+      option.textContent = 'Java ' + runtime.major + ' · ' + runtime.version + ' · ' + runtime.path;
+      select.appendChild(option);
+    });
+
+    if (currentPath && !(runtimes || []).some(function (runtime) { return runtime.path === currentPath; })) {
+      var custom = document.createElement('option');
+      custom.value = currentPath;
+      custom.textContent = '自定义 · ' + currentPath;
+      select.appendChild(custom);
+    }
+
+    select.value = currentPath || '';
+  }
+
+  function loadDetailSettings() {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.getInstanceSettings !== 'function') return;
+
+    applyDetailSettings({}, {});
+
+    // 实例设置很快，Java 列表要扫描本机（可能十几秒），分开加载：
+    // 先把内存 / 窗口 / JVM 参数显示出来，Java 下拉晚一步补上。
+    api.getInstanceSettings({ instanceId: instance.id })
+      .then(function (data) {
+        var overrides = (data && data.overrides) || {};
+        applyDetailSettings(overrides, (data && data.global) || {});
+        setDetailSettingsStatus('留空表示继承全局设置');
+
+        if (typeof api.getSettings !== 'function') return;
+        api.getSettings()
+          .then(function (settingsData) {
+            if (detailInstanceId !== instance.id) return;
+            fillDetailJavaOptions((settingsData && settingsData.javaRuntimes) || [], overrides.javaPath || '');
+          })
+          .catch(function () {
+            // Java 列表拿不到不影响其它字段
+          });
+      })
+      .catch(function (error) {
+        setDetailSettingsStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function applyDetailSettings(overrides, globalSettings) {
+    var memory = document.getElementById('detailMemory');
+    var width = document.getElementById('detailWidth');
+    var height = document.getElementById('detailHeight');
+    var jvm = document.getElementById('detailJvmArgs');
+
+    if (memory) {
+      memory.value = overrides.memoryMb || '';
+      memory.placeholder = '继承全局：' + (globalSettings.memoryMb || '—') + ' MB';
+    }
+    if (width) {
+      width.value = overrides.width || '';
+      width.placeholder = '继承全局：' + (globalSettings.width || '—');
+    }
+    if (height) {
+      height.value = overrides.height || '';
+      height.placeholder = '继承全局：' + (globalSettings.height || '—');
+    }
+    if (jvm) {
+      jvm.value = overrides.jvmArgs || '';
+      jvm.placeholder = globalSettings.jvmArgs
+        ? '继承全局：' + globalSettings.jvmArgs
+        : '留空继承全局设置';
+    }
+
+    // Java 下拉单独填充；这里只保证已选路径不会丢。
+    var javaSelect = document.getElementById('detailJava');
+    if (javaSelect && overrides.javaPath) {
+      for (var i = 0; i < javaSelect.options.length; i += 1) {
+        if (javaSelect.options[i].value === overrides.javaPath) {
+          javaSelect.value = overrides.javaPath;
+          break;
+        }
+      }
+    }
+  }
+
+  var detailSettingsForm = document.getElementById('detailSettingsForm');
+  if (detailSettingsForm) {
+    detailSettingsForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance || typeof api.saveInstanceSettings !== 'function') return;
+
+      var valueOf = function (id) {
+        var node = document.getElementById(id);
+        return node ? node.value : '';
+      };
+
+      setDetailSettingsStatus('正在保存…');
+
+      api.saveInstanceSettings({
+        instanceId: instance.id,
+        patch: {
+          memoryMb: valueOf('detailMemory'),
+          width: valueOf('detailWidth'),
+          height: valueOf('detailHeight'),
+          jvmArgs: valueOf('detailJvmArgs'),
+          javaPath: valueOf('detailJava')
+        }
+      }).then(function (result) {
+        var effective = (result && result.effective) || {};
+        setDetailSettingsStatus(
+          '已保存 · 生效值：' + (effective.memoryMb || '—') + ' MB / ' +
+          (effective.width || '—') + '×' + (effective.height || '—'),
+          'ok'
+        );
+      }).catch(function (error) {
+        setDetailSettingsStatus(describeLaunchError(error), 'error');
+      });
+    });
+  }
+
+  var detailSettingsReset = document.getElementById('detailSettingsReset');
+  if (detailSettingsReset) {
+    detailSettingsReset.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance) return;
+
+      api.saveInstanceSettings({
+        instanceId: instance.id,
+        patch: { memoryMb: '', width: '', height: '', jvmArgs: '', javaPath: '' }
+      }).then(function () {
+        loadDetailSettings();
+        setDetailSettingsStatus('已恢复为继承全局设置', 'ok');
+      }).catch(function (error) {
+        setDetailSettingsStatus(describeLaunchError(error), 'error');
+      });
+    });
+  }
+
+  // ---------------- 页签：自动安装 ----------------
+
+  var INSTALLER_ENTRIES = [
+    { name: 'Forge', desc: 'net.minecraftforge · 1.7.10 – 最新' },
+    { name: 'NeoForge', desc: 'net.neoforged · 1.20.1 起' },
+    { name: 'Fabric', desc: 'net.fabricmc · 1.14 起' },
+    { name: 'Quilt', desc: 'org.quiltmc · 1.18 起' },
+    { name: 'LiteLoader', desc: '1.5.2 – 1.12.2' },
+    { name: 'OptiFine', desc: '各版本独立发布' }
+  ];
+
+  function renderInstallerList() {
+    var list = document.getElementById('detailInstallerList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    INSTALLER_ENTRIES.forEach(function (entry) {
+      var row = document.createElement('div');
+      row.className = 'content-row';
+
+      var main = document.createElement('div');
+      main.className = 'content-row__main';
+
+      var name = document.createElement('span');
+      name.className = 'content-row__name';
+      name.textContent = entry.name;
+
+      var meta = document.createElement('span');
+      meta.className = 'content-row__meta';
+      meta.textContent = entry.desc;
+
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var actions = document.createElement('div');
+      actions.className = 'content-row__actions';
+
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dialog-btn';
+      button.textContent = '安装';
+      button.disabled = true;
+      button.title = '加载器安装待接入';
+      button.setAttribute('data-control-key', 'button.install');
+
+      actions.appendChild(button);
+      row.appendChild(main);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  // ---------------- 页签：模组 / 资源包 / 世界 / 原理图 ----------------
+
+  function formatSize(bytes) {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    return String(iso).slice(0, 10);
+  }
+
+  function contentListElement(kind) {
+    var cfg = CONTENT_KINDS[kind];
+    return cfg ? document.getElementById(cfg.list) : null;
+  }
+
+  function loadInstanceContent(kind) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    var list = contentListElement(kind);
+
+    if (!api || !instance || !list) return;
+
+    list.innerHTML = '';
+    var empty = document.createElement('div');
+    empty.className = 'content-empty';
+    empty.textContent = '正在读取…';
+    list.appendChild(empty);
+
+    api.listInstanceContent({ instanceId: instance.id, kind: kind })
+      .then(function (data) {
+        renderContentRows(kind, data && data.entries ? data.entries : []);
+      })
+      .catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+        renderContentRows(kind, []);
+      });
+  }
+
+  function renderContentRows(kind, entries) {
+    var cfg = CONTENT_KINDS[kind];
+    var list = contentListElement(kind);
+    if (!cfg || !list) return;
+
+    var count = document.getElementById(cfg.count);
+    if (count) count.textContent = String(entries.length);
+
+    list.innerHTML = '';
+
+    if (entries.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'content-empty';
+      empty.textContent = '还没有' + cfg.label + '。用上面的按钮导入，或直接放到游戏目录里刷新。';
+      list.appendChild(empty);
+      return;
+    }
+
+    entries.forEach(function (entry) {
+      var row = document.createElement('div');
+      row.className = 'content-row' + (entry.enabled === false ? ' is-disabled' : '');
+
+      var main = document.createElement('div');
+      main.className = 'content-row__main';
+
+      var name = document.createElement('span');
+      name.className = 'content-row__name';
+      name.textContent = entry.name;
+      name.title = entry.path;
+
+      var meta = document.createElement('span');
+      meta.className = 'content-row__meta';
+      meta.textContent = [
+        entry.isDirectory ? '文件夹' : formatSize(entry.size),
+        formatDate(entry.modifiedAt),
+        entry.enabled === false ? '已禁用' : ''
+      ].filter(Boolean).join(' · ');
+
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var actions = document.createElement('div');
+      actions.className = 'content-row__actions';
+
+      if (kind === 'mods') {
+        var toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'dialog-btn';
+        toggle.textContent = entry.enabled === false ? '启用' : '禁用';
+        toggle.setAttribute('data-content-toggle', entry.path);
+        toggle.setAttribute('data-content-kind', kind);
+        toggle.setAttribute('data-content-enabled', entry.enabled === false ? 'false' : 'true');
+        actions.appendChild(toggle);
+      }
+
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'dialog-btn';
+      remove.textContent = '删除';
+      remove.setAttribute('data-content-delete', entry.path);
+      remove.setAttribute('data-content-kind', kind);
+      remove.setAttribute('data-content-name', entry.name);
+      actions.appendChild(remove);
+
+      row.appendChild(main);
+      row.appendChild(actions);
+      list.appendChild(row);
+    });
+  }
+
+  // 内容列表的按钮委托
+  var detailBody = document.querySelector('.detail-body');
+  if (detailBody) {
+    detailBody.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+
+      var importBtn = target.closest('[data-content-import]');
+      if (importBtn) {
+        importContent(importBtn.getAttribute('data-content-import'));
+        return;
+      }
+
+      var refreshBtn = target.closest('[data-content-refresh]');
+      if (refreshBtn) {
+        loadInstanceContent(refreshBtn.getAttribute('data-content-refresh'));
+        return;
+      }
+
+      var folderBtn = target.closest('[data-content-folder]');
+      if (folderBtn) {
+        openContentFolder(folderBtn.getAttribute('data-content-folder'));
+        return;
+      }
+
+      var toggleBtn = target.closest('[data-content-toggle]');
+      if (toggleBtn) {
+        var enabled = toggleBtn.getAttribute('data-content-enabled') === 'true';
+        toggleContent(
+          toggleBtn.getAttribute('data-content-kind'),
+          toggleBtn.getAttribute('data-content-toggle'),
+          !enabled
+        );
+        return;
+      }
+
+      var deleteBtn = target.closest('[data-content-delete]');
+      if (deleteBtn) {
+        var kind = deleteBtn.getAttribute('data-content-kind');
+        var path = deleteBtn.getAttribute('data-content-delete');
+        var name = deleteBtn.getAttribute('data-content-name');
+        askConfirm('确定删除「' + name + '」吗？文件会从游戏目录里移除，无法撤销。', function () {
+          removeContent(kind, path);
+        }, '删除');
+      }
+    });
+  }
+
+  function importContent(kind) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.importInstanceContent !== 'function') return;
+
+    setDetailStatus('正在选择文件…');
+
+    api.importInstanceContent({ instanceId: instance.id, kind: kind })
+      .then(function (data) {
+        if (!data) {
+          setDetailStatus('');
+          return;
+        }
+        renderContentRows(kind, data.entries || []);
+        setDetailStatus('已导入', 'ok');
+      })
+      .catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function openContentFolder(kind) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.openInstanceContentFolder !== 'function') return;
+
+    api.openInstanceContentFolder({ instanceId: instance.id, kind: kind })
+      .then(function () {
+        setDetailStatus('已打开文件夹', 'ok');
+      })
+      .catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function toggleContent(kind, targetPath, enabled) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.toggleInstanceContent !== 'function') return;
+
+    api.toggleInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath, enabled: enabled })
+      .then(function () {
+        loadInstanceContent(kind);
+        setDetailStatus(enabled ? '已启用' : '已禁用', 'ok');
+      })
+      .catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function removeContent(kind, targetPath) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.deleteInstanceContent !== 'function') return;
+
+    api.deleteInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath })
+      .then(function (data) {
+        renderContentRows(kind, data && data.entries ? data.entries : []);
+        setDetailStatus('已删除', 'ok');
+      })
+      .catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  // ---------------- 页签 / 文件夹入口绑定 ----------------
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-detail-tab]'), function (button) {
+    button.addEventListener('click', function () {
+      setDetailTab(button.getAttribute('data-detail-tab'));
+    });
+  });
+
+  var detailBackBtn = document.getElementById('detailBack');
+  if (detailBackBtn) {
+    detailBackBtn.addEventListener('click', function () {
+      showPanel('instances');
+      renderInstancePanel();
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-detail-folder]'), function (button) {
+    button.addEventListener('click', function () {
+      var kind = button.getAttribute('data-detail-folder');
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance) return;
+
+      if (kind === 'game') {
+        api.openInstanceFolder({ instanceId: instance.id })
+          .then(function () { setDetailStatus('已打开实例目录', 'ok'); })
+          .catch(function (error) { setDetailStatus(describeLaunchError(error), 'error'); });
+        return;
+      }
+
+      openContentFolder(kind);
+    });
+  });
+
+  var detailIconBtn = document.getElementById('detailIconBtn');
+  if (detailIconBtn) {
+    detailIconBtn.addEventListener('click', function () {
+      if (detailInstanceId) openIconDialog(detailInstanceId);
+    });
+  }
+
+  // 右侧「当前配置」卡点进去看实例详情（HMCL 的「游戏」页也是这么进）
+  if (configCard) {
+    configCard.addEventListener('click', function () {
+      var instance = getSelectedInstance();
+      if (instance) openInstanceDetail(instance.id);
+    });
+  }
+
+  // ---------------- [L5] 实例图标选择 ----------------
+
+  function renderIconGrid(activeKey) {
+    var grid = document.getElementById('iconGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    ICON_PRESETS.forEach(function (preset) {
+      var tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'icon-tile' + (preset.key === activeKey ? ' is-active' : '');
+      tile.setAttribute('data-icon-key', preset.key);
+      tile.setAttribute('aria-label', preset.label);
+      tile.title = preset.label;
+      tile.innerHTML = cubeSvg(preset);
+      grid.appendChild(tile);
+    });
+  }
+
+  function openIconDialog(id) {
+    var instance = instanceById(id);
+    if (!instance) return;
+
+    iconTargetId = id;
+    renderIconGrid(instance.iconKey || '');
+    setHint(document.getElementById('iconDialogStatus'), '');
+    openDialog('icon');
+  }
+
+  function applyIconResult(result) {
+    var instance = instanceById(iconTargetId);
+    if (instance && result) {
+      instance.iconKey = result.iconKey || '';
+      instance.iconDataUrl = result.iconDataUrl || '';
+    }
+
+    renderInstancePanel();
+    if (detailInstanceId && detailInstanceId === iconTargetId) renderDetailHeader();
+    renderInstanceList();
+  }
+
+  var iconGrid = document.getElementById('iconGrid');
+  if (iconGrid) {
+    iconGrid.addEventListener('click', function (event) {
+      var tile = event.target.closest ? event.target.closest('[data-icon-key]') : null;
+      if (!tile) return;
+
+      var api = window.launcherAPI;
+      if (!api || typeof api.setInstanceBuiltinIcon !== 'function' || !iconTargetId) return;
+
+      var key = tile.getAttribute('data-icon-key');
+      var status = document.getElementById('iconDialogStatus');
+      setHint(status, '正在应用…');
+
+      api.setInstanceBuiltinIcon({ instanceId: iconTargetId, key: key })
+        .then(function (result) {
+          applyIconResult(result);
+          renderIconGrid(key);
+          setHint(status, '已应用内置图标', 'ok');
+          window.setTimeout(closeDialog, 320);
+        })
+        .catch(function (error) {
+          setHint(status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  var iconPickFile = document.getElementById('iconPickFile');
+  if (iconPickFile) {
+    iconPickFile.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.pickInstanceIcon !== 'function' || !iconTargetId) return;
+
+      var status = document.getElementById('iconDialogStatus');
+      setHint(status, '正在选择图片…');
+
+      api.pickInstanceIcon({ instanceId: iconTargetId })
+        .then(function (result) {
+          if (!result) {
+            setHint(status, '');
+            return;
+          }
+          applyIconResult(result);
+          setHint(status, '已使用本地图片', 'ok');
+          window.setTimeout(closeDialog, 320);
+        })
+        .catch(function (error) {
+          setHint(status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  var iconReset = document.getElementById('iconReset');
+  if (iconReset) {
+    iconReset.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.clearInstanceIcon !== 'function' || !iconTargetId) return;
+
+      api.clearInstanceIcon({ instanceId: iconTargetId })
+        .then(function (result) {
+          applyIconResult(result);
+          renderIconGrid('');
+          setHint(document.getElementById('iconDialogStatus'), '已恢复默认图标', 'ok');
+          window.setTimeout(closeDialog, 320);
+        })
+        .catch(function (error) {
+          setHint(document.getElementById('iconDialogStatus'), describeLaunchError(error), 'error');
+        });
     });
   }
 

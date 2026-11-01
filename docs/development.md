@@ -174,6 +174,9 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `%APPDATA%\mcdl-launcher-electron\game-directories.json` | 已添加的游戏文件夹（含相对路径开关与 primary 标记） |
 | `%APPDATA%\mcdl-launcher-electron\java-runtimes.json` | 本机 Java 扫描结果缓存（24 小时） |
 | `%APPDATA%\mcdl-launcher-electron\launch-scripts\` | 实例目录不可写时的启动脚本落点 |
+| `%APPDATA%\mcdl-launcher-electron\instance-settings.json` | 实例级内存 / Java / 窗口 / JVM 参数覆盖 |
+| `%APPDATA%\mcdl-launcher-electron\instance-icons.json` | 实例图标（内置 key 或自定义图片文件名） |
+| `%APPDATA%\mcdl-launcher-electron\icons\` | 自定义图标图片 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
 | `%APPDATA%\mcdl-launcher-electron\gpu-crash.json` | 最近一次 GPU 崩溃记录（存在时下次启动走软件渲染） |
 | `<gameDir>\logs\mcdl-launcher-<时间戳>.log` | 每次启动的完整输出 |
@@ -210,6 +213,9 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `instances:remove` | renderer → main | 删除 `versions/<id>` 目录（仅限 versions 下） |
 | `instances:open-folder` | renderer → main | 在资源管理器中打开实例运行目录 |
 | `instances:launch-script` | renderer → main | 生成 `启动-<版本>.ps1/.bat`；实例目录不可写时落到数据目录 |
+| `instances:settings` / `instances:save-settings` | renderer → main | 实例级设置的读取 / 覆盖保存（空值=继承全局） |
+| `instances:icon-get` / `icon-set-builtin` / `icon-pick` / `icon-clear` | renderer → main | 实例图标：读取 / 内置 / 选本地图片 / 恢复默认 |
+| `instances:content-list` / `content-toggle` / `content-delete` / `content-import` / `content-folder` | renderer → main | 模组 / 资源包 / 世界 / 原理图的列表、启停、删除、导入、打开文件夹 |
 | `gamedirs:list` / `gamedirs:save` / `gamedirs:remove` | renderer → main | 游戏文件夹增删改（含相对路径开关） |
 | `gamedirs:pick` | renderer → main | 打开「选择文件夹」对话框 |
 | `launcher:launch` | renderer → main | 构造命令并启动游戏；`{ test: true }` 为测试启动（同时打开日志） |
@@ -286,6 +292,35 @@ MCDL_USER_DATA（环境变量，最高优先）
 
 已管理目录存在 `game-directories.json`；`primary` 目录是安装落点，其余目录的实例以「外部」标记参与扫描。
 
+### 实例详情（对照 [L3] 实例详情：6 页签）
+
+入口三个：实例列表右键菜单「实例详情」、右侧「当前配置」卡、实例操作弹窗里的入口。
+
+| 页签 | key | 内容 |
+| --- | --- | --- |
+| 游戏设置 | `settings.game` | 实例级内存 / Java / 窗口宽高 / 额外 JVM 参数；留空 = 继承全局，占位符显示全局值 |
+| 自动安装 | `settings.tabs.installers` | Forge / NeoForge / Fabric / Quilt / LiteLoader / OptiFine 列表，「安装」全部禁用（mcdl 只装原版） |
+| 模组管理 | `mods.manage` | 列表、导入、刷新、打开文件夹、启用/禁用（改 `.disabled` 后缀）、删除 |
+| 资源包 | `resourcepack.manage` | 列表、导入、刷新、打开文件夹、删除 |
+| 世界 | `world.manage` | 列表（文件夹 / 修改时间）、刷新、打开文件夹、删除 |
+| 原理图 | `schematics.manage` | 列表、导入（schematic / schem / nbt / litematic）、刷新、删除 |
+
+页面底部是 10 个文件夹快捷入口：实例运行目录、`config`、`mods`、`resourcepacks`、`saves`、
+`schematics`、`shaderpacks`、`screenshots`、`logs`、`crash-reports`。
+详情页打开时右侧控制台自动收起（`body[data-panel="detail"]`），避免压住表单。
+
+### 实例图标（对照 [L5] GameInstanceIconDialog）
+
+头像按钮（详情页左上）或实例菜单「更换图标」打开，含三部分：6 个内置图标（等距方块，纯内联 SVG）、
+「选择本地图片…」（PNG/JPG/WebP/GIF，≤4 MB，复制到 `icons/` 并记 data URL）、「恢复默认」。
+图标只影响启动器显示，不写游戏文件；实例行、详情页头像都跟着变。
+
+### 实例级设置
+
+`instance-settings.json` 以版本目录为 key 存覆盖项（`memoryMb` / `width` / `height` / `jvmArgs` / `javaPath`）。
+启动、生成启动脚本、设置页都用 `effectiveSettings()` 合并：**实例覆盖 > 全局设置 > 自动探测**，
+Java 路径也按这个顺序挑（`resolveJavaRuntime({ javaPath })`）。
+
 ### 账户页（对照 `docs/history/ui-tree-controls.html` 的 [L2] 账户）
 
 布局：左侧是巨大的「账户」标题与说明，右侧是两块内容（整块靠右，最大 640px）——
@@ -354,9 +389,11 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 
 ## 后续方向
 
-- 模组加载器安装（Fabric / NeoForge / Forge / Quilt）：目前下拉项禁用，`mcdl` 只处理原版文件。
+- 模组加载器安装（Fabric / NeoForge / Forge / Quilt）：实例详情的「自动安装」页签已列出入口，
+  但全部禁用；`mcdl` 目前只处理原版文件。
 - 下载中心面板与新闻区：目前为占位（下载入口与「前往下载页面」已标为待接入并禁用）。
-- 实例级设置（单独的内存、JVM 参数、Java 版本），当前设置是全局的。
 - 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
 - 导出整合包（`modpack.export`）：实例菜单里已放出入口但禁用，需要整理 `mods/config/saves` 的打包逻辑。
+- 世界详情（`world.info.*`：作弊 / 结构 / 难度 / 模式）：需要解析 `level.dat`，暂未做。
+- 内容更新（`instance.update`）与清理项（`instance.manage.remove_assets` / `clean` 等）：未做。
 - Java 扫描首次约 15 秒（`mcdl --list-java` + 逐个探测）；已有 24 小时磁盘缓存，可再做后台预热。
