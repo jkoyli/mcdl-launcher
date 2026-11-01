@@ -1878,7 +1878,10 @@
       visibility 0s linear 260ms;
   }
 
-  .main-stage.is-create .stage-create {
+  /* 注意：#stageCreate / #stageAccount / #stageSettings 共用 .stage-create 作为
+     几何与隐藏态的基类，所以「显示」规则必须按 id 或各自的独有类名来写。
+     写成 .main-stage.is-create .stage-create 会同时点亮另外两个面板。 */
+  .main-stage.is-create #stageCreate {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
