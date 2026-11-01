@@ -2976,7 +2976,10 @@
     api.createLaunchScript({ instanceId: instance.id })
       .then(function (result) {
         var name = result && result.bat ? result.bat.split(/[\\/]/).pop() : '启动脚本';
-        setInstancePanelStatus('已生成 ' + name, 'ok');
+        setInstancePanelStatus(
+          (result && result.fallback ? '实例目录不可写，脚本已放到数据目录：' : '已生成 ') + name,
+          'ok'
+        );
         if (result && result.dir && api.openInstanceFolder) {
           api.openInstanceFolder({ path: result.dir }).catch(function () {});
         }

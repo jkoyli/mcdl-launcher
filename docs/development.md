@@ -171,6 +171,9 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `%APPDATA%\mcdl-launcher-electron\authlib-injector\authlib-injector.jar` | 第三方账号启动用的 java agent（按需下载并缓存） |
 | `%APPDATA%\mcdl-launcher-electron\launcher-settings.json` | 内存 / Java / 窗口尺寸 / 额外 JVM 参数 |
 | `%APPDATA%\mcdl-launcher-electron\instance-display-names.json` | 实例别名 |
+| `%APPDATA%\mcdl-launcher-electron\game-directories.json` | 已添加的游戏文件夹（含相对路径开关与 primary 标记） |
+| `%APPDATA%\mcdl-launcher-electron\java-runtimes.json` | 本机 Java 扫描结果缓存（24 小时） |
+| `%APPDATA%\mcdl-launcher-electron\launch-scripts\` | 实例目录不可写时的启动脚本落点 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
 | `%APPDATA%\mcdl-launcher-electron\gpu-crash.json` | 最近一次 GPU 崩溃记录（存在时下次启动走软件渲染） |
 | `<gameDir>\logs\mcdl-launcher-<时间戳>.log` | 每次启动的完整输出 |
@@ -197,12 +200,19 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `window:close` | renderer → main | 关闭 |
 | `window:is-maximized` | renderer → main | 查询最大化状态 |
 | `window:maximized-changed` | main → renderer | 最大化状态广播 |
-| `instances:list` | renderer → main | 扫描实例（自身目录 + 已缓存的其他启动器） |
+| `instances:list` | renderer → main | 扫描实例（自身目录 + 已添加的游戏文件夹 + 已缓存的其他启动器） |
 | `instances:scan-other` | renderer → main | 主动扫描 PCL / HMCL 并写缓存 |
 | `versions:list` | renderer → main | 通过 `mcdl --list` 拉取版本列表 |
 | `instances:create` | renderer → main | 调用 `mcdl --install` 安装原版 |
 | `instances:install-progress` | main → renderer | 安装输出 / 进度 |
-| `launcher:launch` | renderer → main | 构造命令并启动游戏 |
+| `instances:rename` | renderer → main | 重命名实例别名（写 `instance-display-names.json`） |
+| `instances:duplicate` | renderer → main | 复制实例目录为「… - 副本」 |
+| `instances:remove` | renderer → main | 删除 `versions/<id>` 目录（仅限 versions 下） |
+| `instances:open-folder` | renderer → main | 在资源管理器中打开实例运行目录 |
+| `instances:launch-script` | renderer → main | 生成 `启动-<版本>.ps1/.bat`；实例目录不可写时落到数据目录 |
+| `gamedirs:list` / `gamedirs:save` / `gamedirs:remove` | renderer → main | 游戏文件夹增删改（含相对路径开关） |
+| `gamedirs:pick` | renderer → main | 打开「选择文件夹」对话框 |
+| `launcher:launch` | renderer → main | 构造命令并启动游戏；`{ test: true }` 为测试启动（同时打开日志） |
 | `launcher:stop` | renderer → main | 结束正在运行的游戏进程 |
 | `launcher:active` | renderer → main | 列出运行中的游戏进程 |
 | `launcher:launch-progress` | main → renderer | 启动阶段与游戏输出 |
@@ -232,11 +242,49 @@ MCDL_USER_DATA（环境变量，最高优先）
 │           右：最小化 / 最大化 / 关闭
 ├── 侧边栏  账户 / 游戏 / 实例列表 / 下载中心（待接入，禁用） / 设置
 ├── 主视区  主视觉（版本名、3D 方块） + 更新日志区
-│           ├── 二级页面：新建实例
+│           ├── 二级页面：实例列表  →  游戏目录管理 ／ 新建实例 ／ 实例操作弹窗
 │           ├── 二级页面：账户  →  5 个 L5 弹窗
 │           └── 二级页面：设置
 └── 右侧控制台  实例列表 / 当前配置 / 启动按钮
 ```
+
+二级页面统一由 `renderer.js` 的页面栈管理（`showPanel` / `hideActivePanel` / `closeActivePanel`）：
+主视区上只加一个 `is-xxx` 类，其余面板保持 `inert`；「返回 / 关闭当前页」和 Esc 走同一个出口，
+游戏目录页返回时回到实例列表而不是主视区。
+
+### 实例列表页（对照 [L2] 实例管理）
+
+| 控件 | control key | 行为 |
+| --- | --- | --- |
+| 修改 | `button.edit` | 打开实例操作弹窗（重命名 / 复制 / 删除） |
+| 添加游戏文件夹 | `game_directory.new` | 打开游戏目录管理页（新增模式，表单为空） |
+| 全局游戏设置 | `settings.type.global.manage` | 跳到设置页并高亮表单 |
+| 实例行 | 运行时 | 单击选中；双击启动；`⋯` 或右键打开实例菜单 |
+
+实例右键菜单 7 项（清单里归在共享分支的 `GameListCell`）：
+
+| 菜单项 | 行为 |
+| --- | --- |
+| 测试游戏 | 启动并把本次启动日志打开 |
+| 生成启动脚本 | 生成 `启动-<版本>.ps1` + `.bat` 到实例目录 |
+| 重命名该实例 | 打开实例操作弹窗 |
+| 复制游戏实例 | 复制 `versions/<id>` 为「… - 副本」 |
+| 删除该实例 | 二次确认后删除 `versions/<id>` |
+| 导出整合包 | 待接入（禁用） |
+| 实例运行文件夹 | 打开实例的游戏目录 |
+
+### 游戏目录管理（对照 [L4] GameDirectoryPage）
+
+独立的二级页面，不是弹窗。两个入口：「添加游戏文件夹」传空（新增），列表里点某一项进编辑模式。
+
+| 控件 | key | 行为 |
+| --- | --- | --- |
+| 路径输入 + 浏览 | — | 手动填或系统选择框 |
+| 若可能，游戏文件夹使用相对路径 | `game_directory.use_relative_path` | 只有位于启动器目录内的文件夹可勾选，否则开关禁用 |
+| 保存 | `button.save` | 校验路径、补齐标准结构（失败也照常加入）、刷新实例列表 |
+| 删除该文件夹 | — | 从列表移除，不动磁盘文件；主目录不给删 |
+
+已管理目录存在 `game-directories.json`；`primary` 目录是安装落点，其余目录的实例以「外部」标记参与扫描。
 
 ### 账户页（对照 `docs/history/ui-tree-controls.html` 的 [L2] 账户）
 
@@ -307,6 +355,8 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 ## 后续方向
 
 - 模组加载器安装（Fabric / NeoForge / Forge / Quilt）：目前下拉项禁用，`mcdl` 只处理原版文件。
-- 下载中心面板与新闻区：目前为占位（下载入口已标为待接入并禁用）。
+- 下载中心面板与新闻区：目前为占位（下载入口与「前往下载页面」已标为待接入并禁用）。
 - 实例级设置（单独的内存、JVM 参数、Java 版本），当前设置是全局的。
 - 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
+- 导出整合包（`modpack.export`）：实例菜单里已放出入口但禁用，需要整理 `mods/config/saves` 的打包逻辑。
+- Java 扫描首次约 15 秒（`mcdl --list-java` + 逐个探测）；已有 24 小时磁盘缓存，可再做后台预热。

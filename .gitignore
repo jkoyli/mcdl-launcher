@@ -4,11 +4,11 @@
 /electron/out/
 /electron/*.log
 
-# 数据目录回退位置（含 accounts.json 里的账号令牌，绝不入库）
+# 鏁版嵁鐩綍鍥為€€浣嶇疆锛堝惈 accounts.json 閲岀殑璐﹀彿浠ょ墝锛岀粷涓嶅叆搴擄級
 /electron/data/
 /data/
 
-# mcdl build output（mcdl.jar 本身随工程分发）
+# mcdl build output锛坢cdl.jar 鏈韩闅忓伐绋嬪垎鍙戯級
 /mcdl/build/
 /mcdl/dist/
 
@@ -22,3 +22,6 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# 本地测试夹具 / 数据目录
+/electron/.testdata/

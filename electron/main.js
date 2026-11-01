@@ -420,9 +420,13 @@ async function resolveJavaRuntime(options = {}) {
     console.warn('[launch] configured Java unusable, falling back to auto detect:', settings.javaPath);
   }
 
-  const runtimes = await javaRuntime.getJavaRuntimes(mcdl);
+  const runtimes = await javaRuntime.getJavaRuntimes(mcdl, { cacheFile: javaRuntimeCacheFile() });
   const picked = javaRuntime.pickJava(runtimes, requiredMajor);
   return picked || null;
+}
+
+function javaRuntimeCacheFile() {
+  return path.join(app.getPath('userData'), 'java-runtimes.json');
 }
 
 function aliasFile() {
@@ -873,17 +877,35 @@ function registerIpcHandlers() {
       ''
     ].join('\r\n');
 
-    const ps1 = path.join(instance.path, `启动-${versionId}.ps1`);
-    const bat = path.join(instance.path, `启动-${versionId}.bat`);
-    await fs.writeFile(ps1, script, 'utf8');
-    await fs.writeFile(bat, [
-      '@echo off',
-      'chcp 65001 >nul',
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(ps1)}"`,
-      ''
-    ].join('\r\n'), 'utf8');
+    const writeInto = async (dir) => {
+      const target = path.join(dir, `启动-${versionId}.ps1`);
+      const batTarget = path.join(dir, `启动-${versionId}.bat`);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(target, '\uFEFF' + script, 'utf8');
+      await fs.writeFile(batTarget, [
+        '@echo off',
+        'chcp 65001 >nul',
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(target)}"`,
+        ''
+      ].join('\r\n'), 'utf8');
+      return { ps1: target, bat: batTarget, dir };
+    };
 
-    return { ps1, bat, dir: instance.path, warnings: plan.warnings };
+    let written;
+    let fallback = false;
+
+    try {
+      written = await writeInto(instance.path);
+    } catch (error) {
+      // 实例目录可能只读或被安全软件拦住：退到启动器数据目录，别把整件事判失败。
+      if (!['EPERM', 'EACCES', 'EROFS', 'EBUSY'].includes(error && error.code)) throw error;
+      const fallbackDir = path.join(app.getPath('userData'), 'launch-scripts');
+      written = await writeInto(fallbackDir);
+      fallback = true;
+      console.warn('[launch-script] instance folder not writable, wrote to', fallbackDir);
+    }
+
+    return { ...written, fallback, warnings: plan.warnings };
   });
 
   // ---------------- 游戏目录管理 ----------------
@@ -1196,7 +1218,7 @@ function registerIpcHandlers() {
     const settings = await readSettings();
     let javaRuntimes = [];
     try {
-      javaRuntimes = await javaRuntime.getJavaRuntimes(mcdl);
+      javaRuntimes = await javaRuntime.getJavaRuntimes(mcdl, { cacheFile: javaRuntimeCacheFile() });
     } catch (error) {
       console.warn('[settings] java scan failed:', error.message);
     }

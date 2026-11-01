@@ -258,9 +258,45 @@ async function scanJavaRuntimes(mcdlService) {
   return runtimes;
 }
 
+/**
+ * 扫描本机 Java（带磁盘缓存）。
+ *
+ * `mcdl --list-java` 会查注册表并逐个探测 JVM，一次要十几秒，
+ * 所以结果缓存到数据目录，24 小时内直接复用；force 可强制重扫。
+ */
 async function getJavaRuntimes(mcdlService, options = {}) {
   if (cache && !options.force) return cache;
+
+  const cacheFile = options.cacheFile;
+  if (cacheFile && !options.force) {
+    try {
+      const stat = await fs.stat(cacheFile);
+      if (Date.now() - stat.mtimeMs < 24 * 60 * 60 * 1000) {
+        const parsed = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
+        if (Array.isArray(parsed.runtimes) && parsed.runtimes.length > 0) {
+          cache = parsed.runtimes;
+          return cache;
+        }
+      }
+    } catch {
+      // 没有缓存或缓存损坏：继续扫描
+    }
+  }
+
   cache = await scanJavaRuntimes(mcdlService);
+
+  if (cacheFile && cache.length > 0) {
+    try {
+      await fs.mkdir(path.dirname(cacheFile), { recursive: true });
+      await fs.writeFile(cacheFile, JSON.stringify({
+        scannedAt: new Date().toISOString(),
+        runtimes: cache
+      }, null, 2), 'utf8');
+    } catch {
+      // 缓存写不进去不影响使用
+    }
+  }
+
   return cache;
 }
 
