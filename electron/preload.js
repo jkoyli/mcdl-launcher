@@ -119,6 +119,11 @@ const launcherAPI = {
   openLogFolder: () => ipcRenderer.invoke('shell:open-logs'),
 
   /**
+   * 弹窗里的「可点击面板」：在系统浏览器打开 http(s) 页面。
+   */
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+
+  /**
    * Optional: keep a custom maximize icon in sync.
    */
   onMaximizedChange: (callback) => {

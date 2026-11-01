@@ -1763,6 +1763,63 @@
   var authlibHint = document.getElementById('authlibHint');
   var accountBusy = false;
 
+  // 添加离线账户时的内嵌皮肤选择（清单 CreateAccountPane.java:606 可点击面板 + :574 取消）
+  var offlineSkinPreview = document.getElementById('offlineSkinPreview');
+  var offlineSkinImage = document.getElementById('offlineSkinImage');
+  var offlineSkinPlaceholder = document.getElementById('offlineSkinPlaceholder');
+  var offlineSkinName = document.getElementById('offlineSkinName');
+  var offlineSkinPick = document.getElementById('offlineSkinPick');
+  var offlineSkinClear = document.getElementById('offlineSkinClear');
+  var offlineSkinModel = document.getElementById('offlineSkinModel');
+  var pendingSkin = null;
+
+  function renderOfflineSkin() {
+    var hasSkin = Boolean(pendingSkin && pendingSkin.dataUrl);
+
+    if (offlineSkinImage) {
+      if (hasSkin) {
+        offlineSkinImage.src = pendingSkin.dataUrl;
+        offlineSkinImage.hidden = false;
+      } else {
+        offlineSkinImage.removeAttribute('src');
+        offlineSkinImage.hidden = true;
+      }
+    }
+    if (offlineSkinPlaceholder) offlineSkinPlaceholder.hidden = hasSkin;
+    if (offlineSkinName) {
+      offlineSkinName.textContent = hasSkin
+        ? pendingSkin.width + '×' + pendingSkin.height + ' · 创建后会应用到该账号'
+        : '未选择，使用默认皮肤';
+    }
+    if (offlineSkinClear) offlineSkinClear.hidden = !hasSkin;
+    if (offlineSkinModel) offlineSkinModel.disabled = !hasSkin;
+  }
+
+  function clearOfflineSkin(focusPick) {
+    pendingSkin = null;
+    renderOfflineSkin();
+    if (focusPick && offlineSkinPick) offlineSkinPick.focus();
+  }
+
+  function pickOfflineSkin() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.pickSkinFile !== 'function') {
+      setHint(offlineDialogStatus, '主进程桥接不可用', 'error');
+      return;
+    }
+
+    api.pickSkinFile()
+      .then(function (file) {
+        if (!file) return;
+        pendingSkin = file;
+        renderOfflineSkin();
+        setHint(offlineDialogStatus, '已选择皮肤，点「登录」创建账号时会一并保存', 'ok');
+      })
+      .catch(function (error) {
+        openAccountError(error, offlineDialogStatus);
+      });
+  }
+
   function setAccountTab(tab) {
     var isOffline = tab !== 'authlib';
 
@@ -1786,6 +1843,8 @@
     if (offlineName) offlineName.value = '';
     if (authlibUser) authlibUser.value = '';
     if (authlibPass) authlibPass.value = '';
+    pendingSkin = null;
+    renderOfflineSkin();
     renderServers();
     setAccountTab(tab || 'offline');
     openDialog('offline');
@@ -1809,17 +1868,41 @@
     accountBusy = true;
     setHint(offlineDialogStatus, '正在创建…');
 
+    var created = false;
+    var keepOpen = false;
+
     api.addOfflineAccount(name)
       .then(function (snapshot) {
+        created = true;
         applyAccountSnapshot(snapshot);
-        setHint(offlineDialogStatus, '已创建并选中：' + name, 'ok');
-        window.setTimeout(closeDialog, 600);
+
+        // 选了皮肤就在创建后立刻挂到新账号上；皮肤失败不影响账号本身。
+        if (!pendingSkin || !snapshot || !snapshot.selectedId) {
+          setHint(offlineDialogStatus, '已创建并选中：' + name, 'ok');
+          return null;
+        }
+
+        var accountId = snapshot.selectedId;
+        var model = offlineSkinModel && offlineSkinModel.value === 'slim' ? 'slim' : 'classic';
+        setHint(offlineDialogStatus, '账号已创建，正在保存皮肤…');
+
+        return api.applySkin({ id: accountId, sourcePath: pendingSkin.filePath, model: model })
+          .then(function (result) {
+            if (result && result.account) updateAccountInList(result.account);
+            setHint(offlineDialogStatus, '已创建并选中：' + name + '（含皮肤）', 'ok');
+          })
+          .catch(function (error) {
+            keepOpen = true;
+            setHint(offlineDialogStatus, '账号已创建，但皮肤保存失败：' + describeLaunchError(error), 'error');
+          });
       })
       .catch(function (error) {
+        keepOpen = true;
         openAccountError(error, offlineDialogStatus);
       })
       .then(function () {
         accountBusy = false;
+        if (created && !keepOpen) window.setTimeout(closeDialog, 700);
       });
   }
 
@@ -1995,6 +2078,18 @@
   if (offlineDialogLogin) {
     offlineDialogLogin.addEventListener('click', submitOfflineAccount);
   }
+  if (offlineSkinPreview) {
+    offlineSkinPreview.addEventListener('click', pickOfflineSkin);
+  }
+  if (offlineSkinPick) {
+    offlineSkinPick.addEventListener('click', pickOfflineSkin);
+  }
+  if (offlineSkinClear) {
+    offlineSkinClear.addEventListener('click', function () {
+      clearOfflineSkin(true);
+      setHint(offlineDialogStatus, '已取消皮肤选择', 'ok');
+    });
+  }
   if (authlibDialogLogin) {
     authlibDialogLogin.addEventListener('click', submitAuthlibAccount);
   }
@@ -2016,6 +2111,25 @@
   }
   if (msaDialogLogin) {
     msaDialogLogin.addEventListener('click', loginMicrosoft);
+  }
+
+  // 微软登录弹窗里的整块可点击面板：登录受阻时打开账号安全页
+  var msaHelpPanel = document.getElementById('msaHelpPanel');
+  if (msaHelpPanel) {
+    msaHelpPanel.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openExternal !== 'function') {
+        setHint(msaDialogStatus, '主进程桥接不可用', 'error');
+        return;
+      }
+      api.openExternal('https://account.microsoft.com/security')
+        .then(function () {
+          setHint(msaDialogStatus, '已在浏览器中打开 Microsoft 账号安全页', 'ok');
+        })
+        .catch(function (error) {
+          openAccountError(error, msaDialogStatus);
+        });
+    });
   }
 
   // ---------------- L5：添加认证服务器向导 ----------------

@@ -581,6 +581,20 @@ function registerIpcHandlers() {
   });
 
   /**
+   * 弹窗里的「可点击面板」用它打开外部帮助页。
+   * 只允许 http(s)，避免渲染进程借这个通道打开任意本地程序。
+   */
+  ipcMain.handle('shell:open-external', async (event, url) => {
+    assertAppWindow(event);
+    const target = String(url || '').trim();
+    if (!/^https?:\/\//i.test(target)) {
+      throw new Error('只允许打开 http(s) 链接');
+    }
+    await shell.openExternal(target);
+    return true;
+  });
+
+  /**
    * 真实启动：按版本 JSON 拼 java 命令并拉起游戏进程。
    */
   ipcMain.handle('launcher:launch', async (event, payload = {}) => {

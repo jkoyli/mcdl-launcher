@@ -3349,6 +3349,162 @@
     align-items: center;
   }
 
+  /* 弹窗里的整块可点击区域（对应清单的「可点击面板」） */
+  .dialog-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 13px;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 4px;
+    background: rgba(159, 208, 255, .035);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color 160ms linear,
+      background-color 160ms linear,
+      box-shadow 200ms ease,
+      transform 200ms ease;
+  }
+
+  .dialog-panel:hover,
+  .dialog-panel:focus-visible {
+    border-color: rgba(159, 208, 255, .44);
+    background: rgba(159, 208, 255, .075);
+    box-shadow: 0 0 26px rgba(94, 142, 207, .14);
+    transform: translateY(-1px);
+    outline: none;
+  }
+
+  .dialog-panel__text {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .dialog-panel__text b {
+    font-size: 9.5px;
+    font-weight: 500;
+    letter-spacing: .03em;
+    color: #e9f2fd;
+  }
+
+  .dialog-panel__text em {
+    font-style: normal;
+    font-size: 8px;
+    line-height: 1.55;
+    letter-spacing: .03em;
+    color: rgba(199, 212, 230, .42);
+  }
+
+  .dialog-panel__go {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: rgba(159, 208, 255, .55);
+  }
+
+  /* 添加账户弹窗里的内嵌皮肤行（可点击预览 + 选择 / 取消 + 模型） */
+  .offline-skin {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, .018);
+  }
+
+  .offline-skin__preview {
+    position: relative;
+    flex: 0 0 auto;
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .18);
+    border-radius: 4px;
+    background:
+      repeating-conic-gradient(rgba(255, 255, 255, .045) 0% 25%, transparent 0% 50%) 50% / 10px 10px,
+      rgba(8, 13, 20, .55);
+    color: rgba(199, 212, 230, .4);
+    cursor: pointer;
+    overflow: hidden;
+    transition:
+      border-color 150ms linear,
+      box-shadow 200ms ease,
+      color 150ms linear;
+  }
+
+  .offline-skin__preview:hover,
+  .offline-skin__preview:focus-visible {
+    border-color: rgba(159, 208, 255, .5);
+    box-shadow: 0 0 22px rgba(94, 142, 207, .18);
+    color: rgba(230, 242, 255, .9);
+    outline: none;
+  }
+
+  .offline-skin__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+  }
+
+  .offline-skin__ph {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .offline-skin__meta {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .offline-skin__name {
+    font-size: 8.5px;
+    line-height: 1.4;
+    letter-spacing: .04em;
+    color: rgba(213, 228, 245, .55);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .offline-skin__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .dialog-btn--tiny {
+    padding: 6px 10px;
+    font-size: 7.5px;
+    letter-spacing: .1em;
+  }
+
+  .offline-skin__model-wrap {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+
+  .offline-skin__model {
+    width: 96px;
+    height: 26px;
+    padding: 0 22px 0 8px;
+    font-size: 8.5px;
+  }
+
+  .offline-skin__model:disabled {
+    opacity: .45;
+    cursor: default;
+  }
+
   .skin-preview__frame {
     position: relative;
     width: 96px;
@@ -3936,6 +4092,16 @@
           <li>首次登录可能需要先在 Xbox 创建档案</li>
           <li>未成年账号需要家长先加入 Microsoft 家庭组</li>
         </ul>
+
+        <!-- 清单 MicrosoftAccountLoginPane.java:216 的可点击面板：登录受阻时的外部入口 -->
+        <button class="dialog-panel" type="button" id="msaHelpPanel">
+          <span class="dialog-panel__text">
+            <b>登录被拒或提示需要验证？</b>
+            <em>在浏览器打开 Microsoft 账号安全页，检查 Xbox 档案、家庭组与登录验证</em>
+          </span>
+          <span class="dialog-panel__go" aria-hidden="true">↗</span>
+        </button>
+
         <p class="dialog-status" id="msaDialogStatus" role="status" aria-live="polite"></p>
       </div>
       <div class="dialog-foot">
@@ -3961,6 +4127,30 @@
             <span class="create-label">Player name / 玩家名</span>
             <input class="create-control" id="offlineName" type="text" maxlength="16" placeholder="3-16 位字母、数字或下划线" autocomplete="off">
           </label>
+
+          <!-- 皮肤（可选）：对应清单 CreateAccountPane.java:606 的可点击面板 与 :574 的取消 -->
+          <div class="offline-skin" id="offlineSkinRow">
+            <button class="offline-skin__preview" type="button" id="offlineSkinPreview" aria-label="选择离线皮肤">
+              <img id="offlineSkinImage" alt="" hidden>
+              <span class="offline-skin__ph" id="offlineSkinPlaceholder">＋</span>
+            </button>
+            <div class="offline-skin__meta">
+              <span class="create-label">Skin / 皮肤（可选）</span>
+              <span class="offline-skin__name" id="offlineSkinName">未选择，使用默认皮肤</span>
+              <div class="offline-skin__actions">
+                <button class="dialog-btn dialog-btn--tiny" type="button" id="offlineSkinPick">选择皮肤</button>
+                <button class="dialog-btn dialog-btn--tiny" type="button" id="offlineSkinClear" hidden>取消</button>
+                <span class="create-control-wrap offline-skin__model-wrap">
+                  <select class="create-control offline-skin__model" id="offlineSkinModel" disabled>
+                    <option value="classic" selected>经典</option>
+                    <option value="slim">纤细</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+
           <p class="dialog-text">离线账号可以单人游戏与局域网联机，但无法进入正版验证服务器。</p>
         </div>
 
