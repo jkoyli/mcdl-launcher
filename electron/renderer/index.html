@@ -59,6 +59,15 @@
     text-rendering: geometricPrecision;
   }
 
+  /* 表单控件默认用 UA 字体（Arial），会跟页面里的 Inter 混在一起。
+     统一成继承，避免按钮里的文字变成 Arial。 */
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
   /* ---------------------------------------------------------
      L0 背景 / 可替换壁纸
      --------------------------------------------------------- */
@@ -893,7 +902,10 @@
     border-bottom: 1px solid rgba(159, 208, 255, .22);
     background: transparent;
     color: rgba(214, 231, 249, .6);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .2em;
     text-transform: uppercase;
     cursor: pointer;
@@ -988,7 +1000,10 @@
     border: 0;
     background: none;
     color: rgba(159, 208, 255, .55);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .18em;
     text-transform: uppercase;
     cursor: pointer;
@@ -1492,7 +1507,10 @@
       rgba(255, 255, 255, .13);
     border: 1px solid rgba(255, 255, 255, .38);
     color: #ffffff;
-    font: 600 17px/1 inherit;
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: 1px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, .2), inset 0 1px 0 rgba(255, 255, 255, .18);
   }
@@ -1893,9 +1911,9 @@
     z-index: 6;
     padding: inherit;
     display: grid;
-    grid-template-columns: minmax(0, .78fr) minmax(340px, 1.15fr);
+    grid-template-columns: minmax(0, .66fr) minmax(340px, 1.34fr);
     grid-template-rows: auto 1fr auto;
-    column-gap: clamp(28px, 3.8vw, 60px);
+    column-gap: clamp(22px, 3vw, 48px);
     row-gap: clamp(18px, 2.4vh, 26px);
     opacity: 0;
     visibility: hidden;
@@ -1938,7 +1956,10 @@
     border-radius: 3px;
     background: transparent;
     color: rgba(213, 228, 245, .56);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .18em;
     text-transform: uppercase;
     cursor: pointer;
@@ -2218,7 +2239,10 @@
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     color: #f7fbff;
-    font: 600 9px/1 inherit;
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .17em;
     text-transform: uppercase;
     cursor: pointer;
@@ -2318,7 +2342,10 @@
     border-radius: 3px;
     background: rgba(159, 208, 255, .035);
     color: rgba(235, 246, 255, .78);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .12em;
     text-transform: uppercase;
     cursor: pointer;
@@ -2399,7 +2426,10 @@
     border-radius: 3px;
     background: rgba(255, 255, 255, .018);
     color: rgba(217, 231, 247, .5);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .06em;
     cursor: pointer;
     transition:
@@ -2615,7 +2645,10 @@
     border-radius: 3px;
     background: rgba(159, 208, 255, .035);
     color: rgba(235, 246, 255, .76);
-    font: 600 8px/1 inherit;
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .12em;
     text-transform: uppercase;
     cursor: pointer;
@@ -2857,7 +2890,10 @@
     border-radius: 3px;
     background: rgba(6, 11, 18, .82);
     color: rgba(214, 231, 249, .88);
-    font: 600 7px/1 inherit;
+    font-family: inherit;
+    font-size: 7px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .08em;
     pointer-events: none;
     white-space: nowrap;
@@ -2946,7 +2982,10 @@
     border-radius: 4px;
     background: rgba(8, 13, 21, .78);
     color: rgba(213, 228, 245, .7);
-    font: 600 9px/1 inherit;
+    font-family: inherit;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
     cursor: pointer;
     opacity: .45;
     transition:
@@ -3245,30 +3284,35 @@
     max-width: 150px;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding: 4px 7px;
-    border: 1px solid rgba(159, 208, 255, .22);
-    border-radius: 2px;
-    font: 600 7px/1 inherit;
-    letter-spacing: .1em;
-    text-transform: uppercase;
-    color: rgba(199, 220, 243, .7);
+    padding: 3px 8px;
+    border: 1px solid rgba(159, 208, 255, .13);
+    border-radius: 999px;
+    background: rgba(159, 208, 255, .04);
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: .03em;
+    color: rgba(199, 220, 243, .58);
     white-space: nowrap;
   }
 
   .badge--loader {
-    border-color: rgba(176, 232, 203, .3);
-    color: rgba(176, 232, 203, .82);
+    border-color: rgba(176, 232, 203, .22);
+    background: rgba(122, 199, 160, .05);
+    color: rgba(176, 232, 203, .78);
   }
 
   .badge--external {
-    border-color: rgba(255, 214, 160, .28);
-    color: rgba(255, 214, 160, .8);
+    border-color: rgba(255, 214, 160, .2);
+    background: rgba(255, 214, 160, .045);
+    color: rgba(255, 214, 160, .72);
   }
 
   .badge--current {
-    border-color: rgba(122, 199, 160, .36);
-    background: rgba(122, 199, 160, .1);
-    color: rgba(186, 240, 212, .9);
+    border-color: rgba(122, 199, 160, .32);
+    background: rgba(122, 199, 160, .12);
+    color: rgba(196, 242, 218, .92);
   }
 
   .ilist-row__menu {
@@ -3278,7 +3322,10 @@
     border-radius: 2px;
     background: transparent;
     color: rgba(213, 228, 245, .66);
-    font: 600 11px/1 inherit;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
     cursor: pointer;
     transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
   }
@@ -3356,7 +3403,10 @@
       linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02)),
       rgba(91, 116, 227, .14);
     color: #f7fbff;
-    font: 600 8.5px/1 inherit;
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .14em;
     text-transform: uppercase;
     cursor: pointer;
@@ -3562,7 +3612,10 @@
     border-radius: 2px;
     background: transparent;
     color: rgba(213, 228, 245, .78);
-    font: 400 10px/1 inherit;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1;
     letter-spacing: .03em;
     text-align: left;
     cursor: pointer;
@@ -3663,7 +3716,10 @@
     border-radius: 2px;
     background: transparent;
     color: rgba(199, 212, 230, .5);
-    font: 400 14px/1 inherit;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1;
     cursor: pointer;
     transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
   }
@@ -3733,7 +3789,10 @@
     border-radius: 3px;
     background: transparent;
     color: rgba(226, 238, 251, .82);
-    font: 600 8.5px/1 inherit;
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .14em;
     text-transform: uppercase;
     cursor: pointer;
@@ -3804,7 +3863,10 @@
     border-radius: 2px;
     background: transparent;
     color: rgba(199, 212, 230, .5);
-    font: 600 8.5px/1 inherit;
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
     letter-spacing: .12em;
     text-transform: uppercase;
     cursor: pointer;
@@ -4123,9 +4185,10 @@
     filter: brightness(1.06) saturate(2.1);
   }
 
-  /* 3D 方块的面是动画元素，背景模糊每帧都要重算 */
+  /* 3D 方块的面是动画元素，背景模糊每帧都要重算。
+     六面立方体要有通透感：底色压到 .58，靠 border 与 filter 保留层次。 */
   body.is-software .voxel__face {
-    background-color: rgba(18, 26, 40, .82);
+    background-color: rgba(18, 26, 40, .58);
   }
 
   @keyframes install-sweep {

@@ -3548,7 +3548,6 @@
 
     function schedule() {
       if (frameHandle) return;
-      lastFrameAt = 0;
       frameHandle = requestAnimationFrame(step);
     }
 
@@ -3570,18 +3569,20 @@
       tilt += velTilt * dt;
 
       var decay = Math.exp(-SPIN_DECAY * dt);
-      velSpin *= decay;
-      velTilt *= decay;
 
       // 竖直方向：松手后缓慢回到默认俯仰角
+      velTilt *= decay;
       if (Math.abs(velTilt) < 30) {
         tilt += (REST_TILT - tilt) * Math.min(1, dt * 1.6);
       }
       tilt = clamp(tilt, TILT_MIN, TILT_MAX);
 
-      // 水平方向：角速度衰减到基础自转，方向保持不变（往右拖 → 继续往右转）
-      if (Math.abs(velSpin) < IDLE_SPIN) {
-        velSpin += (IDLE_SPIN - velSpin) * Math.min(1, dt * 2);
+      // 水平方向：高于基础自转时按摩擦衰减；降到基础速度后收拢到基础自转。
+      // 两段分开处理，避免「摩擦」和「回落到基础速度」互相拉扯到中间值。
+      if (Math.abs(velSpin) > IDLE_SPIN) {
+        velSpin *= decay;
+      } else {
+        velSpin += (IDLE_SPIN - velSpin) * Math.min(1, dt * 4);
       }
 
       paint();
@@ -3621,9 +3622,12 @@
       spin += dx * DEG_PER_PX;
       tilt = clamp(tilt - dy * DEG_PER_PX, TILT_MIN, TILT_MAX);
 
-      // 拖动速度决定松手后的惯性；与拖动方向一致
-      velSpin = clamp((dx * DEG_PER_PX) / dt, -MAX_SPIN, MAX_SPIN);
-      velTilt = clamp((-dy * DEG_PER_PX) / dt, -MAX_SPIN, MAX_SPIN);
+      // 拖动速度决定松手后的惯性；与拖动方向一致。
+      // 用指数平滑，避免只取最后一帧造成的抖动。
+      var instantSpin = (dx * DEG_PER_PX) / dt;
+      var instantTilt = (-dy * DEG_PER_PX) / dt;
+      velSpin = clamp(velSpin * 0.55 + instantSpin * 0.45, -MAX_SPIN, MAX_SPIN);
+      velTilt = clamp(velTilt * 0.55 + instantTilt * 0.45, -MAX_SPIN, MAX_SPIN);
 
       lastX = event.clientX;
       lastY = event.clientY;
