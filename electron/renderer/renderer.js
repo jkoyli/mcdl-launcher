@@ -2087,7 +2087,7 @@
   if (offlineSkinClear) {
     offlineSkinClear.addEventListener('click', function () {
       clearOfflineSkin(true);
-      setHint(offlineDialogStatus, '已取消皮肤选择', 'ok');
+      setHint(offlineDialogStatus, '已取消皮肤选择，将使用默认皮肤', 'ok');
     });
   }
   if (authlibDialogLogin) {
