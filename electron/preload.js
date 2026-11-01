@@ -185,6 +185,11 @@ const launcherAPI = {
   openLogFolder: () => ipcRenderer.invoke('shell:open-logs'),
 
   /**
+   * 整进程重启（改了主进程代码后用，标题栏「刷新」按住 Shift）。
+   */
+  relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+
+  /**
    * 弹窗里的「可点击面板」：在系统浏览器打开 http(s) 页面。
    */
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),

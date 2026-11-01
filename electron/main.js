@@ -1197,6 +1197,19 @@ function registerIpcHandlers() {
     return folder;
   });
 
+  /**
+   * 整进程重启：改了主进程（Node 侧）代码后，页面刷新不会重载它，
+   * 容易出现「新界面 + 旧后端」。标题栏「刷新」按住 Shift 走这里。
+   */
+  ipcMain.handle('app:relaunch', async (event) => {
+    assertAppWindow(event);
+    setImmediate(() => {
+      app.relaunch();
+      app.exit(0);
+    });
+    return true;
+  });
+
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
     const logDirectory = app.getPath('logs');

@@ -263,7 +263,7 @@ function createInstanceStore({ storeDir, launcherHome }) {
       try {
         dirents = await fs.readdir(root, { withFileTypes: true });
       } catch {
-        return { root, entries: [] };
+        return { root, exists: false, entries: [] };
       }
 
       const entries = [];
@@ -295,7 +295,7 @@ function createInstanceStore({ storeDir, launcherHome }) {
       }
 
       entries.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-Hans-CN'));
-      return { root, entries };
+      return { root, exists: true, entries };
     },
 
     /** 模组启用 / 禁用：改扩展名，不动文件内容。 */

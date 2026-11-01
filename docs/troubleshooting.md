@@ -192,3 +192,15 @@ ERROR: ... Failed to create network context data directory ...\mcdl-launcher-ele
 ```text
 %APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json
 ```
+
+## 改了代码但界面没变化 / 功能还是旧的
+
+标题栏的「刷新」只重载渲染进程（window.location.reload()），**主进程（Node 侧）代码不会重载**。
+改过 main.js / instance-store.js / ccounts.js / launch.js 等主进程文件后，必须完全退出再启动
+（关窗口，或任务管理器结束 electron.exe 后重新双击 `启动.bat`）。
+
+便捷做法：**按住 Shift 点标题栏的「刷新」**，会走 `app:relaunch` 整进程重启。
+
+典型症状：界面是新的，但功能表现像旧版，例如模组页签显示
+`目录：<游戏目录>\mods（目录不存在，导入时会创建）`，而实际模组在
+`versions/<实例>/mods` —— 这就是主进程还在跑旧代码。

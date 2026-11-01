@@ -76,7 +76,7 @@
 
   // L1 标题栏预留按钮：返回 / 刷新 / 关闭当前页 / 帮助
   Array.prototype.forEach.call(document.querySelectorAll('[data-titlebar-action]'), function (button) {
-    button.addEventListener('click', function () {
+    button.addEventListener('click', function (event) {
       var action = button.getAttribute('data-titlebar-action');
 
       window.dispatchEvent(new CustomEvent('launcher:titlebar-action', {
@@ -88,6 +88,17 @@
       }
 
       if (action === 'refresh') {
+        // 改了主进程代码时，页面刷新不会重载 Node 侧；
+        // 按住 Shift 点刷新＝整进程重启，避免「新界面 + 旧后端」。
+        if (event.shiftKey) {
+          var api = window.launcherAPI;
+          if (api && typeof api.relaunchApp === 'function') {
+            api.relaunchApp().catch(function () {
+              window.location.reload();
+            });
+            return;
+          }
+        }
         window.location.reload();
         return;
       }
@@ -3966,7 +3977,9 @@
 
       var rootNode = panel.querySelector('[data-content-root]');
       if (rootNode) {
-        rootNode.textContent = state.root ? '目录：' + state.root : '';
+        var rootText = state.root ? '目录：' + state.root : '';
+        if (state.root && state.rootExists === false) rootText += '（目录不存在，导入时会创建）';
+        rootNode.textContent = rootText;
         rootNode.title = state.root || '';
       }
 
@@ -4020,6 +4033,7 @@
         if (detailInstanceId !== instance.id) return;
         state.entries = data && Array.isArray(data.entries) ? data.entries : [];
         state.root = (data && data.root) || '';
+        state.rootExists = data && typeof data.exists === 'boolean' ? data.exists : true;
         state.loaded = true;
         if (state.visible < CONTENT_PAGE_SIZE) state.visible = CONTENT_PAGE_SIZE;
         renderContentPanel(kind);
