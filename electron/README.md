@@ -7,19 +7,23 @@
 ```text
 mcdl-launcher/
 ├── electron/                # 本 UI
-│   ├── main.js              # 主进程：窗口、IPC、安装协调
-│   ├── mcdl-service.js      # 调用 ../mcdl/mcdl.jar
-│   ├── preload.js
-│   └── renderer/
+│   ├── main.js              # 主进程：窗口、IPC、安装与启动协调
+│   ├── preload.js           # contextBridge 白名单
+│   ├── mcdl-service.js      # 调用 mcdl/mcdl.jar（实例扫描、版本列表、安装）
+│   ├── java-runtime.js      # 本机 Java 探测与版本挑选
+│   ├── version-manifest.js  # 版本 JSON 解析：inheritsFrom / rules / classpath / natives
+│   ├── launch.js            # 真实启动：拼命令、解压 natives、拉起进程
+│   ├── accounts.js          # 离线账号与微软登录
+│   └── renderer/            # 渲染进程：index.html + renderer.js
 ├── mcdl/                    # 内置的原版下载器源码 + mcdl.jar
 ├── docs/                    # 历史 UI 控件清单（仅参考，运行时不需要）
 ├── run-electron.ps1
 └── 启动.bat                 # 启动本 Electron UI
 ```
 
-运行时不包含、也不依赖 HMCL 源码。
+运行时不包含、也不依赖 HMCL 源码或 JavaFX。
 
-`mcdl` 已作为 `mcdl-launcher` 的子模块放在同级目录，不再依赖外部 `mcdl` 安装。`mcdl-service.js` 默认读取：
+`mcdl` 内置在仓库的 `mcdl/` 目录中，不依赖外部安装。`mcdl-service.js` 默认读取：
 
 ```text
 mcdl-launcher/mcdl/mcdl.jar
