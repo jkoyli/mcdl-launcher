@@ -4111,12 +4111,25 @@
     }, '删除');
   }
 
+  /** 资源管理器路径太长，状态栏只显示末尾两段。 */
+  function shortPath(value) {
+    var text = String(value || '');
+    if (!text) return '';
+    var parts = text.split(/[\\/]/).filter(Boolean);
+    if (parts.length <= 2) return text;
+    return '…\\' + parts.slice(-2).join('\\');
+  }
+
   function revealContent(kind, targetPath) {
     withContentApi(kind, function (api, instance) {
       var path = targetPath || selectedPaths(kind)[0] || '';
       api.revealInstanceContent({ instanceId: instance.id, kind: kind, path: path })
-        .then(function () {
-          setDetailStatus(path ? '已在资源管理器中定位' : '已打开文件夹', 'ok');
+        .then(function (result) {
+          var opened = (result && result.path) || path;
+          setDetailStatus(
+            (path ? '已请求在资源管理器中定位：' : '已请求打开文件夹：') + shortPath(opened),
+            'ok'
+          );
         })
         .catch(function (error) {
           setDetailStatus(describeLaunchError(error), 'error');
@@ -4145,7 +4158,9 @@
   function openContentFolder(kind) {
     withContentApi(kind, function (api, instance) {
       api.openInstanceContentFolder({ instanceId: instance.id, kind: kind })
-        .then(function () { setDetailStatus('已打开文件夹', 'ok'); })
+        .then(function (result) {
+          setDetailStatus('已请求打开文件夹：' + shortPath(result && result.path), 'ok');
+        })
         .catch(function (error) { setDetailStatus(describeLaunchError(error), 'error'); });
     });
   }
@@ -4318,7 +4333,9 @@
 
       if (kind === 'game') {
         api.openInstanceFolder({ instanceId: instance.id })
-          .then(function () { setDetailStatus('已打开实例目录', 'ok'); })
+          .then(function (result) {
+            setDetailStatus('已请求打开实例目录：' + shortPath(result && result.path), 'ok');
+          })
           .catch(function (error) { setDetailStatus(describeLaunchError(error), 'error'); });
         return;
       }

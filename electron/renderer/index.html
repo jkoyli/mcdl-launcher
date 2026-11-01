@@ -3614,6 +3614,30 @@
       opacity 420ms 80ms ease,
       transform 420ms 80ms cubic-bezier(.22, .8, .3, 1),
       visibility 0s;
+    /* 中间行必须可收缩：否则内容一多，底部那一排文件夹按钮会被顶到边框线上 */
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  #stageInstanceDetail .detail-body {
+    align-self: stretch;
+    max-height: none;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #stageInstanceDetail .detail-panel {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+  }
+
+  #stageInstanceDetail .detail-foot {
+    padding-bottom: 2px;
   }
 
   .detail-icon {
@@ -3786,10 +3810,10 @@
 
   .detail-chip {
     padding: 6px 10px;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(159, 208, 255, .24);
     border-radius: 999px;
-    background: rgba(159, 208, 255, .03);
-    color: rgba(206, 223, 242, .7);
+    background: rgba(159, 208, 255, .055);
+    color: rgba(216, 233, 250, .84);
     font-family: inherit;
     font-size: 8px;
     letter-spacing: .06em;

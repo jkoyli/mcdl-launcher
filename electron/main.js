@@ -1,6 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
+const { spawn } = require('node:child_process');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
@@ -491,6 +492,93 @@ function getGameDirStore() {
   return gameDirStore;
 }
 
+/** 资源管理器可执行文件：优先用绝对路径，避免 PATH 里找不到。 */
+function explorerExe() {
+  const root = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+  const absolute = path.join(root, 'explorer.exe');
+  try {
+    fsSync.accessSync(absolute);
+    return absolute;
+  } catch {
+    return 'explorer.exe';
+  }
+}
+
+/**
+ * 用资源管理器打开文件夹。
+ *
+ * 不用 shell.openPath 直接了事的原因：
+ *   - 目录不存在时它会调起 ShellExecuteEx，Windows 会弹「无法访问指定设备、
+ *     路径或文件」的系统对话框，而调用方还以为成功了；
+ *   - 进程和 explorer 不在同一个权限上下文时（比如启动器被以管理员启动），
+ *     ShellExecute 的 DDE 交接触发失败。
+ * 所以先保证目录存在，Windows 上直接拉起 explorer.exe，再退回 shell.openPath。
+ */
+async function openFolderPath(dir) {
+  const target = path.resolve(String(dir || ''));
+  if (!target) throw new Error('缺少要打开的文件夹路径');
+
+  let stat = null;
+  try {
+    stat = await fs.stat(target);
+  } catch {
+    stat = null;
+  }
+
+  if (!stat) {
+    try {
+      await fs.mkdir(target, { recursive: true });
+    } catch (error) {
+      throw new Error(`文件夹不存在，也无法创建（${error.code || error.message}）：${target}`);
+    }
+  } else if (!stat.isDirectory()) {
+    throw new Error(`这不是文件夹：${target}`);
+  }
+
+  if (process.platform === 'win32') {
+    try {
+      const child = spawn(explorerExe(), [target], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return target;
+    } catch {
+      // 继续尝试 Electron 自带的方式
+    }
+  }
+
+  const error = await shell.openPath(target);
+  if (error) throw new Error(`无法打开文件夹：${error}\n${target}`);
+  return target;
+}
+
+/** 在资源管理器里定位文件；文件不存在时给出明确错误，而不是假装成功。 */
+async function revealPath(filePath) {
+  const target = path.resolve(String(filePath || ''));
+  if (!target) throw new Error('缺少要定位的文件路径');
+
+  let stat = null;
+  try {
+    stat = await fs.stat(target);
+  } catch {
+    throw new Error(`文件不存在，可能已被移动或删除：${target}`);
+  }
+
+  if (stat.isDirectory()) return openFolderPath(target);
+
+  if (process.platform === 'win32') {
+    try {
+      // explorer.exe 的 /select 参数要拼成一个参数，路径里的逗号不用转义。
+      const child = spawn(explorerExe(), [`/select,${target}`], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return target;
+    } catch {
+      // 退回 Electron 接口
+    }
+  }
+
+  shell.showItemInFolder(target);
+  return target;
+}
+
 /**
  * 当前被管理的所有游戏目录。
  * 启动器自己的目录始终作为主目录扫描，其余管理目录一律当作外部目录。
@@ -885,16 +973,12 @@ function registerIpcHandlers() {
 
     const target = String(payload.path || '');
     if (target) {
-      const error = await shell.openPath(target);
-      if (error) throw new Error(error);
-      return true;
+      return { path: await openFolderPath(target) };
     }
 
     const { instance } = await findInstance(String(payload.instanceId || ''));
     if (!instance) throw new Error('实例不存在');
-    const error = await shell.openPath(instance.gameDir);
-    if (error) throw new Error(error);
-    return true;
+    return { path: await openFolderPath(instance.gameDir) };
   });
 
   /**
@@ -1146,15 +1230,12 @@ function registerIpcHandlers() {
       if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
         throw new Error('只能定位游戏目录内的文件');
       }
-      shell.showItemInFolder(resolved);
-      return true;
+      return { path: await revealPath(resolved) };
     }
 
     const kind = String((payload && payload.kind) || 'mods');
     const folder = await getInstanceStore().folderFor(instance, kind);
-    const error = await shell.openPath(folder);
-    if (error) throw new Error(error);
-    return true;
+    return { path: await openFolderPath(folder) };
   });
 
   ipcMain.handle('instances:content-import', async (event, payload = {}) => {
@@ -1192,9 +1273,7 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     const instance = await requireInstance(payload);
     const folder = await getInstanceStore().folderFor(instance, String(payload.kind || 'mods'));
-    const error = await shell.openPath(folder);
-    if (error) throw new Error(error);
-    return folder;
+    return { path: await openFolderPath(folder) };
   });
 
   /**
