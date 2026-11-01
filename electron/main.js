@@ -1071,7 +1071,7 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     const instance = await requireInstance(payload);
     const kind = String((payload && payload.kind) || 'mods');
-    return getInstanceStore().listContent(instance.gameDir, kind);
+    return getInstanceStore().listContent(instance, kind);
   });
 
   ipcMain.handle('instances:content-toggle', async (event, payload = {}) => {
@@ -1084,11 +1084,11 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     const instance = await requireInstance(payload);
     await getInstanceStore().deleteContent({
-      gameDir: instance.gameDir,
+      instance,
       kind: String(payload.kind || 'mods'),
       target: String(payload.path || '')
     });
-    return getInstanceStore().listContent(instance.gameDir, String(payload.kind || 'mods'));
+    return getInstanceStore().listContent(instance, String(payload.kind || 'mods'));
   });
 
   /** 批量启用 / 禁用（模组），失败项会记在 failed 里，不整体回滚。 */
@@ -1122,13 +1122,13 @@ function registerIpcHandlers() {
 
     for (const item of paths) {
       try {
-        await getInstanceStore().deleteContent({ gameDir: instance.gameDir, kind, target: String(item) });
+        await getInstanceStore().deleteContent({ instance, kind, target: String(item) });
       } catch (error) {
         failed.push({ path: String(item), message: error.message });
       }
     }
 
-    const list = await getInstanceStore().listContent(instance.gameDir, kind);
+    const list = await getInstanceStore().listContent(instance, kind);
     return { ...list, changed: paths.length - failed.length, failed };
   });
 
@@ -1151,7 +1151,7 @@ function registerIpcHandlers() {
     }
 
     const kind = String((payload && payload.kind) || 'mods');
-    const folder = await getInstanceStore().folderFor(instance.gameDir, kind);
+    const folder = await getInstanceStore().folderFor(instance, kind);
     const error = await shell.openPath(folder);
     if (error) throw new Error(error);
     return true;
@@ -1179,19 +1179,19 @@ function registerIpcHandlers() {
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
 
     await getInstanceStore().importContent({
-      gameDir: instance.gameDir,
+      instance,
       kind,
       sourcePaths: result.filePaths
     });
 
-    return getInstanceStore().listContent(instance.gameDir, kind);
+    return getInstanceStore().listContent(instance, kind);
   });
 
   /** 打开实例下的某个文件夹（内容管理页的「打开文件夹」）。 */
   ipcMain.handle('instances:content-folder', async (event, payload = {}) => {
     assertAppWindow(event);
     const instance = await requireInstance(payload);
-    const folder = await getInstanceStore().folderFor(instance.gameDir, String(payload.kind || 'mods'));
+    const folder = await getInstanceStore().folderFor(instance, String(payload.kind || 'mods'));
     const error = await shell.openPath(folder);
     if (error) throw new Error(error);
     return folder;

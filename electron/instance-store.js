@@ -95,10 +95,44 @@ function createInstanceStore({ storeDir, launcherHome }) {
     return iconsCache;
   }
 
-  function contentRoot(gameDir, kind) {
+  function contentSubdir(kind) {
     const sub = CONTENT_DIRS[kind];
     if (!sub) throw new Error(`不支持的内容类型：${kind}`);
-    return path.join(path.resolve(gameDir), sub);
+    return sub;
+  }
+
+  /**
+   * 内容目录解析：优先「版本隔离」目录（HMCL / PCL 的默认做法）。
+   *
+   *   versions/<id>/mods   版本隔离（HMCL、PCL 装整合包时用）
+   *   .minecraft/mods      全局目录（原版默认）
+   *
+   * 规则：版本目录里已经有这个子目录就用它；否则游戏目录里有就用游戏目录；
+   * 都没有时，外部实例（别的启动器）按隔离目录新建，自己的实例按全局目录新建。
+   */
+  async function contentRootFor(instance, kind) {
+    const sub = contentSubdir(kind);
+    const versionDir = instance && instance.path ? path.resolve(instance.path) : '';
+    const gameDir = instance && instance.gameDir ? path.resolve(instance.gameDir) : '';
+
+    const versionRoot = versionDir ? path.join(versionDir, sub) : '';
+    const gameRoot = gameDir ? path.join(gameDir, sub) : '';
+
+    const isDir = async (target) => {
+      if (!target) return false;
+      try {
+        return (await fs.stat(target)).isDirectory();
+      } catch {
+        return false;
+      }
+    };
+
+    if (await isDir(versionRoot)) return versionRoot;
+    if (await isDir(gameRoot)) return gameRoot;
+    if (!versionRoot) return gameRoot;
+    if (!gameRoot) return versionRoot;
+
+    return instance.origin === 'external' ? versionRoot : gameRoot;
   }
 
   return {
@@ -213,8 +247,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
 
     // ---------------- 内容管理 ----------------
 
-    async folderFor(gameDir, kind) {
-      const root = contentRoot(gameDir, kind);
+    async folderFor(instance, kind) {
+      const root = await contentRootFor(instance, kind);
       await fs.mkdir(root, { recursive: true }).catch(() => {});
       return root;
     },
@@ -223,8 +257,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
      * 列出某个内容目录。
      * @returns {Promise<{root:string, entries:Array}>}
      */
-    async listContent(gameDir, kind) {
-      const root = contentRoot(gameDir, kind);
+    async listContent(instance, kind) {
+      const root = await contentRootFor(instance, kind);
       let dirents = [];
       try {
         dirents = await fs.readdir(root, { withFileTypes: true });
@@ -280,8 +314,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
     },
 
     /** 删除前必须确认目标在对应内容目录内。 */
-    async deleteContent({ gameDir, kind, target }) {
-      const root = contentRoot(gameDir, kind);
+    async deleteContent({ instance, kind, target }) {
+      const root = await contentRootFor(instance, kind);
       const resolved = path.resolve(target);
       if (!inside(root, resolved)) throw new Error('只能删除该内容目录内的文件');
       await fs.rm(resolved, { recursive: true, force: true });
@@ -289,8 +323,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
     },
 
     /** 导入：把选中的文件复制到对应内容目录（重名自动加序号）。 */
-    async importContent({ gameDir, kind, sourcePaths }) {
-      const root = contentRoot(gameDir, kind);
+    async importContent({ instance, kind, sourcePaths }) {
+      const root = await contentRootFor(instance, kind);
       await fs.mkdir(root, { recursive: true });
 
       const imported = [];

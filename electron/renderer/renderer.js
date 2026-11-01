@@ -2755,12 +2755,43 @@
     return wrap;
   }
 
+  var instancePanelSignature = '';
+
+  /**
+   * 只同步选中态：选中时不能整表重建，否则单击的行元素会被替换，
+   * 紧接着的第二次点击就落在新元素上，dblclick 永远触发不了。
+   */
+  function syncInstancePanelSelection() {
+    var rows = document.getElementById('instanceRows');
+    if (!rows) return;
+
+    Array.prototype.forEach.call(rows.querySelectorAll('[data-instance-row]'), function (row) {
+      var selected = row.getAttribute('data-instance-row') === selectedInstanceId;
+      row.classList.toggle('is-selected', selected);
+
+      var badge = row.querySelector('.badge--current');
+      if (badge) badge.hidden = !selected;
+    });
+  }
+
   function renderInstancePanel() {
     var rows = document.getElementById('instanceRows');
     if (!rows) return;
 
     var count = document.getElementById('instancePanelCount');
     if (count) count.textContent = String(INSTANCES.length);
+
+    // 名字 / 图标变了也要重建，所以签名里带上这两项。
+    var signature = INSTANCES.map(function (item) {
+      return [item.id, item.displayName || '', item.iconKey || '', item.iconDataUrl ? item.iconDataUrl.length : 0].join('~');
+    }).join('|') + '::' + instanceLoadState;
+
+    // 实例集合没变（只是换了选中）→ 原地同步，不重建。
+    if (signature === instancePanelSignature && rows.children.length > 0) {
+      syncInstancePanelSelection();
+      return;
+    }
+    instancePanelSignature = signature;
 
     rows.innerHTML = '';
 
@@ -2844,12 +2875,12 @@
         badges.appendChild(externalBadge);
       }
 
-      if (selected) {
-        var currentBadge = document.createElement('span');
-        currentBadge.className = 'badge badge--current';
-        currentBadge.textContent = '当前';
-        badges.appendChild(currentBadge);
-      }
+      // 「当前」徽标常驻，靠 hidden 切换，这样选中态可以原地更新。
+      var currentBadge = document.createElement('span');
+      currentBadge.className = 'badge badge--current';
+      currentBadge.textContent = '当前';
+      currentBadge.hidden = !selected;
+      badges.appendChild(currentBadge);
 
       var menuBtn = document.createElement('button');
       menuBtn.type = 'button';
@@ -3827,6 +3858,7 @@
     }
     parts.push('</div>');
 
+    parts.push('<div class="content-root" data-content-root title=""></div>');
     parts.push('<div class="content-list" data-content-list></div>');
 
     parts.push('<div class="content-more" hidden>');
@@ -3932,6 +3964,12 @@
     if (list) {
       list.innerHTML = '';
 
+      var rootNode = panel.querySelector('[data-content-root]');
+      if (rootNode) {
+        rootNode.textContent = state.root ? '目录：' + state.root : '';
+        rootNode.title = state.root || '';
+      }
+
       if (entries.length === 0) {
         var empty = document.createElement('div');
         empty.className = 'content-empty';
@@ -3981,6 +4019,7 @@
       .then(function (data) {
         if (detailInstanceId !== instance.id) return;
         state.entries = data && Array.isArray(data.entries) ? data.entries : [];
+        state.root = (data && data.root) || '';
         state.loaded = true;
         if (state.visible < CONTENT_PAGE_SIZE) state.visible = CONTENT_PAGE_SIZE;
         renderContentPanel(kind);
@@ -4510,6 +4549,10 @@
       );
       return;
     }
+
+    // 点「⋯」或菜单本身时不要走到「点外面就关闭」这一步：
+    // 行上的处理器已经把菜单开/关了，这里再关一次会表现为「点了没反应」。
+    if (target.closest('[data-instance-menu]') || target.closest('.ctx-menu')) return;
 
     if (openInstanceMenuId) closeInstanceMenu();
   });
