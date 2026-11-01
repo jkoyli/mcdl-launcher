@@ -1532,66 +1532,131 @@
     if (first) first.focus();
   }
 
+  /**
+   * 8×8 对称像素头像：颜色与图案都由玩家名哈希决定，同一个名字永远是同一张脸。
+   * 有皮肤的账号会换成真实皮肤头部（见 loadTileSkin）。
+   */
+  function pixelAvatarSvg(name) {
+    var seed = 2166136261;
+    var text = String(name || '?');
+
+    for (var i = 0; i < text.length; i += 1) {
+      seed ^= text.charCodeAt(i);
+      seed = Math.imul(seed, 16777619) >>> 0;
+    }
+
+    function next() {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 4294967296;
+    }
+
+    // 色相限制在蓝—青—靛之间，和整体冷色调一致，避免出现大红大绿
+    var hue = 200 + Math.floor(next() * 52);
+    var palette = [
+      'hsl(' + hue + ', 24%, 21%)',
+      'hsl(' + ((hue + 10) % 360) + ', 27%, 31%)',
+      'hsl(' + ((hue + 20) % 360) + ', 24%, 41%)',
+      'hsl(' + ((hue + 4) % 360) + ', 20%, 15%)'
+    ];
+
+    var rects = [];
+    for (var y = 0; y < 8; y += 1) {
+      for (var x = 0; x < 4; x += 1) {
+        var r = next();
+        var color = r < 0.42 ? palette[0] : r < 0.68 ? palette[1] : r < 0.86 ? palette[2] : palette[3];
+        rects.push('<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>');
+        rects.push('<rect x="' + (7 - x) + '" y="' + y + '" width="1" height="1" fill="' + color + '"/>');
+      }
+    }
+
+    // 顶部一层极淡的高光，让方块看起来有体积感
+    rects.push('<rect x="0" y="0" width="8" height="1" fill="rgba(255,255,255,.05)"/>');
+
+    return '<svg viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true">' + rects.join('') + '</svg>';
+  }
+
+  function loadTileSkin(id, node) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getSkinData !== 'function') return;
+
+    api.getSkinData(id)
+      .then(function (data) {
+        if (!data || !data.dataUrl || !node.isConnected) return;
+        node.style.backgroundImage = 'url("' + data.dataUrl + '")';
+      })
+      .catch(function () {
+        // 读不到皮肤就保留底色的空头像
+      });
+  }
+
   function renderAccounts() {
     if (!accountList) return;
     closeAccountMenu();
     accountList.innerHTML = '';
+    accountList.classList.toggle('is-empty', ACCOUNTS.length === 0);
 
     if (accountCount) accountCount.textContent = String(ACCOUNTS.length);
 
     if (ACCOUNTS.length === 0) {
-      var empty = document.createElement('span');
-      empty.className = 'account-list__empty';
-      empty.textContent = '还没有账户。从上面的入口添加一个。';
+      var empty = document.createElement('p');
+      empty.className = 'account-empty';
+      empty.textContent = '还没有账户。从上面的卡片添加一个，账号会以头像卡片的形式出现在这里。';
       accountList.appendChild(empty);
       syncAccountChrome();
       return;
     }
 
     ACCOUNTS.forEach(function (account) {
-      var item = document.createElement('div');
-      item.className = 'account-item' + (account.id === selectedAccountId ? ' is-selected' : '');
-      item.setAttribute('role', 'listitem');
-      item.setAttribute('data-account-id', account.id);
+      var isSelected = account.id === selectedAccountId;
+      var tile = document.createElement('div');
+      tile.className = 'account-tile' + (isSelected ? ' is-selected' : '');
+      tile.setAttribute('role', 'listitem');
+      tile.setAttribute('tabindex', '0');
+      tile.setAttribute('data-account-id', account.id);
+      tile.setAttribute('aria-label',
+        account.name + ' · ' + accountTypeLabel(account) + (isSelected ? ' · 当前账号' : ''));
 
-      var main = document.createElement('div');
-      main.className = 'account-item__main';
+      var avatar = document.createElement('div');
+      avatar.className = 'account-tile__avatar';
+
+      if (account.hasSkin) {
+        var skin = document.createElement('div');
+        skin.className = 'account-tile__skin';
+        avatar.appendChild(skin);
+        loadTileSkin(account.id, skin);
+      } else {
+        avatar.innerHTML = pixelAvatarSvg(account.name);
+      }
+
+      if (isSelected) {
+        var dot = document.createElement('span');
+        dot.className = 'account-tile__dot';
+        dot.setAttribute('aria-hidden', 'true');
+        avatar.appendChild(dot);
+      }
+
+      tile.appendChild(avatar);
 
       var name = document.createElement('span');
-      name.className = 'account-item__name';
+      name.className = 'account-tile__name';
       name.textContent = account.name;
-      main.appendChild(name);
+      tile.appendChild(name);
 
       var meta = document.createElement('span');
-      meta.className = 'account-item__meta';
-      meta.textContent = accountTypeLabel(account) +
-        (account.hasSkin ? ' · 有皮肤' : '') +
-        (account.id === selectedAccountId ? ' · 当前' : '');
-      main.appendChild(meta);
-
-      item.appendChild(main);
-
-      var actions = document.createElement('div');
-      actions.className = 'account-item__actions';
-
-      if (account.id === selectedAccountId) {
-        var badge = document.createElement('span');
-        badge.className = 'account-item__badge';
-        badge.textContent = '当前';
-        actions.appendChild(badge);
-      }
+      meta.className = 'account-tile__meta';
+      meta.textContent = isSelected ? '当前 · ' + accountTypeLabel(account) : accountTypeLabel(account);
+      tile.appendChild(meta);
 
       var menuBtn = document.createElement('button');
       menuBtn.type = 'button';
-      menuBtn.className = 'account-item__menu';
+      menuBtn.className = 'account-tile__menu';
       menuBtn.textContent = '⋯';
       menuBtn.setAttribute('aria-haspopup', 'true');
       menuBtn.setAttribute('aria-label', account.name + ' 的账户操作');
       menuBtn.setAttribute('data-account-menu', account.id);
-      actions.appendChild(menuBtn);
+      tile.appendChild(menuBtn);
 
-      item.appendChild(actions);
-      accountList.appendChild(item);
+      accountList.appendChild(tile);
     });
 
     syncAccountChrome();
@@ -1804,6 +1869,16 @@
 
   // ---------------- 账户列表：菜单动作 ----------------
 
+  function selectAccount(id) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.selectAccount !== 'function') return;
+    api.selectAccount(id)
+      .then(applyAccountSnapshot)
+      .catch(function (error) {
+        console.error('[accounts] select failed:', error);
+      });
+  }
+
   function handleAccountMenuAction(action, id) {
     var api = window.launcherAPI;
     var account = accountById(id);
@@ -1811,12 +1886,7 @@
     if (!account) return;
 
     if (action === 'use') {
-      if (!api || typeof api.selectAccount !== 'function') return;
-      api.selectAccount(id)
-        .then(applyAccountSnapshot)
-        .catch(function (error) {
-          console.error('[accounts] select failed:', error);
-        });
+      selectAccount(id);
       return;
     }
 
@@ -1863,7 +1933,24 @@
     }
 
     if (openMenuId) closeAccountMenu();
+
+    // 点头像卡片本身就是切换账号
+    var tile = target.closest('.account-tile');
+    var tileId = tile ? tile.getAttribute('data-account-id') : null;
+    if (tileId && tileId !== selectedAccountId) selectAccount(tileId);
   });
+
+  // 键盘：卡片聚焦后回车 / 空格切换
+  if (accountList) {
+    accountList.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      var tile = event.target && event.target.closest ? event.target.closest('.account-tile') : null;
+      if (!tile) return;
+      event.preventDefault();
+      var id = tile.getAttribute('data-account-id');
+      if (id) selectAccount(id);
+    });
+  }
 
   // 滚动 / 改窗口大小时菜单会飘走，直接收起。
   if (accountList) {
@@ -2362,7 +2449,7 @@
       loadAccounts();
       window.setTimeout(function () {
         // 账户页的首个入口按钮（微软账户）拿到焦点，而不是弹窗里的输入框。
-        var firstEntry = accountEntries ? accountEntries.querySelector('.account-entry') : null;
+        var firstEntry = accountEntries ? accountEntries.querySelector('.account-action') : null;
         if (firstEntry) firstEntry.focus();
       }, 240);
     } else {

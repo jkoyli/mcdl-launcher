@@ -2661,7 +2661,10 @@
      L4 二级页面：账户 / 设置
      复用 .stage-create 的定位与动画，只换内部排布
      --------------------------------------------------------- */
-  .stage-account,
+  .stage-account {
+    grid-template-columns: minmax(0, .72fr) minmax(440px, 1.28fr);
+  }
+
   .stage-settings {
     grid-template-columns: minmax(0, .78fr) minmax(360px, 1.15fr);
   }
@@ -2709,70 +2712,180 @@
     scrollbar-color: rgba(159, 208, 255, .24) transparent;
   }
 
-  .account-list {
+  /* 账户面板：卡片式排布，整块靠右，与左侧的大标题形成呼吸感 */
+  .account-body {
+    justify-self: end;
+    align-self: center;
+    width: min(100%, 640px);
+    max-height: 70vh;
+    gap: clamp(16px, 2.6vh, 26px);
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  /* 已保存账户：头像卡片（Steam / Epic 那种账号选择） */
+  .account-grid {
     display: grid;
-    gap: 7px;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 12px;
   }
 
-  .account-list__empty {
-    padding: 14px 0;
+  .account-empty {
+    padding: 22px 2px;
     font-size: 9px;
-    letter-spacing: .1em;
-    color: rgba(199, 212, 230, .3);
+    line-height: 1.7;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .28);
   }
 
-  .account-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 9px 11px;
-    border: 1px solid rgba(159, 208, 255, .14);
-    border-radius: 3px;
-    background: rgba(159, 208, 255, .025);
+  .account-tile {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 9px;
+    padding: 10px 10px 12px;
+    border: 1px solid rgba(159, 208, 255, .13);
+    border-radius: 7px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .008)),
+      rgba(9, 15, 24, .3);
+    -webkit-backdrop-filter: blur(12px) saturate(115%);
+    backdrop-filter: blur(12px) saturate(115%);
+    cursor: pointer;
     transition:
-      border-color 150ms linear,
-      background-color 150ms linear,
-      box-shadow 180ms ease;
+      transform 220ms cubic-bezier(.22, .8, .3, 1),
+      border-color 180ms linear,
+      box-shadow 220ms ease,
+      background-color 180ms linear;
   }
 
-  .account-item.is-selected {
-    border-color: rgba(159, 208, 255, .46);
-    background: rgba(159, 208, 255, .075);
-    box-shadow: 0 0 22px rgba(94, 142, 207, .12);
+  .account-tile:hover,
+  .account-tile:focus-visible {
+    transform: translateY(-3px);
+    border-color: rgba(159, 208, 255, .38);
+    box-shadow:
+      0 14px 30px rgba(0, 0, 0, .4),
+      0 0 26px rgba(110, 160, 230, .14);
+    outline: none;
   }
 
-  .account-item__main {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+  .account-tile.is-selected {
+    border-color: rgba(159, 208, 255, .6);
+    background:
+      linear-gradient(180deg, rgba(159, 208, 255, .1), rgba(159, 208, 255, .015)),
+      rgba(10, 17, 28, .34);
+    box-shadow:
+      0 0 0 1px rgba(159, 208, 255, .12),
+      0 0 28px rgba(110, 160, 230, .22),
+      0 16px 34px rgba(0, 0, 0, .42);
   }
 
-  .account-item__name {
-    font-size: 11px;
+  .account-tile__avatar {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 5px;
+    overflow: hidden;
+    background: rgba(6, 10, 16, .7);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .05);
+  }
+
+  .account-tile__avatar svg,
+  .account-tile__skin {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  /* 有皮肤时直接取 64×64 皮肤里的头部 8×8 区域 */
+  .account-tile__skin {
+    background-size: 800% 800%;
+    background-position: 14.2857% 14.2857%;
+    background-repeat: no-repeat;
+  }
+
+  /* 头像上压一层暗角 + 顶部高光，让方块看起来有体积感，也和整体冷色调统一 */
+  .account-tile__avatar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, .1), transparent 55%),
+      radial-gradient(130% 130% at 50% 100%, rgba(0, 0, 0, .45), transparent 62%);
+    box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .1);
+  }
+
+  /* 当前账号：右下角绿点 + 发光边框 */
+  .account-tile__dot {
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6fe3a6;
+    box-shadow: 0 0 10px rgba(111, 227, 166, .9), 0 0 3px rgba(111, 227, 166, 1);
+  }
+
+  .account-tile__name {
+    max-width: 100%;
+    font-size: 10px;
     letter-spacing: .02em;
-    color: #edf5ff;
+    color: rgba(237, 245, 255, .92);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .account-item__meta {
-    font-size: 7.5px;
-    line-height: 1;
+  .account-tile__meta {
+    max-width: 100%;
+    font-size: 7px;
     font-weight: 600;
-    letter-spacing: .14em;
+    letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(199, 212, 230, .38);
+    color: rgba(199, 212, 230, .34);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .account-item__actions {
-    display: flex;
-    gap: 6px;
-    flex: 0 0 auto;
+  .account-tile__menu {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .22);
+    border-radius: 4px;
+    background: rgba(8, 13, 21, .78);
+    color: rgba(213, 228, 245, .7);
+    font: 600 9px/1 inherit;
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 160ms linear,
+      color 140ms linear,
+      border-color 140ms linear,
+      background-color 140ms linear;
   }
 
+  .account-tile:hover .account-tile__menu,
+  .account-tile:focus-within .account-tile__menu {
+    opacity: 1;
+  }
+
+  .account-tile__menu:hover,
+  .account-tile__menu:focus-visible {
+    color: #f7fbff;
+    border-color: rgba(159, 208, 255, .55);
+    background: rgba(159, 208, 255, .14);
+    outline: none;
+    opacity: 1;
+  }
 
   .settings-field--wide {
     grid-column: 1 / -1;
@@ -2803,139 +2916,123 @@
   }
 
   /* ---------------------------------------------------------
-     账户页：登录方式入口（对应清单 account.methods.* / injector.add）
+     账户页：三个登录入口做成并列卡片（account.methods.* / injector.add）
      --------------------------------------------------------- */
-  .account-entries {
+  .account-actions {
     display: grid;
-    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
 
-  .account-entry {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid rgba(159, 208, 255, .14);
-    border-radius: 3px;
-    background: rgba(159, 208, 255, .022);
+  .account-action {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 12px;
+    min-height: 156px;
+    padding: 22px 14px 20px;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 7px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .01)),
+      rgba(9, 15, 24, .3);
+    -webkit-backdrop-filter: blur(14px) saturate(118%);
+    backdrop-filter: blur(14px) saturate(118%);
     color: inherit;
-    text-align: left;
+    text-align: center;
     cursor: pointer;
     transition:
-      border-color 150ms linear,
-      background-color 150ms linear,
-      box-shadow 180ms ease,
-      transform 180ms ease;
+      transform 240ms cubic-bezier(.22, .8, .3, 1),
+      border-color 180ms linear,
+      box-shadow 240ms ease,
+      background-color 200ms linear;
   }
 
-  .account-entry:hover,
-  .account-entry:focus-visible {
-    border-color: rgba(159, 208, 255, .44);
-    background: rgba(159, 208, 255, .06);
-    box-shadow: 0 0 24px rgba(94, 142, 207, .12);
-    transform: translateX(2px);
+  .account-action:hover,
+  .account-action:focus-visible {
+    transform: translateY(-5px);
+    border-color: rgba(159, 208, 255, .46);
+    box-shadow:
+      0 20px 44px rgba(0, 0, 0, .45),
+      0 0 34px rgba(110, 160, 230, .2),
+      inset 0 0 30px rgba(159, 208, 255, .05);
     outline: none;
   }
 
-  .account-entry__icon {
-    flex: 0 0 auto;
-    display: grid;
-    place-items: center;
-    width: 26px;
-    height: 26px;
-    border: 1px solid rgba(159, 208, 255, .18);
-    border-radius: 3px;
-    background: rgba(159, 208, 255, .05);
-    color: rgba(199, 220, 243, .78);
+  .account-action:active {
+    transform: translateY(-2px);
   }
 
-  .account-entry__icon svg {
-    width: 14px;
-    height: 14px;
+  .account-action__icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid rgba(159, 208, 255, .2);
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 32%, rgba(159, 208, 255, .14), rgba(159, 208, 255, .03));
+    color: rgba(214, 233, 252, .9);
+    box-shadow: 0 0 22px rgba(94, 142, 207, .12);
+    transition:
+      box-shadow 240ms ease,
+      border-color 180ms linear,
+      color 180ms linear;
+  }
+
+  .account-action:hover .account-action__icon,
+  .account-action:focus-visible .account-action__icon {
+    border-color: rgba(159, 208, 255, .5);
+    color: #f4faff;
+    box-shadow:
+      0 0 30px rgba(120, 170, 240, .34),
+      inset 0 0 18px rgba(159, 208, 255, .1);
+  }
+
+  .account-action__icon svg {
+    width: 20px;
+    height: 20px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 1.2;
+    stroke-width: 1.25;
     stroke-linecap: round;
     stroke-linejoin: round;
   }
 
-  .account-entry__text {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: grid;
-    gap: 3px;
-  }
-
-  .account-entry__text b {
-    font-size: 11px;
+  .account-action__title {
+    font-size: 11.5px;
     font-weight: 500;
-    letter-spacing: .03em;
+    letter-spacing: .04em;
     color: #eef5ff;
   }
 
-  .account-entry__text em {
-    font-style: normal;
+  .account-action__desc {
     font-size: 7.5px;
-    line-height: 1.4;
-    letter-spacing: .08em;
-    color: rgba(199, 212, 230, .38);
+    line-height: 1.5;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .36);
   }
 
-  .account-entry__go {
-    flex: 0 0 auto;
-    font-size: 11px;
-    color: rgba(159, 208, 255, .5);
-  }
-
-  .account-list-head {
+  .account-section-head {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
-    gap: 8px;
-    margin-top: 2px;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
   }
 
-  .account-list-count {
+  .account-section-head span:first-child {
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .32);
+  }
+
+  .account-section-head span:last-child {
     font-size: 7.5px;
     letter-spacing: .14em;
     color: rgba(159, 208, 255, .42);
-  }
-
-  .account-item {
-    position: relative;
-  }
-
-  .account-item__badge {
-    flex: 0 0 auto;
-    padding: 4px 7px;
-    border: 1px solid rgba(122, 199, 160, .34);
-    border-radius: 2px;
-    background: rgba(122, 199, 160, .08);
-    color: rgba(176, 232, 203, .85);
-    font: 600 7px/1 inherit;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-  }
-
-  .account-item__menu {
-    padding: 5px 8px;
-    border: 1px solid rgba(159, 208, 255, .2);
-    border-radius: 2px;
-    background: transparent;
-    color: rgba(213, 228, 245, .66);
-    font: 600 10px/1 inherit;
-    letter-spacing: .04em;
-    cursor: pointer;
-    transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
-  }
-
-  .account-item__menu:hover,
-  .account-item__menu:focus-visible {
-    color: #f4faff;
-    border-color: rgba(159, 208, 255, .46);
-    background: rgba(159, 208, 255, .07);
-    outline: none;
   }
 
   .account-menu {
@@ -3675,48 +3772,39 @@
       </div>
 
       <div class="account-body">
-        <!-- 登录方式入口：对应清单 account.methods.microsoft / account.methods.offline / account.injector.add -->
-        <div class="account-entries" id="accountEntries">
-          <button class="account-entry" type="button" data-account-action="microsoft" data-control-key="account.methods.microsoft">
-            <span class="account-entry__icon" aria-hidden="true">
+        <!-- 登录方式入口：三张并列卡片（account.methods.microsoft / offline / injector.add） -->
+        <div class="account-actions" id="accountEntries">
+          <button class="account-action" type="button" data-account-action="microsoft" data-control-key="account.methods.microsoft">
+            <span class="account-action__icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg>
             </span>
-            <span class="account-entry__text">
-              <b>微软账户</b>
-              <em>登录 Microsoft 账号（正版）</em>
-            </span>
-            <span class="account-entry__go" aria-hidden="true">↗</span>
+            <span class="account-action__title">微软账户</span>
+            <span class="account-action__desc">登录 Microsoft 账号（正版）</span>
           </button>
 
-          <button class="account-entry" type="button" data-account-action="offline" data-control-key="account.methods.offline">
-            <span class="account-entry__icon" aria-hidden="true">
+          <button class="account-action" type="button" data-account-action="offline" data-control-key="account.methods.offline">
+            <span class="account-action__icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4.5 20c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>
             </span>
-            <span class="account-entry__text">
-              <b>离线模式</b>
-              <em>只用本地玩家名，不需要联网</em>
-            </span>
-            <span class="account-entry__go" aria-hidden="true">↗</span>
+            <span class="account-action__title">离线模式</span>
+            <span class="account-action__desc">只用本地玩家名，不需要联网</span>
           </button>
 
-          <button class="account-entry" type="button" data-account-action="server" data-control-key="account.injector.add">
-            <span class="account-entry__icon" aria-hidden="true">
+          <button class="account-action" type="button" data-account-action="server" data-control-key="account.injector.add">
+            <span class="account-action__icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/><path d="M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"/></svg>
             </span>
-            <span class="account-entry__text">
-              <b>添加认证服务器</b>
-              <em>authlib-injector 第三方登录</em>
-            </span>
-            <span class="account-entry__go" aria-hidden="true">↗</span>
+            <span class="account-action__title">添加认证服务器</span>
+            <span class="account-action__desc">authlib-injector 第三方登录</span>
           </button>
         </div>
 
-        <div class="account-list-head">
-          <span class="create-label">Saved accounts / 已保存账户</span>
-          <span class="account-list-count" id="accountCount">0</span>
+        <div class="account-section-head">
+          <span>Saved accounts / 已保存账户</span>
+          <span id="accountCount">0</span>
         </div>
 
-        <div class="account-list" id="accountList" role="list"></div>
+        <div class="account-grid" id="accountList" role="list"></div>
       </div>
     </section>
 
