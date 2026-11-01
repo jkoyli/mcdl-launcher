@@ -3490,11 +3490,20 @@
 
   .offline-skin__model-wrap {
     display: inline-flex;
+    align-items: center;
+    gap: 6px;
     flex: 0 0 auto;
   }
 
+  .offline-skin__model-label {
+    font-size: 8px;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .42);
+    white-space: nowrap;
+  }
+
   .offline-skin__model {
-    width: 96px;
+    width: 132px;
     height: 26px;
     padding: 0 22px 0 8px;
     font-size: 8.5px;
@@ -4140,12 +4149,15 @@
               <div class="offline-skin__actions">
                 <button class="dialog-btn dialog-btn--tiny" type="button" id="offlineSkinPick">选择皮肤</button>
                 <button class="dialog-btn dialog-btn--tiny" type="button" id="offlineSkinClear" aria-label="取消已选择的皮肤，恢复默认皮肤" hidden>取消选择</button>
-                <span class="create-control-wrap offline-skin__model-wrap">
-                  <select class="create-control offline-skin__model" id="offlineSkinModel" disabled>
-                    <option value="classic" selected>经典</option>
-                    <option value="slim">纤细</option>
-                  </select>
-                  <span class="create-select-arrow" aria-hidden="true"></span>
+                <span class="offline-skin__model-wrap" id="offlineSkinModelWrap" hidden>
+                  <label class="offline-skin__model-label" for="offlineSkinModel">模型</label>
+                  <span class="create-control-wrap">
+                    <select class="create-control offline-skin__model" id="offlineSkinModel" disabled>
+                      <option value="classic" selected>经典 · 4px 手臂</option>
+                      <option value="slim">纤细 · 3px 手臂</option>
+                    </select>
+                    <span class="create-select-arrow" aria-hidden="true"></span>
+                  </span>
                 </span>
               </div>
             </div>
