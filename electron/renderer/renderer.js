@@ -1280,16 +1280,18 @@
   });
 
   // ---------------------------------------------------------
-  // 账户面板：离线账号 / 微软账号
+  // 账户页：登录方式入口 + 账户列表 + L5 弹窗
+  // 对应 docs/history/ui-tree-controls.html 的 [L2] 账户 与它下面的 5 个 [L5] 弹窗：
+  //   account.methods.microsoft → 微软登录
+  //   account.methods.offline   → 添加离线账户（离线模式 / 正版登录 两个页签）
+  //   account.injector.add      → 添加认证服务器向导
+  //   账户列表项                → 设为当前 / 离线皮肤设置 / 删除
   // ---------------------------------------------------------
   var stageAccount = document.getElementById('stageAccount');
   var accountBack = document.getElementById('accountBack');
+  var accountEntries = document.getElementById('accountEntries');
   var accountList = document.getElementById('accountList');
-  var offlineName = document.getElementById('offlineName');
-  var offlineSubmit = document.getElementById('offlineSubmit');
-  var offlineNote = document.getElementById('offlineNote');
-  var msaLogin = document.getElementById('msaLogin');
-  var msaNote = document.getElementById('msaNote');
+  var accountCount = document.getElementById('accountCount');
   var accountName = document.getElementById('accountName');
   var topAvatar = document.querySelector('.top-account .top-avatar');
   var railAvatar = document.querySelector('.rail-avatar');
@@ -1308,14 +1310,22 @@
   var settingsSubmit = document.getElementById('settingsSubmit');
 
   var ACCOUNTS = [];
+  var SERVERS = [];
   var selectedAccountId = null;
-  var msaBusy = false;
   var settingsLoaded = false;
 
-  function setHint(node, text, isError) {
+  /** 提示行：tone = 'error' | 'ok' | 省略 */
+  function setHint(node, text, tone) {
     if (!node) return;
     node.textContent = text || '';
-    node.classList.toggle('is-error', Boolean(isError));
+    node.classList.toggle('is-error', tone === 'error');
+    node.classList.toggle('is-ok', tone === 'ok');
+  }
+
+  function openAccountError(error, node) {
+    var message = describeLaunchError(error);
+    setHint(node, message, 'error');
+    return message;
   }
 
   function selectedAccount() {
@@ -1325,10 +1335,24 @@
     return null;
   }
 
+  function accountById(id) {
+    for (var i = 0; i < ACCOUNTS.length; i += 1) {
+      if (ACCOUNTS[i].id === id) return ACCOUNTS[i];
+    }
+    return null;
+  }
+
+  function accountTypeLabel(account) {
+    if (!account) return '';
+    if (account.type === 'microsoft') return 'Microsoft';
+    if (account.type === 'authlib') return account.serverName ? '认证服务器 · ' + account.serverName : '认证服务器';
+    return 'Offline';
+  }
+
   function syncAccountChrome() {
     var current = selectedAccount();
     var label = current ? current.name : '未接入';
-    var kind = current ? (current.type === 'microsoft' ? 'MICROSOFT' : 'OFFLINE') : '未选择账号';
+    var kind = current ? accountTypeLabel(current) : '未选择账号';
 
     if (accountName) accountName.textContent = label;
 
@@ -1357,14 +1381,168 @@
     }
   }
 
+  // ---------------- 弹窗管理（L5 层） ----------------
+
+  var dialogLayer = document.getElementById('dialogLayer');
+  var DIALOGS = {
+    microsoft: document.getElementById('dlgMicrosoft'),
+    offline: document.getElementById('dlgOffline'),
+    server: document.getElementById('dlgServer'),
+    skin: document.getElementById('dlgSkin'),
+    confirm: document.getElementById('dlgConfirm')
+  };
+  var openDialogName = null;
+  var dialogReturnFocus = null;
+  var confirmCallback = null;
+
+  function openDialog(name, trigger) {
+    var pane = DIALOGS[name];
+    if (!pane || !dialogLayer) return;
+
+    if (openDialogName && DIALOGS[openDialogName] && openDialogName !== name) {
+      DIALOGS[openDialogName].classList.remove('is-open');
+      DIALOGS[openDialogName].hidden = true;
+    }
+
+    dialogReturnFocus = trigger || document.activeElement;
+    openDialogName = name;
+    dialogLayer.hidden = false;
+    pane.hidden = false;
+    // 重启过渡：先落到初始帧，再加 is-open。
+    pane.classList.remove('is-open');
+    void pane.offsetWidth;
+    pane.classList.add('is-open');
+
+    window.setTimeout(function () {
+      if (openDialogName !== name) return;
+      var focusable = pane.querySelector('input:not([disabled]), select:not([disabled]), button:not([disabled])');
+      if (focusable) focusable.focus();
+    }, 140);
+  }
+
+  function closeDialog() {
+    if (!openDialogName) return;
+
+    var pane = DIALOGS[openDialogName];
+    if (pane) {
+      pane.classList.remove('is-open');
+      pane.hidden = true;
+    }
+
+    openDialogName = null;
+    if (dialogLayer) dialogLayer.hidden = true;
+    closeAccountMenu();
+
+    if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
+      try {
+        dialogReturnFocus.focus();
+      } catch (error) {
+        // 元素可能已经被重绘掉
+      }
+    }
+    dialogReturnFocus = null;
+    confirmCallback = null;
+  }
+
+  if (dialogLayer) {
+    dialogLayer.addEventListener('click', function (event) {
+      var closer = event.target && event.target.closest ? event.target.closest('[data-dialog-close]') : null;
+      if (closer) closeDialog();
+    });
+  }
+
+  var confirmText = document.getElementById('confirmText');
+  var confirmOk = document.getElementById('confirmOk');
+
+  function askConfirm(text, onConfirm, confirmLabel) {
+    if (confirmText) confirmText.textContent = text;
+    if (confirmOk) confirmOk.textContent = confirmLabel || '确定';
+    confirmCallback = onConfirm;
+    openDialog('confirm');
+  }
+
+  if (confirmOk) {
+    confirmOk.addEventListener('click', function () {
+      var callback = confirmCallback;
+      confirmCallback = null;
+      closeDialog();
+      if (typeof callback === 'function') callback();
+    });
+  }
+
+  // ---------------- 账户列表 ----------------
+
+  var openMenuId = null;
+
+  function closeAccountMenu() {
+    if (!openMenuId) return;
+    var menu = document.querySelector('.account-menu');
+    if (menu) menu.remove();
+    openMenuId = null;
+  }
+
+  function openAccountMenu(id) {
+    closeAccountMenu();
+
+    var account = accountById(id);
+    if (!account || !accountList) return;
+
+    var item = accountList.querySelector('[data-account-id="' + id + '"]');
+    if (!item) return;
+
+    var trigger = item.querySelector('[data-account-menu]');
+    if (!trigger) return;
+
+    var menu = document.createElement('div');
+    menu.className = 'account-menu';
+    menu.setAttribute('role', 'menu');
+
+    var addAction = function (label, action, danger) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('data-menu-action', action);
+      button.setAttribute('data-menu-account', id);
+      button.textContent = label;
+      if (danger) button.classList.add('is-danger');
+      menu.appendChild(button);
+    };
+
+    if (account.id !== selectedAccountId) addAction('设为当前账户', 'use');
+    if (account.type === 'offline') addAction('离线皮肤设置', 'skin');
+    if (account.type === 'microsoft' || account.type === 'authlib') addAction('重新登录', 'relogin');
+    addAction('删除账户', 'delete', true);
+
+    // 账户面板带 transform，挂在面板里会让 position: fixed 相对面板定位，
+    // 所以菜单挂到 body 上，按视口坐标定位。
+    document.body.appendChild(menu);
+
+    var rect = trigger.getBoundingClientRect();
+    var menuRect = menu.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuRect.height - 6);
+    }
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.left = Math.round(Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 12)) + 'px';
+
+    openMenuId = id;
+
+    var first = menu.querySelector('button');
+    if (first) first.focus();
+  }
+
   function renderAccounts() {
     if (!accountList) return;
+    closeAccountMenu();
     accountList.innerHTML = '';
+
+    if (accountCount) accountCount.textContent = String(ACCOUNTS.length);
 
     if (ACCOUNTS.length === 0) {
       var empty = document.createElement('span');
       empty.className = 'account-list__empty';
-      empty.textContent = '还没有账号。先创建一个离线账号即可进入单人游戏。';
+      empty.textContent = '还没有账户。从上面的入口添加一个。';
       accountList.appendChild(empty);
       syncAccountChrome();
       return;
@@ -1374,6 +1552,7 @@
       var item = document.createElement('div');
       item.className = 'account-item' + (account.id === selectedAccountId ? ' is-selected' : '');
       item.setAttribute('role', 'listitem');
+      item.setAttribute('data-account-id', account.id);
 
       var main = document.createElement('div');
       main.className = 'account-item__main';
@@ -1385,7 +1564,8 @@
 
       var meta = document.createElement('span');
       meta.className = 'account-item__meta';
-      meta.textContent = (account.type === 'microsoft' ? 'Microsoft' : 'Offline') +
+      meta.textContent = accountTypeLabel(account) +
+        (account.hasSkin ? ' · 有皮肤' : '') +
         (account.id === selectedAccountId ? ' · 当前' : '');
       main.appendChild(meta);
 
@@ -1394,21 +1574,21 @@
       var actions = document.createElement('div');
       actions.className = 'account-item__actions';
 
-      if (account.id !== selectedAccountId) {
-        var useBtn = document.createElement('button');
-        useBtn.type = 'button';
-        useBtn.className = 'account-mini';
-        useBtn.textContent = '使用';
-        useBtn.setAttribute('data-account-select', account.id);
-        actions.appendChild(useBtn);
+      if (account.id === selectedAccountId) {
+        var badge = document.createElement('span');
+        badge.className = 'account-item__badge';
+        badge.textContent = '当前';
+        actions.appendChild(badge);
       }
 
-      var removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'account-mini is-danger';
-      removeBtn.textContent = '删除';
-      removeBtn.setAttribute('data-account-remove', account.id);
-      actions.appendChild(removeBtn);
+      var menuBtn = document.createElement('button');
+      menuBtn.type = 'button';
+      menuBtn.className = 'account-item__menu';
+      menuBtn.textContent = '⋯';
+      menuBtn.setAttribute('aria-haspopup', 'true');
+      menuBtn.setAttribute('aria-label', account.name + ' 的账户操作');
+      menuBtn.setAttribute('data-account-menu', account.id);
+      actions.appendChild(menuBtn);
 
       item.appendChild(actions);
       accountList.appendChild(item);
@@ -1417,10 +1597,38 @@
     syncAccountChrome();
   }
 
+  function renderServers(preferredId) {
+    var select = document.getElementById('authlibServer');
+    if (!select) return;
+
+    var current = preferredId || select.value;
+
+    select.innerHTML = '';
+    if (SERVERS.length === 0) {
+      var emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '还没有认证服务器，先添加一个';
+      select.appendChild(emptyOption);
+      return;
+    }
+
+    SERVERS.forEach(function (server) {
+      var option = document.createElement('option');
+      option.value = server.id;
+      option.textContent = server.name + ' · ' + server.apiRoot;
+      select.appendChild(option);
+    });
+
+    var exists = SERVERS.some(function (server) { return server.id === current; });
+    select.value = exists ? current : SERVERS[0].id;
+  }
+
   function applyAccountSnapshot(snapshot) {
     if (!snapshot) return;
     ACCOUNTS = Array.isArray(snapshot.accounts) ? snapshot.accounts : [];
     selectedAccountId = snapshot.selectedId || null;
+    if (Array.isArray(snapshot.servers)) SERVERS = snapshot.servers;
+    renderServers();
     renderAccounts();
   }
 
@@ -1429,111 +1637,576 @@
     if (!api || typeof api.getAccounts !== 'function') return;
 
     api.getAccounts()
-      .then(function (snapshot) {
-        applyAccountSnapshot(snapshot);
-      })
+      .then(applyAccountSnapshot)
       .catch(function (error) {
         console.error('[accounts] load failed:', error);
-        setHint(offlineNote, describeLaunchError(error), true);
       });
   }
 
-  function createOfflineAccount() {
-    var api = window.launcherAPI;
-    var name = offlineName ? offlineName.value.trim() : '';
+  // ---------------- L5：微软登录弹窗 ----------------
 
-    if (!api || typeof api.addOfflineAccount !== 'function') {
-      setHint(offlineNote, '主进程桥接不可用', true);
-      return;
-    }
-    if (!name) {
-      setHint(offlineNote, '请输入玩家名', true);
-      if (offlineName) offlineName.focus();
-      return;
-    }
+  var msaDialogStatus = document.getElementById('msaDialogStatus');
+  var msaDialogLogin = document.getElementById('msaDialogLogin');
+  var msaBusy = false;
 
-    setHint(offlineNote, '正在创建…', false);
-    api.addOfflineAccount(name)
-      .then(function (snapshot) {
-        applyAccountSnapshot(snapshot);
-        if (offlineName) offlineName.value = '';
-        setHint(offlineNote, '已创建并选中：' + name, false);
-      })
-      .catch(function (error) {
-        setHint(offlineNote, describeLaunchError(error), true);
-      });
+  function openMsDialog() {
+    setHint(msaDialogStatus, '');
+    openDialog('microsoft');
   }
 
   function loginMicrosoft() {
     var api = window.launcherAPI;
     if (!api || typeof api.addMicrosoftAccount !== 'function') {
-      setHint(msaNote, '主进程桥接不可用', true);
+      setHint(msaDialogStatus, '主进程桥接不可用', 'error');
       return;
     }
     if (msaBusy) return;
 
     msaBusy = true;
-    if (msaLogin) msaLogin.disabled = true;
-    setHint(msaNote, '已打开登录窗口，请在其中完成微软登录…', false);
+    if (msaDialogLogin) msaDialogLogin.disabled = true;
+    setHint(msaDialogStatus, '已打开登录窗口，请在其中完成微软登录…');
 
     api.addMicrosoftAccount()
       .then(function (snapshot) {
         applyAccountSnapshot(snapshot);
         var current = selectedAccount();
-        setHint(msaNote, current ? '已登录：' + current.name : '登录完成', false);
+        setHint(msaDialogStatus, current ? '已登录：' + current.name : '登录完成', 'ok');
+        window.setTimeout(closeDialog, 700);
       })
       .catch(function (error) {
-        setHint(msaNote, describeLaunchError(error), true);
+        openAccountError(error, msaDialogStatus);
       })
       .then(function () {
         msaBusy = false;
-        if (msaLogin) msaLogin.disabled = false;
+        if (msaDialogLogin) msaDialogLogin.disabled = false;
       });
   }
 
-  if (offlineSubmit) {
-    offlineSubmit.addEventListener('click', createOfflineAccount);
+  // ---------------- L5：添加账户弹窗（离线 / 正版登录） ----------------
+
+  var offlineName = document.getElementById('offlineName');
+  var offlineDialogStatus = document.getElementById('offlineDialogStatus');
+  var offlineDialogLogin = document.getElementById('offlineDialogLogin');
+  var authlibDialogLogin = document.getElementById('authlibDialogLogin');
+  var tabOffline = document.getElementById('tabOffline');
+  var tabAuthlib = document.getElementById('tabAuthlib');
+  var paneOffline = document.getElementById('paneOffline');
+  var paneAuthlib = document.getElementById('paneAuthlib');
+  var authlibServer = document.getElementById('authlibServer');
+  var authlibUser = document.getElementById('authlibUser');
+  var authlibPass = document.getElementById('authlibPass');
+  var authlibHint = document.getElementById('authlibHint');
+  var accountBusy = false;
+
+  function setAccountTab(tab) {
+    var isOffline = tab !== 'authlib';
+
+    if (tabOffline) tabOffline.setAttribute('aria-selected', String(isOffline));
+    if (tabAuthlib) tabAuthlib.setAttribute('aria-selected', String(!isOffline));
+    if (paneOffline) paneOffline.hidden = !isOffline;
+    if (paneAuthlib) paneAuthlib.hidden = isOffline;
+    if (offlineDialogLogin) offlineDialogLogin.hidden = !isOffline;
+    if (authlibDialogLogin) authlibDialogLogin.hidden = isOffline;
+
+    if (!isOffline && authlibHint) {
+      authlibHint.textContent = SERVERS.length
+        ? '登录成功后会用 authlib-injector 把游戏请求转发到该服务器。'
+        : '还没有认证服务器。先关闭这个窗口，用「添加认证服务器」添加一个。';
+    }
+
+    setHint(offlineDialogStatus, '');
   }
 
+  function openOfflineDialog(tab) {
+    if (offlineName) offlineName.value = '';
+    if (authlibUser) authlibUser.value = '';
+    if (authlibPass) authlibPass.value = '';
+    renderServers();
+    setAccountTab(tab || 'offline');
+    openDialog('offline');
+  }
+
+  function submitOfflineAccount() {
+    var api = window.launcherAPI;
+    var name = offlineName ? offlineName.value.trim() : '';
+
+    if (!api || typeof api.addOfflineAccount !== 'function') {
+      setHint(offlineDialogStatus, '主进程桥接不可用', 'error');
+      return;
+    }
+    if (!name) {
+      setHint(offlineDialogStatus, '请输入玩家名', 'error');
+      if (offlineName) offlineName.focus();
+      return;
+    }
+    if (accountBusy) return;
+
+    accountBusy = true;
+    setHint(offlineDialogStatus, '正在创建…');
+
+    api.addOfflineAccount(name)
+      .then(function (snapshot) {
+        applyAccountSnapshot(snapshot);
+        setHint(offlineDialogStatus, '已创建并选中：' + name, 'ok');
+        window.setTimeout(closeDialog, 600);
+      })
+      .catch(function (error) {
+        openAccountError(error, offlineDialogStatus);
+      })
+      .then(function () {
+        accountBusy = false;
+      });
+  }
+
+  function submitAuthlibAccount() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.loginAuthlib !== 'function') {
+      setHint(offlineDialogStatus, '主进程桥接不可用', 'error');
+      return;
+    }
+
+    var serverId = authlibServer ? authlibServer.value : '';
+    var username = authlibUser ? authlibUser.value.trim() : '';
+    var password = authlibPass ? authlibPass.value : '';
+
+    if (!serverId) {
+      setHint(offlineDialogStatus, '请先添加并选择一个认证服务器', 'error');
+      return;
+    }
+    if (!username) {
+      setHint(offlineDialogStatus, '请输入用户名', 'error');
+      if (authlibUser) authlibUser.focus();
+      return;
+    }
+    if (!password) {
+      setHint(offlineDialogStatus, '请输入密码', 'error');
+      if (authlibPass) authlibPass.focus();
+      return;
+    }
+    if (accountBusy) return;
+
+    accountBusy = true;
+    setHint(offlineDialogStatus, '正在登录认证服务器…');
+
+    api.loginAuthlib({ serverId: serverId, username: username, password: password })
+      .then(function (result) {
+        applyAccountSnapshot(result);
+        setHint(offlineDialogStatus, '已登录并选中：' + (result.account ? result.account.name : username), 'ok');
+        window.setTimeout(closeDialog, 600);
+      })
+      .catch(function (error) {
+        openAccountError(error, offlineDialogStatus);
+      })
+      .then(function () {
+        accountBusy = false;
+      });
+  }
+
+  // ---------------- 账户列表：菜单动作 ----------------
+
+  function handleAccountMenuAction(action, id) {
+    var api = window.launcherAPI;
+    var account = accountById(id);
+    closeAccountMenu();
+    if (!account) return;
+
+    if (action === 'use') {
+      if (!api || typeof api.selectAccount !== 'function') return;
+      api.selectAccount(id)
+        .then(applyAccountSnapshot)
+        .catch(function (error) {
+          console.error('[accounts] select failed:', error);
+        });
+      return;
+    }
+
+    if (action === 'skin') {
+      openSkinDialog(account);
+      return;
+    }
+
+    if (action === 'relogin') {
+      if (account.type === 'microsoft') openMsDialog();
+      else openOfflineDialog('authlib');
+      return;
+    }
+
+    if (action === 'delete') {
+      askConfirm('确定删除账户「' + account.name + '」吗？本机保存的令牌与皮肤会一起移除。', function () {
+        if (!api || typeof api.removeAccount !== 'function') return;
+        api.removeAccount(id)
+          .then(applyAccountSnapshot)
+          .catch(function (error) {
+            console.error('[accounts] remove failed:', error);
+          });
+      }, '删除');
+    }
+  }
+
+  // 菜单挂在 body 上，所以监听 document 而不是账户列表。
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var menuTrigger = target.closest('[data-account-menu]');
+    if (menuTrigger) {
+      var id = menuTrigger.getAttribute('data-account-menu');
+      if (openMenuId === id) closeAccountMenu();
+      else openAccountMenu(id);
+      return;
+    }
+
+    var actionEl = target.closest('[data-menu-action]');
+    if (actionEl) {
+      handleAccountMenuAction(actionEl.getAttribute('data-menu-action'), actionEl.getAttribute('data-menu-account'));
+      return;
+    }
+
+    if (openMenuId) closeAccountMenu();
+  });
+
+  // 滚动 / 改窗口大小时菜单会飘走，直接收起。
+  if (accountList) {
+    accountList.addEventListener('scroll', function () { closeAccountMenu(); }, true);
+  }
+  window.addEventListener('resize', function () { closeAccountMenu(); });
+
+  // ---------------- 账户页入口（L2） ----------------
+
+  if (accountEntries) {
+    accountEntries.addEventListener('click', function (event) {
+      var trigger = event.target && event.target.closest ? event.target.closest('[data-account-action]') : null;
+      if (!trigger) return;
+
+      var action = trigger.getAttribute('data-account-action');
+      if (action === 'microsoft') {
+        openMsDialog();
+      } else if (action === 'offline') {
+        openOfflineDialog('offline');
+      } else if (action === 'server') {
+        resetServerWizard();
+        openDialog('server');
+      }
+
+      window.dispatchEvent(new CustomEvent('launcher:account-action', {
+        detail: {
+          action: action,
+          key: trigger.getAttribute('data-control-key')
+        }
+      }));
+    });
+  }
+
+  // ---------------- 弹窗内按钮 ----------------
+
+  if (tabOffline) {
+    tabOffline.addEventListener('click', function () { setAccountTab('offline'); });
+  }
+  if (tabAuthlib) {
+    tabAuthlib.addEventListener('click', function () { setAccountTab('authlib'); });
+  }
+  if (offlineDialogLogin) {
+    offlineDialogLogin.addEventListener('click', submitOfflineAccount);
+  }
+  if (authlibDialogLogin) {
+    authlibDialogLogin.addEventListener('click', submitAuthlibAccount);
+  }
   if (offlineName) {
     offlineName.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
         event.preventDefault();
-        createOfflineAccount();
+        submitOfflineAccount();
+      }
+    });
+  }
+  if (authlibPass) {
+    authlibPass.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitAuthlibAccount();
+      }
+    });
+  }
+  if (msaDialogLogin) {
+    msaDialogLogin.addEventListener('click', loginMicrosoft);
+  }
+
+  // ---------------- L5：添加认证服务器向导 ----------------
+
+  var serverWizardPath = document.getElementById('serverWizardPath');
+  var serverUrl = document.getElementById('serverUrl');
+  var serverStepOne = document.getElementById('serverStepOne');
+  var serverStepOneHint = document.getElementById('serverStepOneHint');
+  var serverStepTwo = document.getElementById('serverStepTwo');
+  var serverInfoName = document.getElementById('serverInfoName');
+  var serverInfoApi = document.getElementById('serverInfoApi');
+  var serverInfoImpl = document.getElementById('serverInfoImpl');
+  var serverDialogStatus = document.getElementById('serverDialogStatus');
+  var serverDialogNext = document.getElementById('serverDialogNext');
+  var serverDialogPrev = document.getElementById('serverDialogPrev');
+  var serverDialogFinish = document.getElementById('serverDialogFinish');
+  var serverWizardStep = 1;
+  var createdServer = null;
+  var serverBusy = false;
+
+  function setServerStep(step) {
+    serverWizardStep = step;
+    var isFirst = step === 1;
+
+    if (serverStepOne) serverStepOne.hidden = !isFirst;
+    if (serverStepOneHint) serverStepOneHint.hidden = !isFirst;
+    if (serverStepTwo) serverStepTwo.hidden = isFirst;
+
+    if (serverDialogNext) serverDialogNext.hidden = !isFirst;
+    if (serverDialogPrev) serverDialogPrev.hidden = isFirst;
+    if (serverDialogFinish) serverDialogFinish.hidden = isFirst;
+
+    if (serverWizardPath) {
+      var dots = serverWizardPath.querySelectorAll('.wizard-path__dot');
+      for (var i = 0; i < dots.length; i += 1) {
+        dots[i].classList.toggle('is-done', i < step);
+      }
+    }
+  }
+
+  function resetServerWizard() {
+    serverWizardStep = 1;
+    createdServer = null;
+    if (serverUrl) serverUrl.value = '';
+    if (serverInfoName) serverInfoName.textContent = '—';
+    if (serverInfoApi) serverInfoApi.textContent = '—';
+    if (serverInfoImpl) serverInfoImpl.textContent = '—';
+    setHint(serverDialogStatus, '');
+    setServerStep(1);
+  }
+
+  function submitServerUrl() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.addAuthServer !== 'function') {
+      setHint(serverDialogStatus, '主进程桥接不可用', 'error');
+      return;
+    }
+
+    var url = serverUrl ? serverUrl.value.trim() : '';
+    if (!url) {
+      setHint(serverDialogStatus, '请输入认证服务器地址', 'error');
+      if (serverUrl) serverUrl.focus();
+      return;
+    }
+    if (serverBusy) return;
+
+    serverBusy = true;
+    if (serverDialogNext) serverDialogNext.disabled = true;
+    setHint(serverDialogStatus, '正在验证地址并读取服务器信息…');
+
+    api.addAuthServer(url)
+      .then(function (result) {
+        createdServer = result && result.server ? result.server : null;
+        if (result && Array.isArray(result.servers)) SERVERS = result.servers;
+
+        if (serverInfoName) serverInfoName.textContent = createdServer ? createdServer.name : '已添加';
+        if (serverInfoApi) serverInfoApi.textContent = createdServer ? createdServer.apiRoot : url;
+        if (serverInfoImpl) {
+          serverInfoImpl.textContent = createdServer
+            ? (createdServer.implementationName || 'authlib-injector') +
+              (createdServer.implementationVersion ? ' ' + createdServer.implementationVersion : '')
+            : '';
+        }
+
+        setServerStep(2);
+        setHint(serverDialogStatus, '地址验证通过', 'ok');
+        renderServers(createdServer ? createdServer.id : undefined);
+      })
+      .catch(function (error) {
+        openAccountError(error, serverDialogStatus);
+      })
+      .then(function () {
+        serverBusy = false;
+        if (serverDialogNext) serverDialogNext.disabled = false;
+      });
+  }
+
+  if (serverDialogNext) {
+    serverDialogNext.addEventListener('click', submitServerUrl);
+  }
+  if (serverDialogPrev) {
+    serverDialogPrev.addEventListener('click', function () {
+      setHint(serverDialogStatus, '');
+      setServerStep(1);
+    });
+  }
+  if (serverDialogFinish) {
+    serverDialogFinish.addEventListener('click', function () {
+      renderServers(createdServer ? createdServer.id : undefined);
+      closeDialog();
+    });
+  }
+  if (serverUrl) {
+    serverUrl.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitServerUrl();
       }
     });
   }
 
-  if (msaLogin) {
-    msaLogin.addEventListener('click', loginMicrosoft);
+  // ---------------- L5：离线皮肤设置 ----------------
+
+  var skinAccountId = null;
+  var skinPendingPath = null;
+  var skinFrame = document.getElementById('skinFrame');
+  var skinImage = document.getElementById('skinImage');
+  var skinFileMeta = document.getElementById('skinFileMeta');
+  var skinModel = document.getElementById('skinModel');
+  var skinDialogStatus = document.getElementById('skinDialogStatus');
+  var skinPick = document.getElementById('skinPick');
+  var skinConfirm = document.getElementById('skinConfirm');
+  var skinClear = document.getElementById('skinClear');
+  var skinBusy = false;
+
+  function setSkinPreview(dataUrl, meta) {
+    if (skinImage) {
+      if (dataUrl) {
+        skinImage.src = dataUrl;
+        skinImage.hidden = false;
+      } else {
+        skinImage.removeAttribute('src');
+        skinImage.hidden = true;
+      }
+    }
+    if (skinFrame) skinFrame.classList.toggle('is-empty', !dataUrl);
+    if (skinFileMeta) skinFileMeta.textContent = meta || '';
   }
 
-  if (accountList) {
-    accountList.addEventListener('click', function (event) {
-      var api = window.launcherAPI;
-      var target = event.target;
-      if (!target || !target.getAttribute) return;
+  function openSkinDialog(account) {
+    skinAccountId = account.id;
+    skinPendingPath = null;
 
-      var selectId = target.getAttribute('data-account-select');
-      if (selectId && api && typeof api.selectAccount === 'function') {
-        api.selectAccount(selectId)
-          .then(applyAccountSnapshot)
-          .catch(function (error) {
-            setHint(offlineNote, describeLaunchError(error), true);
-          });
+    if (skinModel) skinModel.value = account.skinModel === 'slim' ? 'slim' : 'classic';
+    setHint(skinDialogStatus, '');
+    setSkinPreview(null, account.hasSkin ? '已保存的皮肤' : '还没有选择皮肤');
+    openDialog('skin');
+
+    var api = window.launcherAPI;
+    if (!account.hasSkin || !api || typeof api.getSkinData !== 'function') return;
+
+    api.getSkinData(account.id)
+      .then(function (data) {
+        if (skinAccountId !== account.id) return;
+        setSkinPreview(data && data.dataUrl, data && data.dataUrl ? '已保存的皮肤' : '还没有选择皮肤');
+      })
+      .catch(function (error) {
+        console.warn('[accounts] skin preview failed:', error);
+      });
+  }
+
+  if (skinPick) {
+    skinPick.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.pickSkinFile !== 'function') return;
+
+      api.pickSkinFile()
+        .then(function (file) {
+          if (!file) return;
+          skinPendingPath = file.filePath;
+          setSkinPreview(file.dataUrl, file.width + '×' + file.height + ' · ' + file.filePath);
+          setHint(skinDialogStatus, '已选择新皮肤，点「确定」保存', 'ok');
+        })
+        .catch(function (error) {
+          openAccountError(error, skinDialogStatus);
+        });
+    });
+  }
+
+  if (skinConfirm) {
+    skinConfirm.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api) return;
+      if (skinBusy) return;
+
+      var id = skinAccountId;
+      var model = skinModel ? skinModel.value : 'classic';
+
+      if (!skinPendingPath) {
+        // 只改了模型：保存模型即可。
+        if (typeof api.setSkinModel === 'function') {
+          api.setSkinModel({ id: id, model: model })
+            .then(function (account) {
+              updateAccountInList(account);
+              closeDialog();
+            })
+            .catch(function (error) {
+              openAccountError(error, skinDialogStatus);
+            });
+        } else {
+          closeDialog();
+        }
         return;
       }
 
-      var removeId = target.getAttribute('data-account-remove');
-      if (removeId && api && typeof api.removeAccount === 'function') {
-        api.removeAccount(removeId)
-          .then(applyAccountSnapshot)
-          .catch(function (error) {
-            setHint(offlineNote, describeLaunchError(error), true);
-          });
-      }
+      skinBusy = true;
+      if (skinConfirm) skinConfirm.disabled = true;
+      setHint(skinDialogStatus, '正在保存皮肤…');
+
+      api.applySkin({ id: id, sourcePath: skinPendingPath, model: model })
+        .then(function (result) {
+          updateAccountInList(result && result.account);
+          setHint(skinDialogStatus, '皮肤已保存', 'ok');
+          window.setTimeout(closeDialog, 400);
+        })
+        .catch(function (error) {
+          openAccountError(error, skinDialogStatus);
+        })
+        .then(function () {
+          skinBusy = false;
+          if (skinConfirm) skinConfirm.disabled = false;
+        });
     });
   }
+
+  if (skinClear) {
+    skinClear.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.clearSkin !== 'function' || !skinAccountId) return;
+
+      api.clearSkin(skinAccountId)
+        .then(function (account) {
+          skinPendingPath = null;
+          updateAccountInList(account);
+          setSkinPreview(null, '还没有选择皮肤');
+          setHint(skinDialogStatus, '皮肤已清除', 'ok');
+        })
+        .catch(function (error) {
+          openAccountError(error, skinDialogStatus);
+        });
+    });
+  }
+
+  function updateAccountInList(account) {
+    if (!account) return;
+    for (var i = 0; i < ACCOUNTS.length; i += 1) {
+      if (ACCOUNTS[i].id === account.id) {
+        ACCOUNTS[i] = account;
+        break;
+      }
+    }
+    renderAccounts();
+  }
+
+  // Esc：先关弹窗，再关菜单；都要早于「关闭二级页面」的处理。
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+
+    if (openDialogName) {
+      event.stopPropagation();
+      closeDialog();
+      return;
+    }
+    if (openMenuId) {
+      event.stopPropagation();
+      closeAccountMenu();
+    }
+  }, true);
 
   // ---------------------------------------------------------
   // 设置面板：内存 / Java / 窗口尺寸 / 额外 JVM 参数
@@ -1688,7 +2361,9 @@
     if (name === 'account') {
       loadAccounts();
       window.setTimeout(function () {
-        if (offlineName) offlineName.focus();
+        // 账户页的首个入口按钮（微软账户）拿到焦点，而不是弹窗里的输入框。
+        var firstEntry = accountEntries ? accountEntries.querySelector('.account-entry') : null;
+        if (firstEntry) firstEntry.focus();
       }, 240);
     } else {
       loadSettings();

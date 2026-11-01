@@ -332,12 +332,99 @@ async function ensureFreshToken(account) {
   return { ...account, ...refreshed };
 }
 
+// ---------------- authlib-injector 第三方认证服务器 ----------------
+
+/** 统一 API 根地址：去掉首尾空白，补上结尾斜杠（后续都按 `${apiRoot}authserver/...` 拼）。 */
+function normalizeApiRoot(raw) {
+  const value = String(raw || '').trim();
+  if (!value) throw new Error('请填写认证服务器地址');
+  if (!/^https?:\/\//i.test(value)) throw new Error('认证服务器地址必须以 http:// 或 https:// 开头');
+  return value.endsWith('/') ? value : `${value}/`;
+}
+
+/** 读取 Yggdrasil API 元数据，用来确认这个地址真的是 authlib-injector 服务器。 */
+async function fetchAuthlibMeta(rawApiRoot) {
+  const apiRoot = normalizeApiRoot(rawApiRoot);
+  let body;
+  try {
+    body = await httpJson(apiRoot, { headers: { Accept: 'application/json' } });
+  } catch (error) {
+    throw new Error(`无法连接认证服务器：${error.message}`);
+  }
+
+  if (!body || typeof body !== 'object') {
+    throw new Error('该地址没有返回 Yggdrasil API 信息，可能不是 authlib-injector 服务器');
+  }
+  if (!body.signaturePublickey && !body.meta) {
+    throw new Error('该地址不是 authlib-injector 服务器（缺少 signaturePublickey / meta）');
+  }
+
+  const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
+  let name = String(meta.serverName || '').trim();
+  if (!name) {
+    try {
+      name = new URL(apiRoot).host;
+    } catch {
+      name = apiRoot;
+    }
+  }
+
+  return {
+    apiRoot,
+    name,
+    implementationName: String(meta.implementationName || 'authlib-injector'),
+    implementationVersion: String(meta.implementationVersion || ''),
+    serverName: name,
+    skinDomains: Array.isArray(body.skinDomains) ? body.skinDomains.map(String) : []
+  };
+}
+
+/** 用用户名 / 密码登录第三方认证服务器。 */
+async function authlibAuthenticate(apiRoot, { username, password }) {
+  const root = normalizeApiRoot(apiRoot);
+  const name = String(username || '').trim();
+  if (!name) throw new Error('请输入用户名');
+  if (!password) throw new Error('请输入密码');
+
+  let body;
+  try {
+    body = await postJson(`${root}authserver/authenticate`, {
+      username: name,
+      password: String(password),
+      clientToken: crypto.randomUUID().replace(/-/g, ''),
+      agent: { name: 'Minecraft', version: 1 },
+      requestUser: false
+    });
+  } catch (error) {
+    const message = String(error.message || '');
+    if (/ForbiddenOperationException|Invalid credentials/i.test(message)) {
+      throw new Error('用户名或密码错误');
+    }
+    throw new Error(`登录失败：${message}`);
+  }
+
+  if (!body || !body.accessToken) throw new Error('认证服务器没有返回 accessToken');
+
+  const profile = body.selectedProfile || (Array.isArray(body.availableProfiles) ? body.availableProfiles[0] : null);
+  if (!profile || !profile.id || !profile.name) {
+    throw new Error('该账号还没有创建游戏角色，请先在服务器网站上创建角色');
+  }
+
+  return {
+    accessToken: body.accessToken,
+    clientToken: body.clientToken || null,
+    uuid: formatUuid(profile.id),
+    name: String(profile.name)
+  };
+}
+
 /**
  * 账户存储：一个 JSON 文件 + 当前选中的账号 id。
  */
 function createAccountStore(storeDir) {
   const file = path.join(storeDir, 'accounts.json');
-  let state = { accounts: [], selectedId: null };
+  const skinsDir = path.join(storeDir, 'skins');
+  let state = { accounts: [], selectedId: null, servers: [] };
   let loaded = false;
 
   async function load() {
@@ -347,10 +434,11 @@ function createAccountStore(storeDir) {
       const parsed = JSON.parse(raw);
       state = {
         accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
-        selectedId: typeof parsed.selectedId === 'string' ? parsed.selectedId : null
+        selectedId: typeof parsed.selectedId === 'string' ? parsed.selectedId : null,
+        servers: Array.isArray(parsed.servers) ? parsed.servers : []
       };
     } catch {
-      state = { accounts: [], selectedId: null };
+      state = { accounts: [], selectedId: null, servers: [] };
     }
     loaded = true;
     return state;
@@ -378,10 +466,30 @@ function createAccountStore(storeDir) {
       name: account.name,
       uuid: account.uuid,
       selected: account.id === selectedId,
-      hasToken: account.type === 'microsoft' ? Boolean(account.accessToken) : true,
+      hasToken: account.type === 'microsoft'
+        ? Boolean(account.accessToken)
+        : account.type === 'authlib'
+          ? Boolean(account.accessToken)
+          : true,
       expiresAt: account.expiresAt || null,
       addedAt: account.addedAt || null,
-      lastUsedAt: account.lastUsedAt || null
+      lastUsedAt: account.lastUsedAt || null,
+      serverId: account.serverId || null,
+      serverName: account.serverName || null,
+      hasSkin: Boolean(account.skin && account.skin.file),
+      skinModel: account.skin && account.skin.model ? account.skin.model : 'classic'
+    };
+  }
+
+  function skinFileName(accountId) {
+    return String(accountId).replace(/[^A-Za-z0-9_-]/g, '_') + '.png';
+  }
+
+  function accountSnapshot() {
+    return {
+      accounts: state.accounts.map((account) => publicView(account, state.selectedId)),
+      selectedId: state.selectedId,
+      servers: state.servers.map((server) => ({ ...server }))
     };
   }
 
@@ -391,8 +499,146 @@ function createAccountStore(storeDir) {
       return {
         accounts: current.accounts.map((account) => publicView(account, current.selectedId)),
         selectedId: current.selectedId,
-        selected: current.accounts.find((account) => account.id === current.selectedId) || null
+        selected: current.accounts.find((account) => account.id === current.selectedId) || null,
+        servers: current.servers.map((server) => ({ ...server }))
       };
+    },
+
+    async listServers() {
+      const current = await load();
+      return current.servers.map((server) => ({ ...server }));
+    },
+
+    /** 添加认证服务器：先验证地址，再落盘（同域名不重复添加）。 */
+    async addServer(rawApiRoot) {
+      const meta = await fetchAuthlibMeta(rawApiRoot);
+      const current = await load();
+
+      const existing = current.servers.find((server) => server.apiRoot === meta.apiRoot);
+      if (existing) {
+        existing.name = meta.name || existing.name;
+        existing.updatedAt = new Date().toISOString();
+        await persist();
+        return { server: { ...existing }, servers: current.servers.map((item) => ({ ...item })) };
+      }
+
+      const server = {
+        id: crypto.createHash('sha1').update(meta.apiRoot).digest('hex').slice(0, 12),
+        apiRoot: meta.apiRoot,
+        name: meta.name,
+        implementationName: meta.implementationName,
+        implementationVersion: meta.implementationVersion,
+        addedAt: new Date().toISOString()
+      };
+
+      current.servers.push(server);
+      await persist();
+      return { server: { ...server }, servers: current.servers.map((item) => ({ ...item })) };
+    },
+
+    async removeServer(id) {
+      const current = await load();
+      current.servers = current.servers.filter((server) => server.id !== id);
+      // 依赖该服务器的账户一并移除，避免留下无法验证的账号。
+      current.accounts = current.accounts.filter((account) => account.serverId !== id);
+      if (!current.accounts.some((account) => account.id === current.selectedId)) {
+        current.selectedId = current.accounts.length > 0 ? current.accounts[0].id : null;
+      }
+      await persist();
+      return accountSnapshot();
+    },
+
+    /** 第三方认证服务器登录：成功后写入并选中该账户。 */
+    async addAuthlib({ serverId, username, password }) {
+      const current = await load();
+      const server = current.servers.find((item) => item.id === serverId);
+      if (!server) throw new Error('请先选择认证服务器');
+
+      const session = await authlibAuthenticate(server.apiRoot, { username, password });
+      const id = `authlib:${server.id}:${String(session.uuid).toLowerCase()}`;
+
+      const account = {
+        id,
+        type: 'authlib',
+        name: session.name,
+        uuid: session.uuid,
+        accessToken: session.accessToken,
+        clientToken: session.clientToken,
+        serverId: server.id,
+        serverName: server.name,
+        serverApiRoot: server.apiRoot,
+        addedAt: new Date().toISOString(),
+        lastUsedAt: null
+      };
+
+      const index = current.accounts.findIndex((item) => item.id === id);
+      if (index >= 0) {
+        // 保留原有皮肤等本地数据。
+        current.accounts[index] = { ...current.accounts[index], ...account };
+      } else {
+        current.accounts.push(account);
+      }
+
+      current.selectedId = id;
+      await persist();
+      return { account: publicView(current.accounts.find((item) => item.id === id), current.selectedId), ...accountSnapshot() };
+    },
+
+    /** 离线皮肤：把用户选的图片复制到数据目录，供 UI 预览（暂不注入游戏）。 */
+    async setSkin(id, { sourcePath, model }) {
+      const current = await load();
+      const account = current.accounts.find((item) => item.id === id);
+      if (!account) throw new Error('账户不存在');
+
+      await fs.mkdir(skinsDir, { recursive: true });
+      const file = skinFileName(account.id);
+      await fs.copyFile(sourcePath, path.join(skinsDir, file));
+
+      account.skin = {
+        file,
+        model: model === 'slim' ? 'slim' : 'classic',
+        updatedAt: new Date().toISOString()
+      };
+      await persist();
+      return publicView(account, current.selectedId);
+    },
+
+    async clearSkin(id) {
+      const current = await load();
+      const account = current.accounts.find((item) => item.id === id);
+      if (!account) throw new Error('账户不存在');
+      if (account.skin && account.skin.file) {
+        await fs.rm(path.join(skinsDir, account.skin.file), { force: true }).catch(() => {});
+      }
+      delete account.skin;
+      await persist();
+      return publicView(account, current.selectedId);
+    },
+
+    /** 只改皮肤模型（经典 / 纤细），不动图片。 */
+    async setSkinModel(id, model) {
+      const current = await load();
+      const account = current.accounts.find((item) => item.id === id);
+      if (!account) throw new Error('账户不存在');
+      if (account.skin) {
+        account.skin.model = model === 'slim' ? 'slim' : 'classic';
+        await persist();
+      }
+      return publicView(account, current.selectedId);
+    },
+
+    /** 供主进程读取皮肤 PNG（预览 / 后续注入）。 */
+    async getSkinPath(id) {
+      const current = await load();
+      const account = current.accounts.find((item) => item.id === id);
+      if (!account || !account.skin || !account.skin.file) return null;
+      const file = path.join(skinsDir, account.skin.file);
+      try {
+        await fs.access(file);
+        return file;
+      } catch {
+        return null;
+      }
     },
 
     async getSelected() {
@@ -475,15 +721,16 @@ function createAccountStore(storeDir) {
 
     async remove(id) {
       const current = await load();
+      const removed = current.accounts.find((account) => account.id === id);
+      if (removed && removed.skin && removed.skin.file) {
+        await fs.rm(path.join(skinsDir, removed.skin.file), { force: true }).catch(() => {});
+      }
       current.accounts = current.accounts.filter((account) => account.id !== id);
       if (current.selectedId === id) {
         current.selectedId = current.accounts.length > 0 ? current.accounts[0].id : null;
       }
       await persist();
-      return {
-        accounts: current.accounts.map((account) => publicView(account, current.selectedId)),
-        selectedId: current.selectedId
-      };
+      return accountSnapshot();
     },
 
     async select(id) {
@@ -492,10 +739,7 @@ function createAccountStore(storeDir) {
       if (!exists) throw new Error('账号不存在');
       current.selectedId = id;
       await persist();
-      return {
-        accounts: current.accounts.map((account) => publicView(account, current.selectedId)),
-        selectedId: current.selectedId
-      };
+      return accountSnapshot();
     },
 
     async markUsed(id) {
@@ -515,5 +759,8 @@ module.exports = {
   ensureFreshToken,
   offlineUuid,
   formatUuid,
+  normalizeApiRoot,
+  fetchAuthlibMeta,
+  authlibAuthenticate,
   MSA_CLIENT_ID
 };

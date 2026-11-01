@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -162,6 +162,59 @@ function getAccountStore() {
     accountStore = accounts.createAccountStore(app.getPath('userData'));
   }
   return accountStore;
+}
+
+const PNG_SIGNATURE = '89504e470d0a1a0a';
+const MAX_SKIN_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 校验皮肤 PNG：只看文件头，避免把任意文件写进数据目录。
+ * 允许 64x64 / 64x32 以及它们的高清倍数。
+ */
+async function readSkinPng(filePath) {
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    throw new Error('找不到这个文件');
+  }
+  if (!stat.isFile()) throw new Error('请选择一个文件');
+  if (stat.size > MAX_SKIN_BYTES) throw new Error('皮肤文件不能超过 4 MB');
+  if (stat.size < 33) throw new Error('文件太小，不是有效的 PNG 皮肤');
+
+  const handle = await fs.open(filePath, 'r');
+  let header;
+  try {
+    header = Buffer.alloc(24);
+    await handle.read(header, 0, 24, 0);
+  } finally {
+    await handle.close();
+  }
+
+  if (header.subarray(0, 8).toString('hex') !== PNG_SIGNATURE) {
+    throw new Error('皮肤需要是 PNG 格式');
+  }
+
+  const width = header.readUInt32BE(16);
+  const height = header.readUInt32BE(20);
+  const validSize = [64, 128, 256, 512].includes(width) && (height === width || height === width / 2);
+  if (!validSize) {
+    throw new Error(`皮肤尺寸应为 64×64 / 64×32（或它们的高清倍数），当前是 ${width}×${height}`);
+  }
+
+  return { width, height };
+}
+
+async function readSkinData(id) {
+  if (!id) return { dataUrl: null, model: 'classic' };
+  const file = await getAccountStore().getSkinPath(id);
+  if (!file) return { dataUrl: null, model: 'classic' };
+  try {
+    const buffer = await fs.readFile(file);
+    return { dataUrl: `data:image/png;base64,${buffer.toString('base64')}`, model: null };
+  } catch {
+    return { dataUrl: null, model: 'classic' };
+  }
 }
 
 function settingsFile() {
@@ -629,7 +682,8 @@ function registerIpcHandlers() {
     const result = await getAccountStore().list();
     return {
       accounts: result.accounts,
-      selectedId: result.selectedId
+      selectedId: result.selectedId,
+      servers: result.servers
     };
   });
 
@@ -663,6 +717,83 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     await getAccountStore().remove(String(id || ''));
     return getAccountStore().list();
+  });
+
+  // ---- 第三方认证服务器（authlib-injector）----
+
+  ipcMain.handle('accounts:servers', async (event) => {
+    assertAppWindow(event);
+    return getAccountStore().listServers();
+  });
+
+  ipcMain.handle('accounts:add-server', async (event, payload = {}) => {
+    assertAppWindow(event);
+    return getAccountStore().addServer(payload && payload.apiRoot);
+  });
+
+  ipcMain.handle('accounts:remove-server', async (event, id) => {
+    assertAppWindow(event);
+    return getAccountStore().removeServer(String(id || ''));
+  });
+
+  ipcMain.handle('accounts:login-authlib', async (event, payload = {}) => {
+    assertAppWindow(event);
+    try {
+      return await getAccountStore().addAuthlib({
+        serverId: String(payload.serverId || ''),
+        username: payload.username,
+        password: payload.password
+      });
+    } catch (error) {
+      console.error('[accounts] authlib login failed:', error);
+      throw error;
+    }
+  });
+
+  // ---- 离线皮肤 ----
+
+  ipcMain.handle('accounts:pick-skin', async (event) => {
+    const win = assertAppWindow(event);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择皮肤文件',
+      buttonLabel: '选择',
+      filters: [{ name: 'Minecraft 皮肤 (PNG)', extensions: ['png'] }],
+      properties: ['openFile']
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+
+    const filePath = result.filePaths[0];
+    const info = await readSkinPng(filePath);
+    return { filePath, ...info };
+  });
+
+  ipcMain.handle('accounts:set-skin', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const id = String(payload.id || '');
+    const sourcePath = String(payload.sourcePath || '');
+    if (!sourcePath) throw new Error('请先选择皮肤文件');
+
+    // 复制前再校验一次，避免把任意文件写进数据目录。
+    await readSkinPng(sourcePath);
+    const account = await getAccountStore().setSkin(id, { sourcePath, model: payload.model });
+    const scope = await readSkinData(id);
+    return { account, skin: scope };
+  });
+
+  ipcMain.handle('accounts:clear-skin', async (event, id) => {
+    assertAppWindow(event);
+    return getAccountStore().clearSkin(String(id || ''));
+  });
+
+  ipcMain.handle('accounts:set-skin-model', async (event, payload = {}) => {
+    assertAppWindow(event);
+    return getAccountStore().setSkinModel(String(payload.id || ''), payload.model);
+  });
+
+  ipcMain.handle('accounts:skin-data', async (event, id) => {
+    assertAppWindow(event);
+    return readSkinData(String(id || ''));
   });
 
   // ---------------- 设置 ----------------

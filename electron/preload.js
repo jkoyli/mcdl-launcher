@@ -77,6 +77,30 @@ const launcherAPI = {
 
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', id),
 
+  /**
+   * 第三方认证服务器（authlib-injector）。
+   */
+  getAuthServers: () => ipcRenderer.invoke('accounts:servers'),
+
+  addAuthServer: (apiRoot) => ipcRenderer.invoke('accounts:add-server', { apiRoot }),
+
+  removeAuthServer: (id) => ipcRenderer.invoke('accounts:remove-server', id),
+
+  loginAuthlib: (payload) => ipcRenderer.invoke('accounts:login-authlib', payload),
+
+  /**
+   * 离线皮肤：选文件 / 保存 / 只改模型 / 清除 / 读取预览。
+   */
+  pickSkinFile: () => ipcRenderer.invoke('accounts:pick-skin'),
+
+  applySkin: (payload) => ipcRenderer.invoke('accounts:set-skin', payload),
+
+  setSkinModel: (payload) => ipcRenderer.invoke('accounts:set-skin-model', payload),
+
+  clearSkin: (id) => ipcRenderer.invoke('accounts:clear-skin', id),
+
+  getSkinData: (id) => ipcRenderer.invoke('accounts:skin-data', id),
+
   // ---------------- 设置 ----------------
 
   getSettings: () => ipcRenderer.invoke('settings:get'),

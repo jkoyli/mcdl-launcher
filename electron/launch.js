@@ -232,6 +232,20 @@ function buildAuthVars(account) {
     };
   }
 
+  if (account.type === 'authlib') {
+    if (!account.accessToken) throw new Error('第三方账号缺少访问令牌，请重新登录');
+    if (!account.serverApiRoot) throw new Error('第三方账号缺少认证服务器地址，请重新登录');
+    return {
+      name: account.name,
+      uuid: formatUuid(account.uuid),
+      accessToken: account.accessToken,
+      userType: 'mojang',
+      xuid: '',
+      clientId: '',
+      authlibApiRoot: account.serverApiRoot
+    };
+  }
+
   const name = String(account.name || '').trim();
   if (!name) throw new Error('离线账号名不能为空');
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) {
@@ -247,6 +261,40 @@ function buildAuthVars(account) {
   };
 }
 
+/**
+ * authlib-injector：第三方认证服务器需要这个 java agent 才能把登录请求改写到该服务器。
+ * 缺失时按官方 latest.json 下载一次并缓存在数据目录。
+ */
+async function ensureAuthlibInjector(dataDir, apiRoot, onProgress) {
+  if (!apiRoot) throw new Error('第三方账号缺少认证服务器地址');
+
+  const root = dataDir || path.join(os.homedir(), '.mcdl-launcher');
+  const dir = path.join(root, 'authlib-injector');
+  const jar = path.join(dir, 'authlib-injector.jar');
+
+  if (!(await manifest.exists(jar))) {
+    await ensureDir(dir);
+    if (typeof onProgress === 'function') onProgress('正在下载 authlib-injector …');
+
+    const metaResponse = await fetch('https://authlib-injector.yushi.moe/artifact/latest.json', {
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!metaResponse.ok) throw new Error(`无法获取 authlib-injector 下载信息（HTTP ${metaResponse.status}）`);
+    const meta = await metaResponse.json();
+    const url = meta && (meta.download_url || meta.downloadUrl || meta.url);
+    if (!url) throw new Error('authlib-injector 下载信息缺少地址');
+
+    const jarResponse = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    if (!jarResponse.ok) throw new Error(`下载 authlib-injector 失败（HTTP ${jarResponse.status}）`);
+    const buffer = Buffer.from(await jarResponse.arrayBuffer());
+    if (buffer.length < 1024) throw new Error('下载到的 authlib-injector 文件异常');
+    await fs.writeFile(jar, buffer);
+  }
+
+  // 官方格式：-javaagent:<jar>=<API 根地址>
+  return `-javaagent:${jar}=${apiRoot}`;
+}
+
 async function checkVersionType(assetIndexFile) {
   try {
     const index = await manifest.readJson(assetIndexFile);
@@ -259,7 +307,7 @@ async function checkVersionType(assetIndexFile) {
 /**
  * 构造启动计划（不产生进程），便于测试与预览。
  */
-async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, resolveJava }) {
+async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, resolveJava, dataDir, onProgress }) {
   const resolvedGameDir = path.resolve(gameDir);
   const versionId = String(instanceId || '').trim();
   if (!versionId) throw new Error('缺少实例 ID');
@@ -415,6 +463,11 @@ async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, re
     );
   }
 
+  // 第三方认证服务器需要 authlib-injector 改写登录请求。
+  if (auth.authlibApiRoot) {
+    jvmArgs.push(await ensureAuthlibInjector(dataDir, auth.authlibApiRoot, onProgress));
+  }
+
   return {
     gameDir: resolvedGameDir,
     versionId,
@@ -462,8 +515,18 @@ function javaExecutableForSpawn(javaPath) {
  * 真正启动一个实例。
  * @returns {Promise<{launchId:string,pid:number|null,plan:object,logFile:string}>}
  */
-async function launchInstance({ gameDir, instanceId, account, settings = {}, resolveJava, onEvent }) {
-  const plan = await buildLaunchPlan({ gameDir, instanceId, account, settings, resolveJava });
+async function launchInstance({ gameDir, instanceId, account, settings = {}, resolveJava, dataDir, onEvent }) {
+  const plan = await buildLaunchPlan({
+    gameDir,
+    instanceId,
+    account,
+    settings,
+    resolveJava,
+    dataDir,
+    onProgress: (message) => {
+      if (typeof onEvent === 'function') onEvent('status', { message });
+    }
+  });
   const launchId = crypto.randomUUID();
   const logFile = launchLogFile(plan.gameDir);
 

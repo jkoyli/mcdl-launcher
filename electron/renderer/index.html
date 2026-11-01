@@ -276,6 +276,23 @@
     box-shadow: 0 0 9px rgba(159, 208, 255, .7);
   }
 
+  /* 尚未接入的导航项：保持可见但不可点击，避免假按钮 */
+  .rail-btn:disabled {
+    opacity: .38;
+    cursor: default;
+  }
+
+  .rail-btn:disabled:hover {
+    width: 40px;
+    justify-content: center;
+    gap: 0;
+    padding-left: 0;
+    border-radius: 999px;
+    color: inherit;
+    border-color: rgba(159, 208, 255, .18);
+    background: rgba(9, 13, 20, .5);
+  }
+
   .rail-avatar {
     width: 16px;
     height: 16px;
@@ -2683,51 +2700,13 @@
     min-width: 0;
     max-height: 64vh;
     overflow-y: auto;
+    overflow-x: hidden;
     display: grid;
     gap: 12px;
     padding-left: clamp(22px, 2.6vw, 40px);
     border-left: 1px solid rgba(255, 255, 255, .09);
     scrollbar-width: thin;
     scrollbar-color: rgba(159, 208, 255, .24) transparent;
-  }
-
-  .account-card {
-    display: grid;
-    gap: 8px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid rgba(255, 255, 255, .06);
-  }
-
-  .account-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .account-row .create-control {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-
-  .create-submit--compact {
-    flex: 0 0 auto;
-    padding: 0 16px;
-    height: 42px;
-    letter-spacing: .12em;
-  }
-
-  .account-hint {
-    margin: 0;
-    max-width: none;
-    text-align: left;
-    font-size: 8px;
-    line-height: 1.6;
-    letter-spacing: .06em;
-    color: rgba(199, 212, 230, .34);
-  }
-
-  .account-hint.is-error {
-    color: rgba(255, 154, 142, .78);
   }
 
   .account-list {
@@ -2794,46 +2773,6 @@
     flex: 0 0 auto;
   }
 
-  .account-mini {
-    padding: 5px 9px;
-    border: 1px solid rgba(159, 208, 255, .2);
-    border-radius: 2px;
-    background: transparent;
-    color: rgba(213, 228, 245, .68);
-    font: 600 7.5px/1 inherit;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition:
-      color 140ms linear,
-      border-color 140ms linear,
-      background-color 140ms linear;
-  }
-
-  .account-mini:hover,
-  .account-mini:focus-visible {
-    color: #f4faff;
-    border-color: rgba(159, 208, 255, .46);
-    background: rgba(159, 208, 255, .06);
-    outline: none;
-  }
-
-  .account-mini.is-danger:hover,
-  .account-mini.is-danger:focus-visible {
-    color: #ffc2bb;
-    border-color: rgba(255, 138, 114, .46);
-    background: rgba(255, 138, 114, .06);
-  }
-
-  .settings-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px 14px;
-  }
-
-  .settings-grid .create-field {
-    min-width: 0;
-  }
 
   .settings-field--wide {
     grid-column: 1 / -1;
@@ -2861,6 +2800,532 @@
 
   .settings-status.is-error {
     color: rgba(255, 154, 142, .78);
+  }
+
+  /* ---------------------------------------------------------
+     账户页：登录方式入口（对应清单 account.methods.* / injector.add）
+     --------------------------------------------------------- */
+  .account-entries {
+    display: grid;
+    gap: 6px;
+  }
+
+  .account-entry {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(159, 208, 255, .14);
+    border-radius: 3px;
+    background: rgba(159, 208, 255, .022);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color 150ms linear,
+      background-color 150ms linear,
+      box-shadow 180ms ease,
+      transform 180ms ease;
+  }
+
+  .account-entry:hover,
+  .account-entry:focus-visible {
+    border-color: rgba(159, 208, 255, .44);
+    background: rgba(159, 208, 255, .06);
+    box-shadow: 0 0 24px rgba(94, 142, 207, .12);
+    transform: translateX(2px);
+    outline: none;
+  }
+
+  .account-entry__icon {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid rgba(159, 208, 255, .18);
+    border-radius: 3px;
+    background: rgba(159, 208, 255, .05);
+    color: rgba(199, 220, 243, .78);
+  }
+
+  .account-entry__icon svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .account-entry__text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .account-entry__text b {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .03em;
+    color: #eef5ff;
+  }
+
+  .account-entry__text em {
+    font-style: normal;
+    font-size: 7.5px;
+    line-height: 1.4;
+    letter-spacing: .08em;
+    color: rgba(199, 212, 230, .38);
+  }
+
+  .account-entry__go {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: rgba(159, 208, 255, .5);
+  }
+
+  .account-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .account-list-count {
+    font-size: 7.5px;
+    letter-spacing: .14em;
+    color: rgba(159, 208, 255, .42);
+  }
+
+  .account-item {
+    position: relative;
+  }
+
+  .account-item__badge {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    border: 1px solid rgba(122, 199, 160, .34);
+    border-radius: 2px;
+    background: rgba(122, 199, 160, .08);
+    color: rgba(176, 232, 203, .85);
+    font: 600 7px/1 inherit;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .account-item__menu {
+    padding: 5px 8px;
+    border: 1px solid rgba(159, 208, 255, .2);
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(213, 228, 245, .66);
+    font: 600 10px/1 inherit;
+    letter-spacing: .04em;
+    cursor: pointer;
+    transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .account-item__menu:hover,
+  .account-item__menu:focus-visible {
+    color: #f4faff;
+    border-color: rgba(159, 208, 255, .46);
+    background: rgba(159, 208, 255, .07);
+    outline: none;
+  }
+
+  .account-menu {
+    position: fixed;
+    z-index: 40;
+    min-width: 136px;
+    padding: 4px;
+    border: 1px solid rgba(159, 208, 255, .26);
+    border-radius: 3px;
+    background: rgba(10, 15, 23, .97);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
+    display: grid;
+    gap: 2px;
+  }
+
+  .account-menu button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(213, 228, 245, .78);
+    font: 400 10px/1 inherit;
+    letter-spacing: .03em;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .account-menu button:hover,
+  .account-menu button:focus-visible {
+    background: rgba(159, 208, 255, .09);
+    color: #f4faff;
+    outline: none;
+  }
+
+  .account-menu button.is-danger:hover,
+  .account-menu button.is-danger:focus-visible {
+    background: rgba(255, 138, 114, .12);
+    color: #ffc2bb;
+  }
+
+  /* ---------------------------------------------------------
+     L5 弹窗：微软登录 / 添加离线账户 / 认证服务器向导 / 离线皮肤
+     --------------------------------------------------------- */
+  .dialog-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .dialog-layer[hidden] {
+    display: none;
+  }
+
+  .dialog-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(4, 7, 11, .62);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+
+  .dialog {
+    position: relative;
+    width: min(460px, 92vw);
+    max-height: 86vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border: 1px solid rgba(159, 208, 255, .22);
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(24, 33, 47, .96), rgba(12, 18, 27, .98));
+    box-shadow:
+      0 0 0 1px rgba(159, 208, 255, .05),
+      0 28px 80px rgba(0, 0, 0, .6),
+      0 0 60px rgba(80, 124, 190, .12);
+    opacity: 0;
+    transform: translateY(10px) scale(.985);
+    transition:
+      opacity 180ms ease,
+      transform 200ms cubic-bezier(.22, .8, .3, 1);
+  }
+
+  .dialog[hidden] {
+    display: none;
+  }
+
+  .dialog.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .dialog--wide {
+    width: min(560px, 94vw);
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+  }
+
+  .dialog-title {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: .02em;
+    color: #f2f7ff;
+  }
+
+  .dialog-x {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(199, 212, 230, .5);
+    font: 400 14px/1 inherit;
+    cursor: pointer;
+    transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .dialog-x:hover,
+  .dialog-x:focus-visible {
+    color: #f4faff;
+    border-color: rgba(159, 208, 255, .3);
+    background: rgba(159, 208, 255, .06);
+    outline: none;
+  }
+
+  .dialog-body {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+  }
+
+  .dialog-text {
+    margin: 0;
+    font-size: 10px;
+    line-height: 1.75;
+    letter-spacing: .03em;
+    color: rgba(199, 212, 230, .5);
+  }
+
+  .dialog-list {
+    margin: 0;
+    padding-left: 16px;
+    display: grid;
+    gap: 5px;
+    font-size: 9.5px;
+    line-height: 1.6;
+    letter-spacing: .03em;
+    color: rgba(199, 212, 230, .44);
+  }
+
+  .dialog-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .dialog-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 16px 14px;
+    border-top: 1px solid rgba(255, 255, 255, .07);
+  }
+
+  .dialog-foot__left {
+    margin-right: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dialog-btn {
+    padding: 9px 15px;
+    border: 1px solid rgba(159, 208, 255, .24);
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(226, 238, 251, .82);
+    font: 600 8.5px/1 inherit;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      border-color 150ms linear,
+      background-color 150ms linear,
+      color 150ms linear,
+      box-shadow 180ms ease;
+  }
+
+  .dialog-btn:hover,
+  .dialog-btn:focus-visible {
+    color: #f7fbff;
+    border-color: rgba(159, 208, 255, .52);
+    background: rgba(159, 208, 255, .07);
+    outline: none;
+  }
+
+  .dialog-btn--primary {
+    border-color: rgba(159, 208, 255, .44);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02)),
+      rgba(91, 116, 227, .14);
+    color: #f7fbff;
+  }
+
+  .dialog-btn--primary:hover,
+  .dialog-btn--primary:focus-visible {
+    border-color: rgba(159, 208, 255, .7);
+    box-shadow: 0 0 26px rgba(94, 142, 207, .18);
+  }
+
+  .dialog-btn:disabled {
+    opacity: .45;
+    cursor: default;
+    transform: none;
+  }
+
+  .dialog-status {
+    font-size: 8px;
+    line-height: 1.6;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
+  }
+
+  .dialog-status.is-error {
+    color: rgba(255, 154, 142, .82);
+  }
+
+  .dialog-status.is-ok {
+    color: rgba(176, 232, 203, .78);
+  }
+
+  .dialog-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, .02);
+  }
+
+  .dialog-tab {
+    flex: 1 1 0;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(199, 212, 230, .5);
+    font: 600 8.5px/1 inherit;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 140ms linear, background-color 140ms linear, border-color 140ms linear;
+  }
+
+  .dialog-tab:hover,
+  .dialog-tab:focus-visible {
+    color: #eaf3ff;
+    outline: none;
+  }
+
+  .dialog-tab[aria-selected="true"] {
+    border-color: rgba(159, 208, 255, .34);
+    background: rgba(159, 208, 255, .1);
+    color: #f4faff;
+  }
+
+  .dialog-pane[hidden] {
+    display: none;
+  }
+
+  .dialog-pane {
+    display: grid;
+    gap: 12px;
+  }
+
+  .dialog-warn {
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 196, 120, .22);
+    border-radius: 3px;
+    background: rgba(255, 196, 120, .05);
+    font-size: 8.5px;
+    line-height: 1.65;
+    letter-spacing: .03em;
+    color: rgba(255, 214, 160, .72);
+  }
+
+  .skin-preview {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .skin-preview__frame {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 3px;
+    background:
+      repeating-conic-gradient(rgba(255, 255, 255, .045) 0% 25%, transparent 0% 50%) 50% / 12px 12px,
+      rgba(8, 13, 20, .5);
+    overflow: hidden;
+  }
+
+  .skin-preview__frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+  }
+
+  .skin-preview__frame.is-empty::after {
+    content: "未选择皮肤";
+    font-size: 7.5px;
+    letter-spacing: .1em;
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .skin-preview__meta {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .wizard-path {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 7.5px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .42);
+  }
+
+  .wizard-path__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    border: 1px solid rgba(159, 208, 255, .4);
+  }
+
+  .wizard-path__dot.is-done {
+    background: rgba(159, 208, 255, .75);
+    border-color: rgba(159, 208, 255, .75);
+  }
+
+  .server-info {
+    display: grid;
+    gap: 6px;
+    padding: 11px 12px;
+    border: 1px solid rgba(159, 208, 255, .18);
+    border-radius: 3px;
+    background: rgba(159, 208, 255, .035);
+  }
+
+  .server-info b {
+    font-size: 11px;
+    font-weight: 500;
+    color: #eef5ff;
+  }
+
+  .server-info span {
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
   }
 
   /* ---------------------------------------------------------
@@ -3018,7 +3483,7 @@
         <rect x="13.5" y="13.5" width="6.5" height="6.5" rx=".5"/>
       </svg>
     </button>
-    <button class="rail-btn" type="button" data-nav="downloads" data-label="下载中心" aria-label="下载中心">
+    <button class="rail-btn" type="button" data-nav="downloads" data-label="下载中心 · 待接入" aria-label="下载中心（待接入）" title="下载中心待接入" disabled>
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 4v10"/>
         <path d="M8 10.5 12 14.5l4-4"/>
@@ -3210,26 +3675,45 @@
       </div>
 
       <div class="account-body">
-        <div class="account-card">
-          <span class="create-label">Offline / 离线账号</span>
-          <div class="account-row">
-            <input class="create-control" id="offlineName" type="text" maxlength="16" placeholder="3-16 位字母、数字或下划线" autocomplete="off">
-            <button class="create-submit create-submit--compact" id="offlineSubmit" type="button">
-              <span>创建</span>
-            </button>
-          </div>
-          <p class="account-hint" id="offlineNote">离线账号可以单人游戏，不能进入正版验证服务器。</p>
+        <!-- 登录方式入口：对应清单 account.methods.microsoft / account.methods.offline / account.injector.add -->
+        <div class="account-entries" id="accountEntries">
+          <button class="account-entry" type="button" data-account-action="microsoft" data-control-key="account.methods.microsoft">
+            <span class="account-entry__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg>
+            </span>
+            <span class="account-entry__text">
+              <b>微软账户</b>
+              <em>登录 Microsoft 账号（正版）</em>
+            </span>
+            <span class="account-entry__go" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="account-entry" type="button" data-account-action="offline" data-control-key="account.methods.offline">
+            <span class="account-entry__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 12.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4.5 20c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5"/></svg>
+            </span>
+            <span class="account-entry__text">
+              <b>离线模式</b>
+              <em>只用本地玩家名，不需要联网</em>
+            </span>
+            <span class="account-entry__go" aria-hidden="true">↗</span>
+          </button>
+
+          <button class="account-entry" type="button" data-account-action="server" data-control-key="account.injector.add">
+            <span class="account-entry__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6"/><path d="M5 12c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6"/></svg>
+            </span>
+            <span class="account-entry__text">
+              <b>添加认证服务器</b>
+              <em>authlib-injector 第三方登录</em>
+            </span>
+            <span class="account-entry__go" aria-hidden="true">↗</span>
+          </button>
         </div>
 
-        <div class="account-card">
-          <span class="create-label">Microsoft / 微软账号</span>
-          <div class="account-row">
-            <button class="create-submit create-submit--compact" id="msaLogin" type="button">
-              <span>登录微软账号</span>
-              <span aria-hidden="true">↗</span>
-            </button>
-          </div>
-          <p class="account-hint" id="msaNote">会打开一个登录窗口；需要该账号已拥有 Minecraft: Java Edition。</p>
+        <div class="account-list-head">
+          <span class="create-label">Saved accounts / 已保存账户</span>
+          <span class="account-list-count" id="accountCount">0</span>
         </div>
 
         <div class="account-list" id="accountList" role="list"></div>
@@ -3343,6 +3827,169 @@
     <section class="page page--a" id="pageA"></section>
     <section class="page page--b gone" id="pageB"></section>
     <div class="hint" id="hint"></div>
+  </div>
+
+  <!-- L5 弹窗层：账户页的 5 个弹窗（微软登录 / 添加账户 / 认证服务器 / 离线皮肤 / 确认） -->
+  <div class="dialog-layer" id="dialogLayer" hidden>
+    <div class="dialog-scrim" data-dialog-close></div>
+
+    <section class="dialog" id="dlgMicrosoft" role="dialog" aria-modal="true" aria-labelledby="dlgMicrosoftTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgMicrosoftTitle">微软登录</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text">点「登录」会打开一个独立的登录窗口，在窗口里完成 Microsoft 账号登录。令牌只保存在本机数据目录，不会上传。</p>
+        <ul class="dialog-list">
+          <li>需要该账号已拥有 Minecraft: Java Edition</li>
+          <li>首次登录可能需要先在 Xbox 创建档案</li>
+          <li>未成年账号需要家长先加入 Microsoft 家庭组</li>
+        </ul>
+        <p class="dialog-status" id="msaDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="msaDialogLogin" type="button">登录</button>
+      </div>
+    </section>
+
+    <section class="dialog" id="dlgOffline" role="dialog" aria-modal="true" aria-labelledby="dlgOfflineTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgOfflineTitle">添加账户</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="dialog-tabs" role="tablist" aria-label="登录方式">
+          <button class="dialog-tab" id="tabOffline" type="button" role="tab" aria-selected="true" aria-controls="paneOffline">离线模式</button>
+          <button class="dialog-tab" id="tabAuthlib" type="button" role="tab" aria-selected="false" aria-controls="paneAuthlib">正版登录</button>
+        </div>
+
+        <!-- 离线模式：与清单 CreateAccountPane 的离线页签对应 -->
+        <div class="dialog-pane" id="paneOffline" role="tabpanel" aria-labelledby="tabOffline">
+          <label class="dialog-field" for="offlineName">
+            <span class="create-label">Player name / 玩家名</span>
+            <input class="create-control" id="offlineName" type="text" maxlength="16" placeholder="3-16 位字母、数字或下划线" autocomplete="off">
+          </label>
+          <p class="dialog-text">离线账号可以单人游戏与局域网联机，但无法进入正版验证服务器。</p>
+        </div>
+
+        <!-- 正版登录：authlib-injector 第三方认证服务器 -->
+        <div class="dialog-pane" id="paneAuthlib" role="tabpanel" aria-labelledby="tabAuthlib" hidden>
+          <label class="dialog-field" for="authlibServer">
+            <span class="create-label">Auth server / 认证服务器</span>
+            <span class="create-control-wrap">
+              <select class="create-control" id="authlibServer">
+                <option value="">还没有认证服务器，先添加一个</option>
+              </select>
+              <span class="create-select-arrow" aria-hidden="true"></span>
+            </span>
+          </label>
+          <label class="dialog-field" for="authlibUser">
+            <span class="create-label">Username / 邮箱或用户名</span>
+            <input class="create-control" id="authlibUser" type="text" autocomplete="off">
+          </label>
+          <label class="dialog-field" for="authlibPass">
+            <span class="create-label">Password / 密码</span>
+            <input class="create-control" id="authlibPass" type="password" autocomplete="off">
+          </label>
+          <p class="dialog-text" id="authlibHint">登录成功后会用 authlib-injector 把游戏请求转发到该服务器。</p>
+        </div>
+
+        <p class="dialog-status" id="offlineDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="offlineDialogLogin" type="button">登录</button>
+        <button class="dialog-btn dialog-btn--primary" id="authlibDialogLogin" type="button" hidden>确定</button>
+      </div>
+    </section>
+
+    <section class="dialog" id="dlgServer" role="dialog" aria-modal="true" aria-labelledby="dlgServerTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgServerTitle">添加认证服务器</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="wizard-path" id="serverWizardPath">
+          <span class="wizard-path__dot is-done"></span><span>地址</span>
+          <span class="wizard-path__dot"></span><span>确认</span>
+        </div>
+
+        <label class="dialog-field" id="serverStepOne" for="serverUrl">
+          <span class="create-label">API root / 认证服务器地址</span>
+          <input class="create-control" id="serverUrl" type="text" placeholder="https://example.com/api/yggdrasil" autocomplete="off">
+        </label>
+        <p class="dialog-text" id="serverStepOneHint">填写 authlib-injector 的 API 根地址。启动器会读取它的 Yggdrasil 元数据来确认地址有效。</p>
+
+        <div class="dialog-pane" id="serverStepTwo" hidden>
+          <div class="server-info">
+            <b id="serverInfoName">—</b>
+            <span id="serverInfoApi">—</span>
+            <span id="serverInfoImpl">—</span>
+          </div>
+          <p class="dialog-text">完成后可以在「离线模式 → 正版登录」页签里用该服务器的账号登录。</p>
+        </div>
+
+        <p class="dialog-status" id="serverDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" id="serverDialogCancel" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn" id="serverDialogPrev" type="button" hidden>上一步</button>
+        <button class="dialog-btn dialog-btn--primary" id="serverDialogNext" type="button">下一步</button>
+        <button class="dialog-btn dialog-btn--primary" id="serverDialogFinish" type="button" hidden>完成</button>
+      </div>
+    </section>
+
+    <section class="dialog" id="dlgSkin" role="dialog" aria-modal="true" aria-labelledby="dlgSkinTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgSkinTitle">离线皮肤设置</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="skin-preview">
+          <div class="skin-preview__frame is-empty" id="skinFrame">
+            <img id="skinImage" alt="皮肤预览" hidden>
+          </div>
+          <div class="skin-preview__meta">
+            <span class="dialog-status" id="skinFileMeta">还没有选择皮肤</span>
+            <button class="dialog-btn" id="skinPick" type="button">选择文件</button>
+            <label class="dialog-field" for="skinModel">
+              <span class="create-label">Model / 模型</span>
+              <span class="create-control-wrap">
+                <select class="create-control" id="skinModel">
+                  <option value="classic" selected>经典 (Steve / 4px 手臂)</option>
+                  <option value="slim">纤细 (Alex / 3px 手臂)</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="dialog-warn">皮肤会保存在本机并在这里预览。要让游戏内生效，需要该实例使用 authlib-injector 皮肤服务或 CustomSkinLoader 之类的模组；启动器暂时只负责保存与预览。</div>
+        <p class="dialog-status" id="skinDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn" id="skinClear" type="button">清除皮肤</button>
+        </div>
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="skinConfirm" type="button">确定</button>
+      </div>
+    </section>
+
+    <section class="dialog" id="dlgConfirm" role="dialog" aria-modal="true" aria-labelledby="dlgConfirmTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgConfirmTitle">确认</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text" id="confirmText">确定要继续吗？</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="confirmOk" type="button">确定</button>
+      </div>
+    </section>
   </div>
 
 </div>

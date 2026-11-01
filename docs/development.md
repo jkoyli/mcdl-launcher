@@ -21,10 +21,10 @@ electron/
 ├── java-runtime.js       # 本机 Java 探测与版本挑选
 ├── version-manifest.js   # 版本 JSON 解析：inheritsFrom / rules / classpath / natives
 ├── launch.js             # 真实启动：命令拼接、natives 解压、进程拉起
-├── accounts.js           # 离线账号与微软账号
+├── accounts.js           # 离线 / 微软 / authlib-injector 账号、认证服务器、离线皮肤
 ├── renderer/
 │   ├── index.html        # 界面与样式（单文件内联 CSS）
-│   └── renderer.js       # 渲染逻辑：主视区、实例面板、账户面板、设置面板
+│   └── renderer.js       # 渲染逻辑：主视区、实例面板、账户面板 + 弹窗、设置面板
 └── package.json          # 启动脚本与 electron 依赖
 ```
 
@@ -77,6 +77,20 @@ electron/
 
 令牌过期前 5 分钟用 `refresh_token` 续期；XSTS 常见错误（未创建 Xbox 档案、地区不支持、
 未成年账号）会翻译成可读提示。
+
+**第三方账号（authlib-injector）**：
+
+1. 「添加认证服务器」向导先 `GET <apiRoot>` 读取 Yggdrasil 元数据
+   （必须有 `signaturePublickey` 或 `meta`），成功后把 `{ apiRoot, name }` 存进 `accounts.json` 的 `servers`；
+2. 「正版登录」页签用用户名 / 密码 POST `<apiRoot>authserver/authenticate`，
+   取 `accessToken` 与 `selectedProfile`（没有角色时提示先去服务器网站创建）；
+3. 启动该账号的实例时，`launch.js` 会把 authlib-injector 作为 `-javaagent` 注入：
+   本地没有 jar 时按官方 `latest.json` 下载到数据目录 `authlib-injector/authlib-injector.jar` 并缓存；
+4. 参数用 `userType=mojang`，`-javaagent:<jar>=<apiRoot>` 追加在 `arguments.jvm` 之后、主类之前。
+
+**离线皮肤**：选择 PNG（校验文件头与尺寸 64×64 / 64×32 及其高清倍数）后复制到
+数据目录 `skins/`，记录 `classic` / `slim` 模型。目前只做保存与预览——游戏内生效需要
+自定义皮肤服务，暂未注入。
 
 ## 与 mcdl 的边界
 
@@ -140,7 +154,9 @@ MCDL_USER_DATA（环境变量，最高优先）
 | 路径 | 内容 |
 | --- | --- |
 | `%APPDATA%\MCDL Launcher\.minecraft` | 游戏目录（`versions/`、`libraries/`、`assets/` 等） |
-| `%APPDATA%\mcdl-launcher-electron\accounts.json` | 账号与令牌 |
+| `%APPDATA%\mcdl-launcher-electron\accounts.json` | 账号、令牌与已添加的认证服务器 |
+| `%APPDATA%\mcdl-launcher-electron\skins\<账号>.png` | 离线皮肤文件 |
+| `%APPDATA%\mcdl-launcher-electron\authlib-injector\authlib-injector.jar` | 第三方账号启动用的 java agent（按需下载并缓存） |
 | `%APPDATA%\mcdl-launcher-electron\launcher-settings.json` | 内存 / Java / 窗口尺寸 / 额外 JVM 参数 |
 | `%APPDATA%\mcdl-launcher-electron\instance-display-names.json` | 实例别名 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
@@ -182,6 +198,15 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `accounts:add-offline` | renderer → main | 创建并选中离线账号 |
 | `accounts:add-microsoft` | renderer → main | 打开登录窗口并完成微软登录 |
 | `accounts:select` / `accounts:remove` | renderer → main | 切换 / 删除账号 |
+| `accounts:servers` | renderer → main | 认证服务器列表 |
+| `accounts:add-server` | renderer → main | 校验并添加 authlib-injector 服务器 |
+| `accounts:remove-server` | renderer → main | 删除服务器（连带依赖它的账号） |
+| `accounts:login-authlib` | renderer → main | 用户名 / 密码登录第三方服务器 |
+| `accounts:pick-skin` | renderer → main | 打开文件选择并校验皮肤 PNG |
+| `accounts:set-skin` | renderer → main | 保存皮肤与模型 |
+| `accounts:set-skin-model` | renderer → main | 只切换经典 / 纤细模型 |
+| `accounts:clear-skin` | renderer → main | 删除皮肤文件 |
+| `accounts:skin-data` | renderer → main | 读取皮肤 PNG 的 data URL（预览） |
 | `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置 |
 | `shell:open-logs` | renderer → main | 打开应用日志目录 |
 
@@ -193,16 +218,39 @@ MCDL_USER_DATA（环境变量，最高优先）
 窗口（frame: false）
 ├── 标题栏  左：返回 / 刷新 / 关闭当前页 / 帮助（打开日志目录）
 │           右：最小化 / 最大化 / 关闭
-├── 侧边栏  账户 / 游戏 / 实例列表 / 下载中心 / 设置
+├── 侧边栏  账户 / 游戏 / 实例列表 / 下载中心（待接入，禁用） / 设置
 ├── 主视区  主视觉（版本名、3D 方块） + 更新日志区
-│           └── 二级页面：新建实例、账户、设置
+│           ├── 二级页面：新建实例
+│           ├── 二级页面：账户  →  5 个 L5 弹窗
+│           └── 二级页面：设置
 └── 右侧控制台  实例列表 / 当前配置 / 启动按钮
 ```
+
+### 账户页（对照 `docs/history/ui-tree-controls.html` 的 [L2] 账户）
+
+| 控件 | control key | 行为 |
+| --- | --- | --- |
+| 微软账户 | `account.methods.microsoft` | 打开「微软登录」弹窗 |
+| 离线模式 | `account.methods.offline` | 打开「添加账户」弹窗的离线页签 |
+| 添加认证服务器 | `account.injector.add` | 打开「添加认证服务器」向导 |
+| 已保存账户条目 | 运行时 | 显示名称 / 类型 / 服务器 / 当前标记，`⋯` 打开账户菜单 |
+
+账户菜单：设为当前账户（未选中时）、离线皮肤设置（离线账号）、重新登录（微软 / 第三方）、删除账户。
+
+五个 [L5] 弹窗：
+
+| 弹窗 | 按钮 | 说明 |
+| --- | --- | --- |
+| 微软登录 | 取消 / 登录 | 登录成功后自动关闭并选中 |
+| 添加账户 | 取消 / 登录 · 取消 / 确定 | 「离线模式」「正版登录」两个页签切换页脚按钮 |
+| 添加认证服务器 | 取消 / 下一步 / 上一步 / 完成 | 第一步验证地址，第二步展示服务器信息 |
+| 离线皮肤设置 | 清除皮肤 · 取消 / 确定 | 选择 PNG 后预览、切换模型 |
+| 确认删除 | 取消 / 删除 | 删除账号前确认 |
 
 标题栏的 `-webkit-app-region: drag` 覆盖整条顶栏，窗口控制按钮位于 `no-drag` 区域；
 双击空白处切换最大化。
 
-侧边栏五项中，「账户」「实例列表」「设置」有对应面板；「下载中心」目前只切换高亮；
+侧边栏五项中，「账户」「实例列表」「设置」有对应面板；「下载中心」标为待接入并禁用；
 「游戏」回到主视区。
 
 ## 渲染层约定
@@ -238,5 +286,6 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 ## 后续方向
 
 - 模组加载器安装（Fabric / NeoForge / Forge / Quilt）：目前下拉项禁用，`mcdl` 只处理原版文件。
-- 下载中心面板与新闻区：目前为占位。
+- 下载中心面板与新闻区：目前为占位（下载入口已标为待接入并禁用）。
 - 实例级设置（单独的内存、JVM 参数、Java 版本），当前设置是全局的。
+- 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
