@@ -741,6 +741,14 @@
     height: var(--cube);
     transform-style: preserve-3d;
     animation: voxel-float 8s ease-in-out infinite;
+    /* 立方体本身可拖动旋转；周围留白与轨道线仍然不拦截点击 */
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .voxel-float.is-dragging {
+    cursor: grabbing;
   }
 
   .voxel {
@@ -748,7 +756,9 @@
     width: 100%;
     height: 100%;
     transform-style: preserve-3d;
-    animation: voxel-turn 30s linear infinite;
+    /* 旋转由 renderer.js 驱动（拖动 + 惯性），这里只是初始姿态兜底 */
+    transform: rotateX(-22deg) rotateY(-32deg);
+    will-change: transform;
   }
 
   .voxel__face {
@@ -762,6 +772,7 @@
     box-shadow: inset 0 0 40px rgba(92, 150, 220, .08);
     -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
+    backface-visibility: visible;
   }
 
   .voxel__face--top {
@@ -772,13 +783,32 @@
       linear-gradient(135deg, rgba(142, 201, 175, .19), rgba(46, 91, 105, .05));
   }
 
+  .voxel__face--bottom {
+    transform: rotateX(-90deg) translateZ(var(--half));
+    filter: brightness(.52);
+    background:
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 22px),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, .03) 0 1px, transparent 1px 22px),
+      linear-gradient(135deg, rgba(58, 84, 122, .16), rgba(22, 31, 48, .06));
+  }
+
   .voxel__face--front {
     transform: translateZ(var(--half));
+  }
+
+  .voxel__face--back {
+    transform: rotateY(180deg) translateZ(var(--half));
+    filter: brightness(.6);
   }
 
   .voxel__face--right {
     transform: rotateY(90deg) translateZ(var(--half));
     filter: brightness(.78);
+  }
+
+  .voxel__face--left {
+    transform: rotateY(-90deg) translateZ(var(--half));
+    filter: brightness(.66);
   }
 
   .voxel-tag {
@@ -1327,11 +1357,6 @@
   @keyframes orbit-spin-reverse {
     from { transform: translate(-50%, -50%) rotateX(58deg) rotateZ(360deg); }
     to { transform: translate(-50%, -50%) rotateX(58deg) rotateZ(0deg); }
-  }
-
-  @keyframes voxel-turn {
-    from { transform: rotateX(-24deg) rotateY(-32deg); }
-    to { transform: rotateX(-24deg) rotateY(328deg); }
   }
 
   @keyframes voxel-float {
@@ -3120,6 +3145,7 @@
 
   .ilist-rows {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 7px;
   }
 
@@ -3208,12 +3234,17 @@
 
   .ilist-row__badges {
     flex: 0 0 auto;
+    min-width: 0;
+    overflow: hidden;
     display: flex;
     align-items: center;
     gap: 5px;
   }
 
   .badge {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 4px 7px;
     border: 1px solid rgba(159, 208, 255, .22);
     border-radius: 2px;
@@ -4245,11 +4276,14 @@
         <span class="voxel-halo"></span>
         <span class="voxel-orbit"></span>
         <span class="voxel-orbit voxel-orbit--b"></span>
-        <div class="voxel-float">
-          <div class="voxel">
-            <span class="voxel__face voxel__face--top"></span>
+        <div class="voxel-float" id="voxelFloat">
+          <div class="voxel" id="voxelCube">
             <span class="voxel__face voxel__face--front"></span>
+            <span class="voxel__face voxel__face--back"></span>
+            <span class="voxel__face voxel__face--left"></span>
             <span class="voxel__face voxel__face--right"></span>
+            <span class="voxel__face voxel__face--top"></span>
+            <span class="voxel__face voxel__face--bottom"></span>
           </div>
         </div>
         <span class="voxel-tag voxel-tag--a" id="voxelTagA">3D preview / 占位</span>

@@ -1142,8 +1142,10 @@
   function openInstancesPanel() {
     showPanel('instances');
     renderInstancePanel();
+    // 每次进来都重扫一遍：用户可能刚在资源管理器里装了新版本。
+    if (typeof loadInstances === 'function') loadInstances();
     window.setTimeout(function () {
-      if (newInstanceBtn) newInstanceBtn.focus();
+      if (newInstanceBtn) newInstanceBtn.focus({ preventScroll: true });
     }, 220);
   }
 
@@ -2806,10 +2808,17 @@
       var badges = document.createElement('div');
       badges.className = 'ilist-row__badges';
 
-      var versionBadge = document.createElement('span');
-      versionBadge.className = 'badge';
-      versionBadge.textContent = instance.versionName || '—';
-      badges.appendChild(versionBadge);
+      // 版本徽标只在它真的提供额外信息时显示：
+      // 整合包实例的 versionName 常常回退成实例名，重复显示会挤掉别的徽标。
+      var versionText = String(instance.versionName || '').trim();
+      var labelText = instanceLabel(instance);
+      if (versionText && versionText !== labelText && versionText.length <= 20) {
+        var versionBadge = document.createElement('span');
+        versionBadge.className = 'badge';
+        versionBadge.textContent = versionText;
+        versionBadge.title = versionText;
+        badges.appendChild(versionBadge);
+      }
 
       var loaderText = loaderLabel(instance);
       if (loaderText && loaderText !== 'Vanilla') {
@@ -3496,6 +3505,180 @@
       .catch(function (error) {
         console.warn('[render] 读取渲染模式失败:', error && error.message);
       });
+  })();
+
+  // ---------------------------------------------------------
+  // 主视区立方体：6 个面 + 拖动旋转（松手后按拖动速度继续转）
+  // ---------------------------------------------------------
+  (function setupVoxelDrag() {
+    var cube = document.getElementById('voxelCube');
+    var holder = document.getElementById('voxelFloat');
+    if (!cube || !holder) return;
+
+    var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    var DEG_PER_PX = 0.42;   // 拖动灵敏度：像素 → 角度
+    var MAX_SPIN = 900;      // 惯性最大角速度（度 / 秒）
+    var IDLE_SPIN = 13;      // 松手后回落到的基础自转（度 / 秒），约等于原来 30 秒一圈
+    var REST_TILT = -22;     // 默认俯仰角
+    var TILT_MIN = -78;
+    var TILT_MAX = 78;
+    var SPIN_DECAY = 3.0;    // 角速度衰减系数，越大停得越快
+
+    var tilt = REST_TILT;
+    var spin = -32;
+    var velTilt = 0;
+    var velSpin = 0;
+
+    var dragging = false;
+    var pointerId = null;
+    var lastX = 0;
+    var lastY = 0;
+    var lastMoveAt = 0;
+    var lastFrameAt = 0;
+    var frameHandle = 0;
+
+    function clamp(value, min, max) {
+      return value < min ? min : (value > max ? max : value);
+    }
+
+    function paint() {
+      cube.style.transform = 'rotateX(' + tilt.toFixed(2) + 'deg) rotateY(' + spin.toFixed(2) + 'deg)';
+    }
+
+    function schedule() {
+      if (frameHandle) return;
+      lastFrameAt = 0;
+      frameHandle = requestAnimationFrame(step);
+    }
+
+    function step(now) {
+      frameHandle = 0;
+
+      var dt = lastFrameAt ? Math.min(0.05, (now - lastFrameAt) / 1000) : 0.016;
+      lastFrameAt = now;
+
+      // 拖动中由 pointermove 直接改角度，这里不插值
+      if (dragging) {
+        schedule();
+        return;
+      }
+      // 系统开启「减少动态效果」时只保留拖动，不做自转与惯性
+      if (reduced) return;
+
+      spin += velSpin * dt;
+      tilt += velTilt * dt;
+
+      var decay = Math.exp(-SPIN_DECAY * dt);
+      velSpin *= decay;
+      velTilt *= decay;
+
+      // 竖直方向：松手后缓慢回到默认俯仰角
+      if (Math.abs(velTilt) < 30) {
+        tilt += (REST_TILT - tilt) * Math.min(1, dt * 1.6);
+      }
+      tilt = clamp(tilt, TILT_MIN, TILT_MAX);
+
+      // 水平方向：角速度衰减到基础自转，方向保持不变（往右拖 → 继续往右转）
+      if (Math.abs(velSpin) < IDLE_SPIN) {
+        velSpin += (IDLE_SPIN - velSpin) * Math.min(1, dt * 2);
+      }
+
+      paint();
+      schedule();
+    }
+
+    function onPointerDown(event) {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+      dragging = true;
+      pointerId = event.pointerId;
+      lastX = event.clientX;
+      lastY = event.clientY;
+      lastMoveAt = performance.now();
+      velSpin = 0;
+      velTilt = 0;
+
+      holder.classList.add('is-dragging');
+      try {
+        holder.setPointerCapture(pointerId);
+      } catch (error) {
+        // 某些环境下没有 pointer capture，退化为普通拖动
+      }
+
+      schedule();
+      event.preventDefault();
+    }
+
+    function onPointerMove(event) {
+      if (!dragging || event.pointerId !== pointerId) return;
+
+      var now = performance.now();
+      var dx = event.clientX - lastX;
+      var dy = event.clientY - lastY;
+      var dt = Math.max(0.004, (now - lastMoveAt) / 1000);
+
+      spin += dx * DEG_PER_PX;
+      tilt = clamp(tilt - dy * DEG_PER_PX, TILT_MIN, TILT_MAX);
+
+      // 拖动速度决定松手后的惯性；与拖动方向一致
+      velSpin = clamp((dx * DEG_PER_PX) / dt, -MAX_SPIN, MAX_SPIN);
+      velTilt = clamp((-dy * DEG_PER_PX) / dt, -MAX_SPIN, MAX_SPIN);
+
+      lastX = event.clientX;
+      lastY = event.clientY;
+      lastMoveAt = now;
+
+      paint();
+      event.preventDefault();
+    }
+
+    function endDrag() {
+      if (!dragging) return;
+
+      dragging = false;
+      holder.classList.remove('is-dragging');
+
+      if (pointerId !== null) {
+        try {
+          holder.releasePointerCapture(pointerId);
+        } catch (error) {
+          // 已经释放
+        }
+      }
+      pointerId = null;
+
+      // 松手前停住超过 120ms：当作没有甩动
+      if (performance.now() - lastMoveAt > 120) {
+        velSpin = 0;
+        velTilt = 0;
+      }
+
+      if (reduced) paint();
+      else schedule();
+    }
+
+    holder.addEventListener('pointerdown', onPointerDown);
+    holder.addEventListener('pointermove', onPointerMove);
+    holder.addEventListener('pointerup', endDrag);
+    holder.addEventListener('pointercancel', endDrag);
+    holder.addEventListener('lostpointercapture', endDrag);
+    holder.addEventListener('dragstart', function (event) { event.preventDefault(); });
+
+    // 窗口隐藏时停掉动画，回来再继续
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        if (frameHandle) {
+          cancelAnimationFrame(frameHandle);
+          frameHandle = 0;
+        }
+        return;
+      }
+      if (!reduced) schedule();
+    });
+
+    paint();
+    if (!reduced) schedule();
   })();
 
   // 静态截图用：打开 #stack 定格在左上拉伸
