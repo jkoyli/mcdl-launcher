@@ -1847,7 +1847,11 @@
   }
 
   .main-stage.is-create .stage-hero,
-  .main-stage.is-create .stage-news {
+  .main-stage.is-create .stage-news,
+  .main-stage.is-instances .stage-hero,
+  .main-stage.is-instances .stage-news,
+  .main-stage.is-gamedir .stage-hero,
+  .main-stage.is-gamedir .stage-news {
     opacity: 0;
     transform: translateY(-10px);
     visibility: hidden;
@@ -2675,7 +2679,11 @@
   .main-stage.is-account .stage-hero,
   .main-stage.is-account .stage-news,
   .main-stage.is-settings .stage-hero,
-  .main-stage.is-settings .stage-news {
+  .main-stage.is-settings .stage-news,
+  .main-stage.is-instances .stage-hero,
+  .main-stage.is-instances .stage-news,
+  .main-stage.is-gamedir .stage-hero,
+  .main-stage.is-gamedir .stage-news {
     opacity: 0;
     transform: translateY(-10px);
     visibility: hidden;
@@ -2794,11 +2802,58 @@
   }
 
   .account-tile__avatar svg,
-  .account-tile__skin {
+  .account-tile__skin,
+  .account-tile__fallback {
     width: 100%;
     height: 100%;
     display: block;
     image-rendering: pixelated;
+  }
+
+  /* 兜底头像与真实皮肤都铺满头像区，皮肤加载成功后再盖上去 */
+  .account-tile__fallback,
+  .account-tile__skin {
+    position: absolute;
+    inset: 0;
+  }
+
+  .account-tile__skin {
+    z-index: 1;
+  }
+
+  /* 类型标签：微软 / 离线 / 认证服务器 */
+  .account-tile__kind {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    z-index: 3;
+    padding: 3px 6px;
+    border: 1px solid rgba(159, 208, 255, .3);
+    border-radius: 3px;
+    background: rgba(6, 11, 18, .82);
+    color: rgba(214, 231, 249, .88);
+    font: 600 7px/1 inherit;
+    letter-spacing: .08em;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .account-tile__kind--microsoft {
+    border-color: rgba(120, 190, 255, .48);
+    background: rgba(18, 62, 104, .82);
+    color: #cfe8ff;
+  }
+
+  .account-tile__kind--authlib {
+    border-color: rgba(140, 226, 210, .42);
+    background: rgba(16, 66, 62, .82);
+    color: #c9f3ea;
+  }
+
+  .account-tile__kind--offline {
+    border-color: rgba(196, 210, 230, .28);
+    background: rgba(28, 34, 44, .84);
+    color: rgba(215, 226, 240, .8);
   }
 
   /* 有皮肤时直接取 64×64 皮肤里的头部 8×8 区域 */
@@ -2844,11 +2899,10 @@
 
   .account-tile__meta {
     max-width: 100%;
-    font-size: 7px;
-    font-weight: 600;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: rgba(199, 212, 230, .34);
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .44);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2856,8 +2910,9 @@
 
   .account-tile__menu {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: 6px;
+    right: 6px;
+    z-index: 4;
     width: 20px;
     height: 20px;
     display: grid;
@@ -2868,7 +2923,7 @@
     color: rgba(213, 228, 245, .7);
     font: 600 9px/1 inherit;
     cursor: pointer;
-    opacity: 0;
+    opacity: .45;
     transition:
       opacity 160ms linear,
       color 140ms linear,
@@ -2877,7 +2932,8 @@
   }
 
   .account-tile:hover .account-tile__menu,
-  .account-tile:focus-within .account-tile__menu {
+  .account-tile:focus-within .account-tile__menu,
+  .account-tile.is-selected .account-tile__menu {
     opacity: 1;
   }
 
@@ -3015,13 +3071,427 @@
     color: rgba(199, 212, 230, .36);
   }
 
+  /* ---------------------------------------------------------
+     实例列表页（GameListPage）与游戏目录管理（GameDirectoryPage）
+     --------------------------------------------------------- */
+  .main-stage.is-instances #stageInstances,
+  .main-stage.is-gamedir #stageGameDir {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition:
+      opacity 420ms 80ms ease,
+      transform 420ms 80ms cubic-bezier(.22, .8, .3, 1),
+      visibility 0s;
+  }
+
+  .ilist-body {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+    min-width: 0;
+    max-height: 66vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: grid;
+    gap: 12px;
+    padding-left: clamp(22px, 2.6vw, 40px);
+    border-left: 1px solid rgba(255, 255, 255, .09);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+  }
+
+  .ilist-actions .account-action {
+    min-height: 116px;
+    padding: 16px 10px 14px;
+    gap: 9px;
+  }
+
+  .ilist-actions .account-action__icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .ilist-actions .account-action__icon svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .ilist-rows {
+    display: grid;
+    gap: 7px;
+  }
+
+  .ilist-empty {
+    padding: 16px 0;
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+    font-size: 9px;
+    line-height: 1.6;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .34);
+  }
+
+  .ilist-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 11px;
+    border: 1px solid rgba(159, 208, 255, .14);
+    border-radius: 4px;
+    background: rgba(159, 208, 255, .022);
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    transition:
+      border-color 150ms linear,
+      background-color 150ms linear,
+      box-shadow 180ms ease;
+  }
+
+  .ilist-row:hover,
+  .ilist-row:focus-visible {
+    border-color: rgba(159, 208, 255, .4);
+    background: rgba(159, 208, 255, .06);
+    outline: none;
+  }
+
+  .ilist-row.is-selected {
+    border-color: rgba(159, 208, 255, .5);
+    background: rgba(159, 208, 255, .085);
+    box-shadow: 0 0 22px rgba(94, 142, 207, .14);
+  }
+
+  .ilist-row__avatar {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(159, 208, 255, .2);
+    border-radius: 4px;
+    background: radial-gradient(circle at 50% 30%, rgba(159, 208, 255, .16), rgba(159, 208, 255, .03));
+    color: #e8f2ff;
+    font-size: 12px;
+    letter-spacing: .02em;
+  }
+
+  .ilist-row__main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .ilist-row__name {
+    font-size: 11px;
+    letter-spacing: .02em;
+    color: #edf5ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ilist-row__meta {
+    font-size: 7.5px;
+    line-height: 1;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .38);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ilist-row__badges {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .badge {
+    padding: 4px 7px;
+    border: 1px solid rgba(159, 208, 255, .22);
+    border-radius: 2px;
+    font: 600 7px/1 inherit;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(199, 220, 243, .7);
+    white-space: nowrap;
+  }
+
+  .badge--loader {
+    border-color: rgba(176, 232, 203, .3);
+    color: rgba(176, 232, 203, .82);
+  }
+
+  .badge--external {
+    border-color: rgba(255, 214, 160, .28);
+    color: rgba(255, 214, 160, .8);
+  }
+
+  .badge--current {
+    border-color: rgba(122, 199, 160, .36);
+    background: rgba(122, 199, 160, .1);
+    color: rgba(186, 240, 212, .9);
+  }
+
+  .ilist-row__menu {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border: 1px solid rgba(159, 208, 255, .2);
+    border-radius: 2px;
+    background: transparent;
+    color: rgba(213, 228, 245, .66);
+    font: 600 11px/1 inherit;
+    cursor: pointer;
+    transition: color 140ms linear, border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .ilist-row__menu:hover,
+  .ilist-row__menu:focus-visible {
+    color: #f4faff;
+    border-color: rgba(159, 208, 255, .46);
+    background: rgba(159, 208, 255, .07);
+    outline: none;
+  }
+
+  .ilist-foot {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+  }
+
+  .ilist-foot__right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 0 0 auto;
+  }
+
+  .ilist-status {
+    max-width: 240px;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: .04em;
+    text-align: right;
+    color: rgba(199, 212, 230, .38);
+    overflow-wrap: anywhere;
+  }
+
+  .ilist-status.is-error {
+    color: rgba(255, 154, 142, .82);
+  }
+
+  .ilist-status.is-ok {
+    color: rgba(176, 232, 203, .78);
+  }
+
+  .account-menu button:disabled {
+    opacity: .38;
+    cursor: default;
+  }
+
+  .account-menu button:disabled:hover {
+    background: transparent;
+    color: rgba(213, 228, 245, .78);
+  }
+
+  /* 「全局游戏设置」跳转时的提示闪烁 */
+  .create-form.is-flash {
+    animation: form-flash 700ms ease;
+  }
+
+  @keyframes form-flash {
+    0% { box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .5); }
+    100% { box-shadow: inset 0 0 0 1px rgba(159, 208, 255, 0); }
+  }
+
+  .ilist-new {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 15px;
+    border: 1px solid rgba(159, 208, 255, .32);
+    border-radius: 3px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02)),
+      rgba(91, 116, 227, .14);
+    color: #f7fbff;
+    font: 600 8.5px/1 inherit;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      border-color 150ms linear,
+      background-color 150ms linear,
+      box-shadow 180ms ease;
+  }
+
+  .ilist-new:hover,
+  .ilist-new:focus-visible {
+    border-color: rgba(159, 208, 255, .64);
+    box-shadow: 0 0 26px rgba(94, 142, 207, .2);
+    outline: none;
+  }
+
+  /* 游戏目录管理 */
+  .gamedir-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gamedir-row .create-control {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .gamedir-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .gamedir-list {
+    display: grid;
+    gap: 6px;
+  }
+
+  .gamedir-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(159, 208, 255, .14);
+    border-radius: 3px;
+    background: rgba(159, 208, 255, .022);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .gamedir-item:hover,
+  .gamedir-item:focus-visible {
+    border-color: rgba(159, 208, 255, .4);
+    background: rgba(159, 208, 255, .06);
+    outline: none;
+  }
+
+  .gamedir-item.is-selected {
+    border-color: rgba(159, 208, 255, .5);
+    background: rgba(159, 208, 255, .08);
+  }
+
+  .gamedir-item__main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .gamedir-item__path {
+    font-size: 10px;
+    color: #e9f3ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gamedir-item__meta {
+    font-size: 7.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .38);
+  }
+
+  /* 开关：GameDirectoryPage 的「使用相对路径」 */
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .switch input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+  }
+
+  .switch__track {
+    position: relative;
+    flex: 0 0 auto;
+    width: 36px;
+    height: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(159, 208, 255, .28);
+    background: rgba(8, 13, 20, .55);
+    transition: background-color 160ms linear, border-color 160ms linear;
+  }
+
+  .switch__track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(199, 212, 230, .55);
+    transition: transform 180ms cubic-bezier(.22, .8, .3, 1), background-color 160ms linear;
+  }
+
+  .switch input:checked + .switch__track {
+    border-color: rgba(159, 208, 255, .62);
+    background: rgba(91, 116, 227, .34);
+  }
+
+  .switch input:checked + .switch__track::after {
+    transform: translateX(18px);
+    background: #eaf5ff;
+  }
+
+  .switch input:focus-visible + .switch__track {
+    box-shadow: 0 0 0 2px rgba(159, 208, 255, .26);
+  }
+
+  .switch input:disabled + .switch__track {
+    opacity: .45;
+  }
+
+  .switch__text {
+    font-size: 9.5px;
+    line-height: 1.5;
+    letter-spacing: .03em;
+    color: rgba(199, 212, 230, .5);
+  }
+
+  /* 弹窗里的按钮行 */
+  .dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   .account-section-head {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 10px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    padding-bottom: 8px;    border-bottom: 1px solid rgba(255, 255, 255, .06);
   }
 
   .account-section-head span:first-child {
@@ -3740,7 +4210,7 @@
         <path d="M5 8.2 12 12l7-3.8M12 12v7.5"/>
       </svg>
     </button>
-    <button class="rail-btn" id="instancesRailBtn" type="button" data-nav="instances" data-label="实例列表" aria-label="实例列表" aria-controls="stageCreate" aria-expanded="false">
+    <button class="rail-btn" id="instancesRailBtn" type="button" data-nav="instances" data-label="实例列表" aria-label="实例列表" aria-controls="stageInstances" aria-expanded="false">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <rect x="4" y="4" width="6.5" height="6.5" rx=".5"/>
         <rect x="13.5" y="4" width="6.5" height="6.5" rx=".5"/>
@@ -3811,6 +4281,141 @@
       </div>
       <button class="news-more" type="button" disabled>接入后可用 →</button>
     </aside>
+
+    <!-- 二级页面：新建实例 -->
+    <!-- 二级页面：实例列表（对照清单 [L2] 实例管理 / GameListPage） -->
+    <section class="stage-create" id="stageInstances" aria-hidden="true" inert>
+      <div class="create-head">
+        <button class="create-back" id="instancesBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 5 8 12l7 7"/>
+            <path d="M8 12h9"/>
+          </svg>
+          <span>返回</span>
+        </button>
+        <span class="create-index">Instances / 01</span>
+      </div>
+
+      <div class="create-intro">
+        <p class="create-kicker">Game list</p>
+        <h2 class="create-title">实例列表</h2>
+        <p class="create-desc">列表来自所有已添加的游戏文件夹。右键（或点行尾的 ⋯）可以测试启动、生成启动脚本、复制、删除或打开运行目录。</p>
+      </div>
+
+      <div class="ilist-body">
+        <!-- A1：GameListPage 的 3 项直达控件 -->
+        <div class="account-actions ilist-actions" id="instanceEntries">
+          <button class="account-action" type="button" data-instance-action="edit" data-control-key="button.edit">
+            <span class="account-action__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>
+            </span>
+            <span class="account-action__title">修改</span>
+            <span class="account-action__desc">重命名实例别名</span>
+          </button>
+
+          <button class="account-action" type="button" data-instance-action="add-directory" data-control-key="game_directory.new">
+            <span class="account-action__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 6.5h6l1.8 2H20v10H4z"/><path d="M12 11.5v5M9.5 14h5"/></svg>
+            </span>
+            <span class="account-action__title">添加游戏文件夹</span>
+            <span class="account-action__desc">管理多个 .minecraft</span>
+          </button>
+
+          <button class="account-action" type="button" data-instance-action="global-settings" data-control-key="settings.type.global.manage">
+            <span class="account-action__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+            </span>
+            <span class="account-action__title">全局游戏设置</span>
+            <span class="account-action__desc">内存 / Java / 窗口</span>
+          </button>
+        </div>
+
+        <div class="account-section-head">
+          <span>INSTANCES / 实例</span>
+          <span id="instancePanelCount">0</span>
+        </div>
+
+        <div class="ilist-rows" id="instanceRows" role="list"></div>
+
+        <div class="ilist-foot">
+          <div class="scan-instances">
+            <button class="scan-instances__btn" id="scanInstancesBtn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="10.5" cy="10.5" r="5.5"/>
+                <path d="m15 15 5 5"/>
+              </svg>
+              <span>扫描实例</span>
+            </button>
+            <span class="scan-instances__hint">扫描其他启动器实例位置，结果会缓存</span>
+            <span class="scan-instances__status" id="scanInstancesStatus" role="status" aria-live="polite"></span>
+            <span class="scan-instances__path" id="gameDirPath" title=""></span>
+          </div>
+          <div class="ilist-foot__right">
+            <span class="ilist-status" id="instancePanelStatus" role="status" aria-live="polite"></span>
+            <button class="ilist-new" id="newInstanceBtn" type="button">
+              <span>新建实例</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 二级页面：游戏目录管理（对照清单 [L4] GameDirectoryPage） -->
+    <section class="stage-create" id="stageGameDir" aria-hidden="true" inert>
+      <div class="create-head">
+        <button class="create-back" id="gameDirBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 5 8 12l7 7"/>
+            <path d="M8 12h9"/>
+          </svg>
+          <span>返回</span>
+        </button>
+        <span class="create-index">Instances / 01·1</span>
+      </div>
+
+      <div class="create-intro">
+        <p class="create-kicker">Game folder</p>
+        <h2 class="create-title">游戏目录管理</h2>
+        <p class="create-desc">启动器会扫描这里列出的每个游戏文件夹。路径可以填绝对路径，也可以勾选相对路径让配置跟着启动器走。</p>
+      </div>
+
+      <form class="create-form" id="gameDirForm" novalidate>
+        <div class="create-field create-field--wide">
+          <span class="create-label">Game folder / 游戏文件夹</span>
+          <div class="gamedir-row">
+            <input class="create-control" id="gameDirInput" type="text" placeholder="例如 D:\\Minecraft\\.minecraft" autocomplete="off">
+            <button class="dialog-btn" id="gameDirBrowse" type="button">浏览</button>
+          </div>
+        </div>
+
+        <div class="create-field create-field--wide">
+          <span class="create-label">Relative path / 相对路径</span>
+          <label class="switch" for="gameDirRelative">
+            <input type="checkbox" id="gameDirRelative">
+            <span class="switch__track" aria-hidden="true"></span>
+            <span class="switch__text">若可能，游戏文件夹使用相对路径</span>
+          </label>
+          <span class="dialog-status" id="gameDirRelativeHint">只有位于启动器目录内的文件夹才能用相对路径</span>
+        </div>
+
+        <div class="create-actions">
+          <div class="gamedir-actions">
+            <button class="create-submit" type="submit">
+              <span>保存</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button class="dialog-btn" id="gameDirDelete" type="button" hidden>删除该文件夹</button>
+          </div>
+          <span class="create-note" id="gameDirStatus" role="status" aria-live="polite">填写路径后保存</span>
+        </div>
+
+        <div class="create-field create-field--wide">
+          <span class="create-label">Managed folders / 已管理</span>
+          <div class="gamedir-list" id="gameDirList" role="list"></div>
+        </div>
+      </form>
+    </section>
 
     <!-- 二级页面：新建实例 -->
     <section class="stage-create" id="stageCreate" aria-hidden="true" inert>
@@ -3885,39 +4490,6 @@
           <span class="create-progress__text" id="createProgressText" aria-live="polite">准备中…</span>
         </div>
       </form>
-
-      <!-- 实例管理：默认只读自己的目录；这个按钮才去定位 PCL/HMCL 的其他位置 -->
-      <div class="create-quickbar" aria-label="实例管理操作">
-        <div class="scan-instances">
-          <button class="scan-instances__btn" id="scanInstancesBtn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="10.5" cy="10.5" r="5.5"/>
-              <path d="m15 15 5 5"/>
-            </svg>
-            <span>扫描实例</span>
-          </button>
-          <span class="scan-instances__hint">扫描其他启动器实例位置，结果会缓存</span>
-          <span class="scan-instances__status" id="scanInstancesStatus" role="status" aria-live="polite"></span>
-          <span class="scan-instances__path" id="gameDirPath" title=""></span>
-        </div>
-        <div class="create-quickbar__buttons">
-          <button class="quick-action" type="button" data-instance-action="edit" data-control-key="button.edit" aria-label="修改当前实例（待接入）" title="待接入真实实例操作" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg>
-            <span>修改</span>
-            <em>button.edit</em>
-          </button>
-          <button class="quick-action" type="button" data-instance-action="add-directory" data-control-key="game_directory.new" aria-label="添加游戏文件夹（待接入）" title="待接入真实实例操作" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h6l1.8 2H20v10H4z"/><path d="M12 11.5v5M9.5 14h5"/></svg>
-            <span>添加游戏文件夹</span>
-            <em>game_directory.new</em>
-          </button>
-          <button class="quick-action" type="button" data-instance-action="global-settings" data-control-key="settings.type.global.manage" aria-label="全局游戏设置（待接入）" title="待接入真实实例操作" disabled>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
-            <span>全局游戏设置</span>
-            <em>settings.type.global.manage</em>
-          </button>
-        </div>
-      </div>
     </section>
 
     <!-- 二级页面：账户 -->
@@ -4269,6 +4841,37 @@
         </div>
         <button class="dialog-btn" type="button" data-dialog-close>取消</button>
         <button class="dialog-btn dialog-btn--primary" id="skinConfirm" type="button">确定</button>
+      </div>
+    </section>
+
+    <!-- L5 实例操作对话框（对照清单 [L5] 实例操作对话框 / Instances.java） -->
+    <section class="dialog" id="dlgInstance" role="dialog" aria-modal="true" aria-labelledby="dlgInstanceTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgInstanceTitle">实例操作</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text" id="instanceDialogMeta">—</p>
+
+        <label class="dialog-field" for="instanceNameInput">
+          <span class="create-label">Display name / 实例名称</span>
+          <input class="create-control" id="instanceNameInput" type="text" maxlength="48" autocomplete="off">
+        </label>
+
+        <div class="dialog-actions">
+          <button class="dialog-btn" id="instanceRenameApply" type="button">重命名</button>
+          <button class="dialog-btn" id="instanceDuplicate" type="button">复制游戏实例</button>
+          <button class="dialog-btn" id="instanceExport" type="button" disabled title="导出整合包待接入">导出整合包</button>
+        </div>
+
+        <p class="dialog-status" id="instanceDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn" id="instanceGotoDownload" type="button" disabled title="下载页面待接入">前往下载页面</button>
+        </div>
+        <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
+        <button class="dialog-btn dialog-btn--primary" id="instanceDelete" type="button">删除</button>
       </div>
     </section>
 

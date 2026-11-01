@@ -37,6 +37,30 @@ const launcherAPI = {
   createInstance: (payload) => ipcRenderer.invoke('instances:create', payload),
 
   /**
+   * 实例操作：重命名别名 / 复制 / 删除 / 打开运行目录 / 生成启动脚本。
+   */
+  renameInstance: (payload) => ipcRenderer.invoke('instances:rename', payload),
+
+  duplicateInstance: (payload) => ipcRenderer.invoke('instances:duplicate', payload),
+
+  removeInstance: (payload) => ipcRenderer.invoke('instances:remove', payload),
+
+  openInstanceFolder: (payload) => ipcRenderer.invoke('instances:open-folder', payload),
+
+  createLaunchScript: (payload) => ipcRenderer.invoke('instances:launch-script', payload),
+
+  /**
+   * 游戏目录管理（GameDirectoryPage）。
+   */
+  getGameDirs: () => ipcRenderer.invoke('gamedirs:list'),
+
+  saveGameDir: (payload) => ipcRenderer.invoke('gamedirs:save', payload),
+
+  removeGameDir: (id) => ipcRenderer.invoke('gamedirs:remove', id),
+
+  pickGameDir: () => ipcRenderer.invoke('gamedirs:pick'),
+
+  /**
    * 订阅 mcdl 安装输出。
    */
   onInstallProgress: (callback) => {
@@ -100,6 +124,11 @@ const launcherAPI = {
   clearSkin: (id) => ipcRenderer.invoke('accounts:clear-skin', id),
 
   getSkinData: (id) => ipcRenderer.invoke('accounts:skin-data', id),
+
+  /**
+   * 重新拉取微软 / 认证服务器的皮肤（玩家换了皮肤后用）。
+   */
+  refreshSkin: (id) => ipcRenderer.invoke('accounts:refresh-skin', id),
 
   // ---------------- 设置 ----------------
 

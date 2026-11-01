@@ -308,6 +308,8 @@ async function finishMicrosoftSession(tokens) {
     throw new Error('无法读取 Minecraft 档案');
   }
 
+  const skin = pickProfileSkin(profile);
+
   return {
     name: profile.name,
     uuid: formatUuid(profile.id),
@@ -315,7 +317,68 @@ async function finishMicrosoftSession(tokens) {
     refreshToken: tokens.refresh_token || null,
     expiresAt: Date.now() + Math.max(0, (Number(mc.expires_in) || 86400) * 1000),
     xuid: xstsUhs,
-    clientId: MSA_CLIENT_ID
+    clientId: MSA_CLIENT_ID,
+    skinUrl: skin.url,
+    skinModel: skin.model,
+    skinFetchedAt: Date.now()
+  };
+}
+
+/** 从 `/minecraft/profile` 的 skins 数组里取当前皮肤。 */
+function pickProfileSkin(profile) {
+  const skins = profile && Array.isArray(profile.skins) ? profile.skins : [];
+  const active = skins.find((entry) => entry && entry.state === 'ACTIVE') || skins[0] || null;
+  if (!active || !active.url) return { url: '', model: 'classic' };
+  return {
+    url: String(active.url),
+    model: String(active.variant || '').toLowerCase() === 'slim' ? 'slim' : 'classic'
+  };
+}
+
+/**
+ * 只刷新微软账号的皮肤信息（用于老账号或手动刷新）。
+ * 令牌失效时会先续期。
+ */
+async function refreshMicrosoftSkin(account) {
+  if (!account || account.type !== 'microsoft') return null;
+  const fresh = await ensureFreshToken(account);
+  if (!fresh.accessToken) throw new Error('微软账号缺少访问令牌，请重新登录');
+  const profile = await fetchMinecraftProfile(fresh.accessToken);
+  const skin = pickProfileSkin(profile);
+  return { skinUrl: skin.url, skinModel: skin.model, skinFetchedAt: Date.now(), accessToken: fresh.accessToken };
+}
+
+/**
+ * 第三方服务器：从 session server 的 textures 属性里取皮肤地址。
+ * 注意 uuid 要去掉横杠。
+ */
+async function fetchAuthlibSkin(apiRoot, uuid) {
+  const root = normalizeApiRoot(apiRoot);
+  const trimmed = String(uuid || '').replace(/-/g, '');
+  if (!trimmed) return { url: '', model: 'classic' };
+
+  const body = await httpJson(`${root}sessionserver/session/minecraft/profile/${trimmed}`, {
+    headers: { Accept: 'application/json' },
+    timeout: 15000
+  });
+
+  const properties = body && Array.isArray(body.properties) ? body.properties : [];
+  const textures = properties.find((entry) => entry && entry.name === 'textures');
+  if (!textures || !textures.value) return { url: '', model: 'classic' };
+
+  let decoded;
+  try {
+    decoded = JSON.parse(Buffer.from(String(textures.value), 'base64').toString('utf8'));
+  } catch {
+    return { url: '', model: 'classic' };
+  }
+
+  const skin = decoded && decoded.textures ? decoded.textures.SKIN : null;
+  if (!skin || !skin.url) return { url: '', model: 'classic' };
+
+  return {
+    url: String(skin.url),
+    model: skin.metadata && String(skin.metadata.model).toLowerCase() === 'slim' ? 'slim' : 'classic'
   };
 }
 
@@ -476,8 +539,11 @@ function createAccountStore(storeDir) {
       lastUsedAt: account.lastUsedAt || null,
       serverId: account.serverId || null,
       serverName: account.serverName || null,
-      hasSkin: Boolean(account.skin && account.skin.file),
-      skinModel: account.skin && account.skin.model ? account.skin.model : 'classic'
+      hasSkin: Boolean((account.skin && account.skin.file) || account.skinUrl),
+      hasLocalSkin: Boolean(account.skin && account.skin.file),
+      hasRemoteSkin: Boolean(account.skinUrl),
+      skinModel: (account.skin && account.skin.model) || account.skinModel || 'classic',
+      skinUrl: account.skinUrl || ''
     };
   }
 
@@ -622,8 +688,20 @@ function createAccountStore(storeDir) {
       if (!account) throw new Error('账户不存在');
       if (account.skin) {
         account.skin.model = model === 'slim' ? 'slim' : 'classic';
-        await persist();
       }
+      account.skinModel = model === 'slim' ? 'slim' : 'classic';
+      await persist();
+      return publicView(account, current.selectedId);
+    },
+
+    /** 丢掉缓存的远程皮肤地址，下次读取时重新向服务器要。 */
+    async clearRemoteSkin(id) {
+      const current = await load();
+      const account = current.accounts.find((item) => item.id === id);
+      if (!account) throw new Error('账户不存在');
+      delete account.skinUrl;
+      delete account.skinFetchedAt;
+      await persist();
       return publicView(account, current.selectedId);
     },
 
@@ -696,13 +774,20 @@ function createAccountStore(storeDir) {
         expiresAt: details.expiresAt,
         xuid: details.xuid,
         clientId: details.clientId,
+        skinUrl: details.skinUrl || '',
+        skinModel: details.skinModel || 'classic',
+        skinFetchedAt: details.skinFetchedAt || 0,
         addedAt: new Date().toISOString(),
         lastUsedAt: null
       };
 
       const index = current.accounts.findIndex((item) => item.id === id);
-      if (index >= 0) current.accounts[index] = account;
-      else current.accounts.push(account);
+      if (index >= 0) {
+        // 重新登录时保留本地皮肤等既有数据。
+        current.accounts[index] = { ...current.accounts[index], ...account };
+      } else {
+        current.accounts.push(account);
+      }
 
       current.selectedId = id;
       await persist();
@@ -757,6 +842,8 @@ module.exports = {
   requestAuthorizationCode,
   completeMicrosoftLogin,
   ensureFreshToken,
+  refreshMicrosoftSkin,
+  fetchAuthlibSkin,
   offlineUuid,
   formatUuid,
   normalizeApiRoot,

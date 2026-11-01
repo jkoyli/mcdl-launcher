@@ -83,8 +83,8 @@
         detail: { action: action }
       }));
 
-      if ((action === 'back' || action === 'close-page') && isCreateOpen) {
-        closeCreatePanel({ focus: true });
+      if (action === 'back' || action === 'close-page') {
+        closeActivePanel({ focus: true });
       }
 
       if (action === 'refresh') {
@@ -680,6 +680,7 @@
   function renderInstances() {
     renderInstanceList();
     renderSelectedInstance();
+    renderInstancePanel();
   }
 
   function selectInstance(id) {
@@ -1035,20 +1036,122 @@
       });
   }
 
+  // ---------------------------------------------------------
+  // 二级页面栈：实例列表 / 新建实例 / 游戏目录 / 账户 / 设置
+  // 一次只点亮一个：主视区加一个 is-xxx 类，其余面板保持 inert。
+  // ---------------------------------------------------------
+  var PANEL_ELEMENTS = {
+    instances: 'stageInstances',
+    create: 'stageCreate',
+    gamedir: 'stageGameDir',
+    account: 'stageAccount',
+    settings: 'stageSettings'
+  };
+  var PANEL_STATES = {
+    instances: 'is-instances',
+    create: 'is-create',
+    gamedir: 'is-gamedir',
+    account: 'is-account',
+    settings: 'is-settings'
+  };
+  var activePanel = null;
+
+  function panelElement(name) {
+    var id = PANEL_ELEMENTS[name];
+    return id ? document.getElementById(id) : null;
+  }
+
+  function hideActivePanel(options) {
+    options = options || {};
+    if (!activePanel) return null;
+
+    var closing = activePanel;
+    var element = panelElement(closing);
+    activePanel = null;
+    isCreateOpen = false;
+    overlayPanel = null;
+
+    if (mainStage) mainStage.classList.remove(PANEL_STATES[closing]);
+    if (element) {
+      element.setAttribute('inert', '');
+      element.setAttribute('aria-hidden', 'true');
+    }
+    setHomeInert(false);
+
+    if (instancesRailBtn) {
+      instancesRailBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
+      detail: { panel: 'stage-home' }
+    }));
+
+    return closing;
+  }
+
+  function showPanel(name, options) {
+    options = options || {};
+    var element = panelElement(name);
+    if (!mainStage || !element) return;
+
+    if (activePanel === name) return;
+    hideActivePanel({ focus: false });
+
+    activePanel = name;
+    isCreateOpen = name === 'create';
+    overlayPanel = (name === 'account' || name === 'settings') ? name : null;
+
+    mainStage.classList.add(PANEL_STATES[name]);
+    element.removeAttribute('inert');
+    element.setAttribute('aria-hidden', 'false');
+    setHomeInert(true);
+
+    if (name === 'instances' && instancesRailBtn) {
+      instancesRailBtn.setAttribute('aria-expanded', 'true');
+    }
+
+    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
+      detail: { panel: name }
+    }));
+  }
+
+  /** 标题栏「返回 / 关闭当前页」、Esc、各页面返回按钮共用。 */
+  function closeActivePanel(options) {
+    options = options || {};
+    if (!activePanel) return;
+    if (activePanel === 'create' && installInProgress) return;
+
+    // 游戏目录页是从实例列表进来的，返回时回到列表而不是主视区。
+    if (activePanel === 'gamedir') {
+      showPanel('instances');
+      renderInstancePanel();
+      if (options.focus !== false) {
+        var backBtn = document.getElementById('instancesBack');
+        if (backBtn) backBtn.focus();
+      }
+      return;
+    }
+
+    var closing = hideActivePanel(options);
+    if (options.focus !== false && closing) {
+      var rail = document.querySelector('.rail-btn[data-nav="' + closing + '"]');
+      if (rail) rail.focus();
+    }
+  }
+
+  function openInstancesPanel() {
+    showPanel('instances');
+    renderInstancePanel();
+    window.setTimeout(function () {
+      if (newInstanceBtn) newInstanceBtn.focus();
+    }, 220);
+  }
+
   function openCreatePanel() {
     if (!mainStage || !stageCreate) return;
     if (installInProgress) return;
-    if (overlayPanel) closeOverlayPanel({ focus: false });
 
-    isCreateOpen = true;
-    mainStage.classList.add('is-create');
-    stageCreate.removeAttribute('inert');
-    stageCreate.setAttribute('aria-hidden', 'false');
-    setHomeInert(true);
-
-    if (instancesRailBtn) {
-      instancesRailBtn.setAttribute('aria-expanded', 'true');
-    }
+    showPanel('create');
 
     if (createName) createName.classList.remove('is-invalid');
     if (createMessage) {
@@ -1078,24 +1181,10 @@
 
   function closeCreatePanel(options) {
     if (!isCreateOpen || installInProgress) return;
-
     options = options || {};
-    isCreateOpen = false;
-    if (mainStage) mainStage.classList.remove('is-create');
-    if (stageCreate) {
-      stageCreate.setAttribute('inert', '');
-      stageCreate.setAttribute('aria-hidden', 'true');
-    }
-    setHomeInert(false);
 
-    if (instancesRailBtn) {
-      instancesRailBtn.setAttribute('aria-expanded', 'false');
-      if (options.focus !== false) instancesRailBtn.focus();
-    }
-
-    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
-      detail: { panel: 'stage-home' }
-    }));
+    hideActivePanel({ focus: false });
+    if (options.focus !== false && instancesRailBtn) instancesRailBtn.focus();
   }
 
   function handleCreateSubmit(event) {
@@ -1207,24 +1296,8 @@
 
   setCreateBusy(false);
 
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && isCreateOpen) {
-      closeCreatePanel({ focus: true });
-    }
-  });
-
-  // 对照 ui-tree-controls.html：实例管理的 3 个 L2 直达控件
-  Array.prototype.forEach.call(document.querySelectorAll('[data-instance-action]'), function (button) {
-    button.addEventListener('click', function () {
-      window.dispatchEvent(new CustomEvent('launcher:instance-action', {
-        detail: {
-          action: button.getAttribute('data-instance-action'),
-          key: button.getAttribute('data-control-key'),
-          instance: getSelectedInstance()
-        }
-      }));
-    });
-  });
+  // 对照 ui-tree-controls.html：实例管理的 3 个 L2 直达控件的真正处理在
+  // 「实例列表页」那一段（data-instance-action 的委托监听）。
 
   // ---------------------------------------------------------
   // 左侧 / 顶部导航：当前页高亮 + 交给宿主路由
@@ -1262,16 +1335,14 @@
     }
 
     if (isRailButton && target === 'instances') {
-      closeOverlayPanel({ focus: false });
-      openCreatePanel();
+      closeActivePanel({ focus: false });
+      openInstancesPanel();
     } else if (isRailButton && (target === 'account' || target === 'settings')) {
-      closeCreatePanel({ focus: false });
+      closeActivePanel({ focus: false });
       openOverlayPanel(target);
-    } else if (isCreateOpen && isRailButton) {
-      closeCreatePanel({ focus: false });
-      closeOverlayPanel({ focus: false });
     } else if (isRailButton) {
-      closeOverlayPanel({ focus: false });
+      // 「游戏」等没有独立页面的项：回到主视区
+      closeActivePanel({ focus: false });
     }
 
     window.dispatchEvent(new CustomEvent('launcher:navigate', {
@@ -1344,9 +1415,19 @@
 
   function accountTypeLabel(account) {
     if (!account) return '';
-    if (account.type === 'microsoft') return 'Microsoft';
-    if (account.type === 'authlib') return account.serverName ? '认证服务器 · ' + account.serverName : '认证服务器';
-    return 'Offline';
+    if (account.type === 'microsoft') return '微软账户';
+    if (account.type === 'authlib') {
+      return account.serverName ? '认证服务器 · ' + account.serverName : '认证服务器';
+    }
+    return '离线账户';
+  }
+
+  /** 卡片左上角的小标签：一眼看出这是哪种账号。 */
+  function accountKindBadge(account) {
+    if (!account) return { text: '未知', kind: 'unknown' };
+    if (account.type === 'microsoft') return { text: '微软', kind: 'microsoft' };
+    if (account.type === 'authlib') return { text: '第三方', kind: 'authlib' };
+    return { text: '离线', kind: 'offline' };
   }
 
   function syncAccountChrome() {
@@ -1389,7 +1470,8 @@
     offline: document.getElementById('dlgOffline'),
     server: document.getElementById('dlgServer'),
     skin: document.getElementById('dlgSkin'),
-    confirm: document.getElementById('dlgConfirm')
+    confirm: document.getElementById('dlgConfirm'),
+    instance: document.getElementById('dlgInstance')
   };
   var openDialogName = null;
   var dialogReturnFocus = null;
@@ -1510,7 +1592,10 @@
 
     if (account.id !== selectedAccountId) addAction('设为当前账户', 'use');
     if (account.type === 'offline') addAction('离线皮肤设置', 'skin');
-    if (account.type === 'microsoft' || account.type === 'authlib') addAction('重新登录', 'relogin');
+    if (account.type === 'microsoft' || account.type === 'authlib') {
+      addAction('刷新皮肤', 'refresh-skin');
+      addAction('重新登录', 'relogin');
+    }
     addAction('删除账户', 'delete', true);
 
     // 账户面板带 transform，挂在面板里会让 position: fixed 相对面板定位，
@@ -1581,11 +1666,16 @@
 
     api.getSkinData(id)
       .then(function (data) {
-        if (!data || !data.dataUrl || !node.isConnected) return;
+        if (!data || !data.dataUrl || !node.isConnected) {
+          if (node.isConnected) node.classList.add('is-missing');
+          return;
+        }
         node.style.backgroundImage = 'url("' + data.dataUrl + '")';
+        node.classList.remove('is-missing');
+        node.hidden = false;
       })
       .catch(function () {
-        // 读不到皮肤就保留底色的空头像
+        if (node.isConnected) node.classList.add('is-missing');
       });
   }
 
@@ -1619,14 +1709,26 @@
       var avatar = document.createElement('div');
       avatar.className = 'account-tile__avatar';
 
-      if (account.hasSkin) {
-        var skin = document.createElement('div');
-        skin.className = 'account-tile__skin';
-        avatar.appendChild(skin);
-        loadTileSkin(account.id, skin);
-      } else {
-        avatar.innerHTML = pixelAvatarSvg(account.name);
-      }
+      // 兜底头像：皮肤没取到 / 加载失败时显示，识别度来自玩家名。
+      var fallback = document.createElement('div');
+      fallback.className = 'account-tile__fallback';
+      fallback.innerHTML = pixelAvatarSvg(account.name);
+      avatar.appendChild(fallback);
+
+      // 微软 / 认证服务器的皮肤要联网取，离线账号也可能手动设过皮肤，
+      // 所以一律先试一次；取不到就保留下面的兜底头像。
+      var skin = document.createElement('div');
+      skin.className = 'account-tile__skin';
+      skin.hidden = true;
+      avatar.appendChild(skin);
+      loadTileSkin(account.id, skin);
+
+      // 左上角类型标签：微软 / 离线 / 认证服务器
+      var badge = accountKindBadge(account);
+      var kind = document.createElement('span');
+      kind.className = 'account-tile__kind account-tile__kind--' + badge.kind;
+      kind.textContent = badge.text;
+      avatar.appendChild(kind);
 
       if (isSelected) {
         var dot = document.createElement('span');
@@ -1644,7 +1746,8 @@
 
       var meta = document.createElement('span');
       meta.className = 'account-tile__meta';
-      meta.textContent = isSelected ? '当前 · ' + accountTypeLabel(account) : accountTypeLabel(account);
+      meta.textContent = (isSelected ? '当前 · ' : '') + accountTypeLabel(account);
+      meta.title = accountTypeLabel(account);
       tile.appendChild(meta);
 
       var menuBtn = document.createElement('button');
@@ -1981,6 +2084,23 @@
 
     if (action === 'skin') {
       openSkinDialog(account);
+      return;
+    }
+
+    if (action === 'refresh-skin') {
+      if (!api || typeof api.refreshSkin !== 'function') return;
+      api.refreshSkin(id)
+        .then(function (result) {
+          if (result && result.error) setLaunchNote(result.error, true);
+          else setLaunchNote('已刷新 ' + account.name + ' 的皮肤', false);
+          // 重新拉一次列表，让卡片按新皮肤重绘。
+          return api.getAccounts();
+        })
+        .then(applyAccountSnapshot)
+        .catch(function (error) {
+          console.warn('[accounts] 刷新皮肤失败:', error && error.message);
+          setLaunchNote('刷新皮肤失败：' + describeLaunchError(error), true);
+        });
       return;
     }
 
@@ -2520,50 +2640,18 @@
   }
 
   // ---------------------------------------------------------
-  // 二级页面切换：账户 / 设置
+  // 账户 / 设置：包装页面栈
   // ---------------------------------------------------------
   var overlayPanel = null;
 
   function closeOverlayPanel(options) {
     if (!overlayPanel) return;
-    options = options || {};
-
-    var closing = overlayPanel;
-    overlayPanel = null;
-
-    if (mainStage) {
-      mainStage.classList.remove('is-account', 'is-settings');
-    }
-
-    [stageAccount, stageSettings].forEach(function (node) {
-      if (!node) return;
-      node.setAttribute('inert', '');
-      node.setAttribute('aria-hidden', 'true');
-    });
-
-    setHomeInert(false);
-
-    if (options.focus !== false) {
-      var rail = document.querySelector('.rail-btn[data-nav="' + closing + '"]');
-      if (rail) rail.focus();
-    }
-
-    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
-      detail: { panel: 'stage-home' }
-    }));
+    closeActivePanel(options || {});
   }
 
   function openOverlayPanel(name) {
-    var section = name === 'account' ? stageAccount : stageSettings;
-    if (!mainStage || !section) return;
-
-    closeOverlayPanel({ focus: false });
-
-    overlayPanel = name;
-    mainStage.classList.add(name === 'account' ? 'is-account' : 'is-settings');
-    section.removeAttribute('inert');
-    section.setAttribute('aria-hidden', 'false');
-    setHomeInert(true);
+    if (name !== 'account' && name !== 'settings') return;
+    showPanel(name);
 
     if (name === 'account') {
       loadAccounts();
@@ -2575,10 +2663,20 @@
     } else {
       loadSettings();
     }
+  }
 
-    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
-      detail: { panel: name }
-    }));
+  /** 「全局游戏设置」= 一次跳转，落到设置页的游戏设置区。 */
+  function openGlobalGameSettings() {
+    openOverlayPanel('settings');
+    window.setTimeout(function () {
+      var form = document.getElementById('settingsForm');
+      if (!form) return;
+      form.classList.remove('is-flash');
+      void form.offsetWidth;
+      form.classList.add('is-flash');
+      var first = form.querySelector('input');
+      if (first) first.focus();
+    }, 260);
   }
 
   if (accountBack) {
@@ -2593,9 +2691,770 @@
     });
   }
 
+  // ---------------------------------------------------------
+  // 实例列表页：渲染 / 右键菜单 / 实例操作
+  // ---------------------------------------------------------
+  var instancePanelStatus = null;
+  var openInstanceMenuId = null;
+  var dialogInstanceId = null;
+
+  var INSTANCE_MENU_ITEMS = [
+    { action: 'test', label: '测试游戏' },
+    { action: 'script', label: '生成启动脚本' },
+    { action: 'rename', label: '重命名该实例' },
+    { action: 'duplicate', label: '复制游戏实例' },
+    { action: 'delete', label: '删除该实例', danger: true },
+    { action: 'export', label: '导出整合包', disabled: true, hint: '导出整合包待接入' },
+    { action: 'folder', label: '实例运行文件夹' }
+  ];
+
+  function instanceById(id) {
+    for (var i = 0; i < INSTANCES.length; i += 1) {
+      if (INSTANCES[i].id === id) return INSTANCES[i];
+    }
+    return null;
+  }
+
+  function instanceLabel(instance) {
+    return instance ? (instance.displayName || instance.versionName || instance.profileName || '实例') : '实例';
+  }
+
+  function setInstancePanelStatus(text, tone) {
+    if (!instancePanelStatus) instancePanelStatus = document.getElementById('instancePanelStatus');
+    if (!instancePanelStatus) return;
+    instancePanelStatus.textContent = text || '';
+    instancePanelStatus.classList.toggle('is-error', tone === 'error');
+    instancePanelStatus.classList.toggle('is-ok', tone === 'ok');
+  }
+
+  function buildIlistEmpty(title, hint) {
+    var wrap = document.createElement('div');
+    wrap.className = 'ilist-empty';
+
+    var head = document.createElement('span');
+    head.textContent = title;
+    wrap.appendChild(head);
+
+    if (hint) {
+      var sub = document.createElement('span');
+      sub.textContent = hint;
+      wrap.appendChild(sub);
+    }
+
+    return wrap;
+  }
+
+  function renderInstancePanel() {
+    var rows = document.getElementById('instanceRows');
+    if (!rows) return;
+
+    var count = document.getElementById('instancePanelCount');
+    if (count) count.textContent = String(INSTANCES.length);
+
+    rows.innerHTML = '';
+
+    if (instanceLoadState === 'loading') {
+      rows.appendChild(buildIlistEmpty('正在读取实例…', '扫描游戏目录中的 versions'));
+      return;
+    }
+
+    if (instanceLoadState === 'error') {
+      rows.appendChild(buildIlistEmpty('无法读取实例', instanceLoadError || '主进程没有返回数据'));
+      return;
+    }
+
+    if (INSTANCES.length === 0) {
+      var empty = buildIlistEmpty('还没有实例', '点下面的「新建实例」安装一个原版，或用「扫描实例」找其他启动器。');
+      var createBtn = document.createElement('button');
+      createBtn.type = 'button';
+      createBtn.className = 'dialog-btn';
+      createBtn.textContent = '新建实例';
+      createBtn.addEventListener('click', openCreatePanel);
+      empty.appendChild(createBtn);
+      rows.appendChild(empty);
+      return;
+    }
+
+    INSTANCES.forEach(function (instance) {
+      var selected = instance.id === selectedInstanceId;
+
+      var row = document.createElement('div');
+      row.className = 'ilist-row' + (selected ? ' is-selected' : '');
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('data-instance-row', instance.id);
+
+      var avatar = document.createElement('span');
+      avatar.className = 'ilist-row__avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.textContent = instanceLabel(instance).slice(0, 1).toUpperCase();
+
+      var main = document.createElement('div');
+      main.className = 'ilist-row__main';
+
+      var name = document.createElement('span');
+      name.className = 'ilist-row__name';
+      name.textContent = instanceLabel(instance);
+
+      var meta = document.createElement('span');
+      meta.className = 'ilist-row__meta';
+      meta.textContent = instanceMeta(instance);
+
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var badges = document.createElement('div');
+      badges.className = 'ilist-row__badges';
+
+      var versionBadge = document.createElement('span');
+      versionBadge.className = 'badge';
+      versionBadge.textContent = instance.versionName || '—';
+      badges.appendChild(versionBadge);
+
+      var loaderText = loaderLabel(instance);
+      if (loaderText && loaderText !== 'Vanilla') {
+        var loaderBadge = document.createElement('span');
+        loaderBadge.className = 'badge badge--loader';
+        loaderBadge.textContent = loaderText;
+        badges.appendChild(loaderBadge);
+      }
+
+      if (instance.origin === 'external') {
+        var externalBadge = document.createElement('span');
+        externalBadge.className = 'badge badge--external';
+        externalBadge.textContent = '外部';
+        badges.appendChild(externalBadge);
+      }
+
+      if (selected) {
+        var currentBadge = document.createElement('span');
+        currentBadge.className = 'badge badge--current';
+        currentBadge.textContent = '当前';
+        badges.appendChild(currentBadge);
+      }
+
+      var menuBtn = document.createElement('button');
+      menuBtn.type = 'button';
+      menuBtn.className = 'ilist-row__menu';
+      menuBtn.textContent = '⋯';
+      menuBtn.setAttribute('aria-haspopup', 'true');
+      menuBtn.setAttribute('aria-label', instanceLabel(instance) + ' 的操作');
+      menuBtn.setAttribute('data-instance-menu', instance.id);
+
+      row.appendChild(avatar);
+      row.appendChild(main);
+      row.appendChild(badges);
+      row.appendChild(menuBtn);
+      rows.appendChild(row);
+    });
+  }
+
+  function closeInstanceMenu() {
+    if (!openInstanceMenuId) return;
+    var menu = document.querySelector('.ctx-menu');
+    if (menu) menu.remove();
+    openInstanceMenuId = null;
+  }
+
+  function openInstanceMenu(id, anchor) {
+    closeInstanceMenu();
+    closeAccountMenu();
+
+    if (!instanceById(id) || !anchor) return;
+
+    var menu = document.createElement('div');
+    menu.className = 'account-menu ctx-menu';
+    menu.setAttribute('role', 'menu');
+
+    INSTANCE_MENU_ITEMS.forEach(function (item) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('data-instance-menu-action', item.action);
+      button.setAttribute('data-instance-menu-id', id);
+      button.textContent = item.label;
+      if (item.danger) button.classList.add('is-danger');
+      if (item.disabled) {
+        button.disabled = true;
+        button.title = item.hint || '待接入';
+      }
+      menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+
+    var rect = anchor.getBoundingClientRect();
+    var menuRect = menu.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuRect.height - 6);
+    }
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.left = Math.round(Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 12)) + 'px';
+
+    openInstanceMenuId = id;
+    var first = menu.querySelector('button:not([disabled])');
+    if (first) first.focus();
+  }
+
+  function handleInstanceMenuAction(action, id) {
+    closeInstanceMenu();
+
+    var instance = instanceById(id);
+    if (!instance) return;
+
+    if (action === 'test') {
+      launchInstanceFlow(instance, true);
+      return;
+    }
+
+    if (action === 'script') {
+      createLaunchScript(instance);
+      return;
+    }
+
+    if (action === 'rename') {
+      openInstanceDialog(id);
+      return;
+    }
+
+    if (action === 'duplicate') {
+      duplicateInstance(instance);
+      return;
+    }
+
+    if (action === 'delete') {
+      confirmRemoveInstance(instance);
+      return;
+    }
+
+    if (action === 'folder') {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openInstanceFolder !== 'function') return;
+      api.openInstanceFolder({ instanceId: instance.id })
+        .then(function () { setInstancePanelStatus('已打开 ' + instanceLabel(instance) + ' 的运行文件夹', 'ok'); })
+        .catch(function (error) { setInstancePanelStatus(describeLaunchError(error), 'error'); });
+    }
+  }
+
+  function launchInstanceFlow(instance, test) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.launchGame !== 'function') return;
+
+    selectInstance(instance.id);
+    setLaunchLoading(true);
+    setInstancePanelStatus((test ? '正在测试启动 ' : '正在启动 ') + instanceLabel(instance) + ' …');
+
+    api.launchGame({ instanceId: instance.id, test: Boolean(test) })
+      .then(function (result) {
+        if (result && result.ok) {
+          setInstancePanelStatus(
+            (test ? '测试启动已完成 · PID ' : '已启动 · PID ') + (result.pid || '-') +
+            ' · Java ' + result.javaMajor,
+            'ok'
+          );
+          window.launcherAPI.onLaunchProgress && setLaunchNote(
+            (test ? '测试启动 ' : '已启动 ') + (result.versionId || '') + ' · PID ' + (result.pid || '-'),
+            false
+          );
+        }
+      })
+      .catch(function (error) {
+        setInstancePanelStatus(describeLaunchError(error), 'error');
+      })
+      .then(function () {
+        setLaunchLoading(false);
+      });
+  }
+
+  function createLaunchScript(instance) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.createLaunchScript !== 'function') return;
+
+    setInstancePanelStatus('正在生成启动脚本…');
+
+    api.createLaunchScript({ instanceId: instance.id })
+      .then(function (result) {
+        var name = result && result.bat ? result.bat.split(/[\\/]/).pop() : '启动脚本';
+        setInstancePanelStatus('已生成 ' + name, 'ok');
+        if (result && result.dir && api.openInstanceFolder) {
+          api.openInstanceFolder({ path: result.dir }).catch(function () {});
+        }
+      })
+      .catch(function (error) {
+        setInstancePanelStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function duplicateInstance(instance) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.duplicateInstance !== 'function') return;
+
+    setInstancePanelStatus('正在复制 ' + instanceLabel(instance) + ' …');
+
+    api.duplicateInstance({ instanceId: instance.id })
+      .then(function (snapshot) {
+        updateInstanceUI(snapshot);
+        setInstancePanelStatus('已复制为副本', 'ok');
+      })
+      .catch(function (error) {
+        setInstancePanelStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function confirmRemoveInstance(instance) {
+    askConfirm(
+      '确定删除实例「' + instanceLabel(instance) + '」吗？\n' +
+      '会删除该实例的版本文件夹（含模组与配置），此操作不可撤销。',
+      function () {
+        var api = window.launcherAPI;
+        if (!api || typeof api.removeInstance !== 'function') return;
+
+        setInstancePanelStatus('正在删除 ' + instanceLabel(instance) + ' …');
+
+        api.removeInstance({ instanceId: instance.id })
+          .then(function (snapshot) {
+            updateInstanceUI(snapshot);
+            setInstancePanelStatus('已删除 ' + instanceLabel(instance), 'ok');
+          })
+          .catch(function (error) {
+            setInstancePanelStatus(describeLaunchError(error), 'error');
+          });
+      },
+      '删除'
+    );
+  }
+
+  // ---- 实例操作对话框（L5，对应 Instances.java）----
+
+  function openInstanceDialog(id) {
+    var instance = instanceById(id);
+    if (!instance) return;
+
+    dialogInstanceId = id;
+
+    var meta = document.getElementById('instanceDialogMeta');
+    var nameInput = document.getElementById('instanceNameInput');
+    var status = document.getElementById('instanceDialogStatus');
+    var del = document.getElementById('instanceDelete');
+
+    if (meta) {
+      meta.textContent = instanceLabel(instance) + ' · ' + (instance.versionName || '—') +
+        (loaderLabel(instance) !== 'Vanilla' ? ' · ' + loaderLabel(instance) : '') +
+        (instance.origin === 'external' ? ' · 外部目录' : '');
+    }
+    if (nameInput) nameInput.value = instance.displayName || instance.versionName || '';
+    if (status) setHint(status, '');
+    if (del) del.disabled = false;
+
+    openDialog('instance');
+  }
+
+  var instanceRenameApply = document.getElementById('instanceRenameApply');
+  var instanceDuplicateBtn = document.getElementById('instanceDuplicate');
+  var instanceDeleteBtn = document.getElementById('instanceDelete');
+  var instanceNameInput = document.getElementById('instanceNameInput');
+  var instanceDialogStatus = document.getElementById('instanceDialogStatus');
+
+  function applyInstanceRename() {
+    var api = window.launcherAPI;
+    var instance = instanceById(dialogInstanceId);
+    if (!instance || !api || typeof api.renameInstance !== 'function') return;
+
+    var name = instanceNameInput ? instanceNameInput.value.trim() : '';
+    if (!name) {
+      setHint(instanceDialogStatus, '名称不能为空', 'error');
+      if (instanceNameInput) instanceNameInput.focus();
+      return;
+    }
+
+    setHint(instanceDialogStatus, '正在重命名…');
+
+    api.renameInstance({ instanceId: instance.id, name: name })
+      .then(function (snapshot) {
+        updateInstanceUI(snapshot);
+        setHint(instanceDialogStatus, '已重命名为 ' + name, 'ok');
+        var meta = document.getElementById('instanceDialogMeta');
+        if (meta) meta.textContent = name + ' · ' + (instance.versionName || '—');
+      })
+      .catch(function (error) {
+        setHint(instanceDialogStatus, describeLaunchError(error), 'error');
+      });
+  }
+
+  if (instanceRenameApply) {
+    instanceRenameApply.addEventListener('click', applyInstanceRename);
+  }
+
+  if (instanceNameInput) {
+    instanceNameInput.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applyInstanceRename();
+      }
+    });
+  }
+
+  if (instanceDuplicateBtn) {
+    instanceDuplicateBtn.addEventListener('click', function () {
+      var instance = instanceById(dialogInstanceId);
+      if (!instance) return;
+      closeDialog();
+      duplicateInstance(instance);
+    });
+  }
+
+  if (instanceDeleteBtn) {
+    instanceDeleteBtn.addEventListener('click', function () {
+      var instance = instanceById(dialogInstanceId);
+      if (!instance) return;
+      closeDialog();
+      confirmRemoveInstance(instance);
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 游戏目录管理页（GameDirectoryPage）
+  // ---------------------------------------------------------
+  var gameDirCache = [];
+  var gameDirEditingId = null;
+  var gameDirAddMode = false;
+
+  function gameDirStatus(text, tone) {
+    var node = document.getElementById('gameDirStatus');
+    if (!node) return;
+    node.textContent = text || '';
+    node.classList.toggle('is-error', tone === 'error');
+  }
+
+  function applyGameDirForm() {
+    var input = document.getElementById('gameDirInput');
+    var relative = document.getElementById('gameDirRelative');
+    var hintNode = document.getElementById('gameDirRelativeHint');
+    var deleteBtn = document.getElementById('gameDirDelete');
+
+    var entry = null;
+    for (var i = 0; i < gameDirCache.length; i += 1) {
+      if (gameDirCache[i].id === gameDirEditingId) entry = gameDirCache[i];
+    }
+
+    if (input) input.value = entry ? entry.path : '';
+    if (relative) {
+      relative.checked = entry ? Boolean(entry.useRelativePath) : false;
+      relative.disabled = entry ? !entry.relativePossible : false;
+      if (!relative.disabled) relative.removeAttribute('title');
+      else relative.setAttribute('title', '该文件夹不在启动器目录内，无法使用相对路径');
+    }
+    if (hintNode) {
+      hintNode.textContent = entry && entry.relativePossible
+        ? '这个文件夹在启动器目录内，可以勾选相对路径'
+        : '只有位于启动器目录内的文件夹才能用相对路径';
+    }
+    if (deleteBtn) deleteBtn.hidden = !entry || entry.primary;
+  }
+
+  function renderGameDirList() {
+    var list = document.getElementById('gameDirList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    gameDirCache.forEach(function (entry) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'gamedir-item' + (entry.id === gameDirEditingId ? ' is-selected' : '');
+      item.setAttribute('data-gamedir-id', entry.id);
+
+      var main = document.createElement('div');
+      main.className = 'gamedir-item__main';
+
+      var pathNode = document.createElement('span');
+      pathNode.className = 'gamedir-item__path';
+      pathNode.textContent = entry.displayPath || entry.path;
+
+      var metaNode = document.createElement('span');
+      metaNode.className = 'gamedir-item__meta';
+      metaNode.textContent = entry.primary ? '主目录 · 安装落点' : '附加目录';
+
+      main.appendChild(pathNode);
+      main.appendChild(metaNode);
+
+      item.appendChild(main);
+      list.appendChild(item);
+    });
+  }
+
+  function loadGameDirs(selectId) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getGameDirs !== 'function') return;
+
+    api.getGameDirs()
+      .then(function (data) {
+        gameDirCache = data && Array.isArray(data.dirs) ? data.dirs : [];
+
+        if (gameDirAddMode) {
+          // 「添加游戏文件夹」进来：表单保持空白，不预选已有目录，
+          // 否则保存会把主目录原地改成新路径。
+          gameDirEditingId = null;
+        } else if (selectId) {
+          gameDirEditingId = selectId;
+        } else if (!gameDirEditingId || !gameDirCache.some(function (entry) { return entry.id === gameDirEditingId; })) {
+          gameDirEditingId = gameDirCache.length ? gameDirCache[0].id : null;
+        }
+
+        renderGameDirList();
+        applyGameDirForm();
+        gameDirStatus(gameDirAddMode
+          ? '填写路径后点「保存」新增'
+          : '共 ' + gameDirCache.length + ' 个游戏文件夹');
+      })
+      .catch(function (error) {
+        gameDirStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function openGameDirPage(options) {
+    options = options || {};
+    gameDirAddMode = !options.id;
+    gameDirEditingId = options.id || null;
+    showPanel('gamedir');
+    loadGameDirs(options.id || null);
+
+    window.setTimeout(function () {
+      var input = document.getElementById('gameDirInput');
+      if (input) input.focus();
+    }, 240);
+  }
+
+  var gameDirForm = document.getElementById('gameDirForm');
+
+  if (gameDirForm) {
+    gameDirForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      var api = window.launcherAPI;
+      if (!api || typeof api.saveGameDir !== 'function') return;
+
+      var input = document.getElementById('gameDirInput');
+      var relative = document.getElementById('gameDirRelative');
+      var dirPath = input ? input.value.trim() : '';
+
+      if (!dirPath) {
+        gameDirStatus('请填写游戏文件夹路径', 'error');
+        if (input) input.focus();
+        return;
+      }
+
+      gameDirStatus('正在保存…');
+
+      api.saveGameDir({
+        id: gameDirEditingId || '',
+        path: dirPath,
+        useRelativePath: relative ? Boolean(relative.checked) : false
+      })
+        .then(function (result) {
+          gameDirCache = result && Array.isArray(result.dirs) ? result.dirs : gameDirCache;
+          if (result && result.dir) gameDirEditingId = result.dir.id;
+          gameDirAddMode = false;
+          renderGameDirList();
+          applyGameDirForm();
+          gameDirStatus('已保存：' + ((result && result.dir && (result.dir.displayPath || result.dir.path)) || dirPath), 'ok');
+          loadInstances();
+        })
+        .catch(function (error) {
+          gameDirStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  var gameDirBrowse = document.getElementById('gameDirBrowse');
+  if (gameDirBrowse) {
+    gameDirBrowse.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.pickGameDir !== 'function') return;
+
+      api.pickGameDir()
+        .then(function (picked) {
+          if (!picked) return;
+          var input = document.getElementById('gameDirInput');
+          if (input) input.value = picked;
+          gameDirStatus('已选择文件夹，点「保存」加入列表');
+        })
+        .catch(function (error) {
+          gameDirStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  var gameDirDelete = document.getElementById('gameDirDelete');
+  if (gameDirDelete) {
+    gameDirDelete.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.removeGameDir !== 'function' || !gameDirEditingId) return;
+
+      var entry = null;
+      for (var i = 0; i < gameDirCache.length; i += 1) {
+        if (gameDirCache[i].id === gameDirEditingId) entry = gameDirCache[i];
+      }
+      if (!entry) return;
+
+      askConfirm(
+        '从列表移除「' + (entry.displayPath || entry.path) + '」吗？\n' +
+        '只会停止扫描这个文件夹，不会删除磁盘上的文件。',
+        function () {
+          api.removeGameDir(entry.id)
+            .then(function (result) {
+              gameDirCache = result && Array.isArray(result.dirs) ? result.dirs : [];
+              gameDirEditingId = gameDirCache.length ? gameDirCache[0].id : null;
+              renderGameDirList();
+              applyGameDirForm();
+              gameDirStatus('已移除', 'ok');
+              loadInstances();
+            })
+            .catch(function (error) {
+              gameDirStatus(describeLaunchError(error), 'error');
+            });
+        },
+        '移除'
+      );
+    });
+  }
+
+  var gameDirList = document.getElementById('gameDirList');
+  if (gameDirList) {
+    gameDirList.addEventListener('click', function (event) {
+      var item = event.target.closest ? event.target.closest('[data-gamedir-id]') : null;
+      if (!item) return;
+      gameDirEditingId = item.getAttribute('data-gamedir-id');
+      gameDirAddMode = false;
+      renderGameDirList();
+      applyGameDirForm();
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 页面返回按钮与入口
+  // ---------------------------------------------------------
+  var instancesBackBtn = document.getElementById('instancesBack');
+  if (instancesBackBtn) {
+    instancesBackBtn.addEventListener('click', function () {
+      closeActivePanel({ focus: true });
+    });
+  }
+
+  var gameDirBackBtn = document.getElementById('gameDirBack');
+  if (gameDirBackBtn) {
+    gameDirBackBtn.addEventListener('click', function () {
+      closeActivePanel({ focus: true });
+    });
+  }
+
+  var newInstanceBtn = document.getElementById('newInstanceBtn');
+  if (newInstanceBtn) {
+    newInstanceBtn.addEventListener('click', function () {
+      openCreatePanel();
+    });
+  }
+
+  var instanceEntries = document.getElementById('instanceEntries');
+  if (instanceEntries) {
+    instanceEntries.addEventListener('click', function (event) {
+      var trigger = event.target.closest ? event.target.closest('[data-instance-action]') : null;
+      if (!trigger) return;
+
+      var action = trigger.getAttribute('data-instance-action');
+
+      window.dispatchEvent(new CustomEvent('launcher:instance-action', {
+        detail: {
+          action: action,
+          key: trigger.getAttribute('data-control-key'),
+          instance: getSelectedInstance()
+        }
+      }));
+
+      if (action === 'edit') {
+        var instance = getSelectedInstance();
+        if (!instance) {
+          setInstancePanelStatus('还没有可修改的实例', 'error');
+          return;
+        }
+        openInstanceDialog(instance.id);
+        return;
+      }
+
+      if (action === 'add-directory') {
+        openGameDirPage();
+        return;
+      }
+
+      if (action === 'global-settings') {
+        openGlobalGameSettings();
+      }
+    });
+  }
+
+  var instanceRowsEl = document.getElementById('instanceRows');
+  if (instanceRowsEl) {
+    instanceRowsEl.addEventListener('click', function (event) {
+      var menuBtn = event.target.closest ? event.target.closest('[data-instance-menu]') : null;
+      if (menuBtn) {
+        var menuId = menuBtn.getAttribute('data-instance-menu');
+        if (openInstanceMenuId === menuId) closeInstanceMenu();
+        else openInstanceMenu(menuId, menuBtn);
+        return;
+      }
+
+      var row = event.target.closest ? event.target.closest('[data-instance-row]') : null;
+      if (row) {
+        selectInstance(row.getAttribute('data-instance-row'));
+        setInstancePanelStatus('');
+      }
+    });
+
+    instanceRowsEl.addEventListener('contextmenu', function (event) {
+      var row = event.target.closest ? event.target.closest('[data-instance-row]') : null;
+      if (!row) return;
+      event.preventDefault();
+      var anchor = row.querySelector('[data-instance-menu]') || row;
+      openInstanceMenu(row.getAttribute('data-instance-row'), anchor);
+    });
+
+    instanceRowsEl.addEventListener('dblclick', function (event) {
+      var row = event.target.closest ? event.target.closest('[data-instance-row]') : null;
+      if (!row) return;
+      var instance = instanceById(row.getAttribute('data-instance-row'));
+      if (instance) launchInstanceFlow(instance, false);
+    });
+  }
+
+  // 实例菜单也挂在 body 上，统一在 document 上收口
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var actionEl = target.closest('[data-instance-menu-action]');
+    if (actionEl) {
+      handleInstanceMenuAction(
+        actionEl.getAttribute('data-instance-menu-action'),
+        actionEl.getAttribute('data-instance-menu-id')
+      );
+      return;
+    }
+
+    if (openInstanceMenuId) closeInstanceMenu();
+  });
+
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && overlayPanel) {
-      closeOverlayPanel({ focus: true });
+    if (event.key !== 'Escape') return;
+
+    if (openDialogName) return;          // 弹窗的 Esc 由前面的捕获阶段处理
+    if (openInstanceMenuId) {
+      event.stopPropagation();
+      closeInstanceMenu();
+      return;
+    }
+    if (activePanel) {
+      closeActivePanel({ focus: true });
     }
   });
 

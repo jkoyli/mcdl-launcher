@@ -2,12 +2,14 @@
 
 const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const mcdl = require('./mcdl-service');
 const javaRuntime = require('./java-runtime');
 const launcher = require('./launch');
 const accounts = require('./accounts');
+const { createGameDirectoryStore } = require('./game-directories');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -205,15 +207,124 @@ async function readSkinPng(filePath) {
   return { width, height };
 }
 
-async function readSkinData(id) {
-  if (!id) return { dataUrl: null, model: 'classic' };
-  const file = await getAccountStore().getSkinPath(id);
-  if (!file) return { dataUrl: null, model: 'classic' };
+/** 远程皮肤缓存的有效期：过期后重新下载，失败时退回旧缓存。 */
+const SKIN_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+function skinCacheFile(accountId, url) {
+  const hash = crypto.createHash('sha1').update(String(url)).digest('hex').slice(0, 10);
+  const safeId = String(accountId).replace(/[^A-Za-z0-9_-]/g, '_');
+  return path.join(app.getPath('userData'), 'skins', `remote-${safeId}-${hash}.png`);
+}
+
+/**
+ * 找出账号的远程皮肤地址：
+ *   - 微软账号：先读已存的 skinUrl，没有就用 accessToken 拉一次 /minecraft/profile
+ *   - 第三方账号：向 session server 要 textures 属性
+ */
+async function resolveRemoteSkin(account) {
+  const store = getAccountStore();
+
+  if (account.skinUrl) {
+    return { url: account.skinUrl, model: account.skinModel || 'classic' };
+  }
+
+  if (account.type === 'microsoft') {
+    const info = await accounts.refreshMicrosoftSkin(account);
+    if (!info || !info.skinUrl) return null;
+    await store
+      .save({
+        id: account.id,
+        skinUrl: info.skinUrl,
+        skinModel: info.skinModel,
+        skinFetchedAt: Date.now(),
+        accessToken: info.accessToken || account.accessToken
+      })
+      .catch((error) => console.warn('[skin] 保存微软皮肤地址失败:', error.message));
+    return { url: info.skinUrl, model: info.skinModel };
+  }
+
+  if (account.type === 'authlib') {
+    const info = await accounts.fetchAuthlibSkin(account.serverApiRoot, account.uuid);
+    if (!info || !info.url) return null;
+    await store
+      .save({ id: account.id, skinUrl: info.url, skinModel: info.model, skinFetchedAt: Date.now() })
+      .catch((error) => console.warn('[skin] 保存服务器皮肤地址失败:', error.message));
+    return { url: info.url, model: info.model };
+  }
+
+  return null;
+}
+
+async function readCachedSkin(file) {
   try {
     const buffer = await fs.readFile(file);
-    return { dataUrl: `data:image/png;base64,${buffer.toString('base64')}`, model: null };
+    return `data:image/png;base64,${buffer.toString('base64')}`;
   } catch {
-    return { dataUrl: null, model: 'classic' };
+    return null;
+  }
+}
+
+async function downloadSkin(url, file) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.writeFile(file, buffer);
+  return `data:image/png;base64,${buffer.toString('base64')}`;
+}
+
+/**
+ * 渲染进程要的皮肤图：
+ *   1. 本机皮肤文件（离线账号手动选的）优先
+ *   2. 否则走远程皮肤（微软 / 认证服务器），下载后缓存到数据目录
+ */
+async function readSkinData(id) {
+  if (!id) return { dataUrl: null, model: 'classic', source: null };
+
+  const store = getAccountStore();
+
+  const localFile = await store.getSkinPath(id);
+  if (localFile) {
+    const buffer = await readCachedSkin(localFile);
+    if (buffer) return { dataUrl: buffer, model: null, source: 'local' };
+  }
+
+  const account = await store.getById(id);
+  if (!account) return { dataUrl: null, model: 'classic', source: null };
+
+  const fallbackModel = account.skinModel || 'classic';
+
+  let remote;
+  try {
+    remote = await resolveRemoteSkin(account);
+  } catch (error) {
+    console.warn('[skin] 获取远程皮肤地址失败:', error.message);
+    return { dataUrl: null, model: fallbackModel, source: null };
+  }
+
+  if (!remote || !remote.url) return { dataUrl: null, model: fallbackModel, source: null };
+
+  const file = skinCacheFile(account.id, remote.url);
+
+  let stat = null;
+  try {
+    stat = await fs.stat(file);
+  } catch {
+    stat = null;
+  }
+
+  if (stat && Date.now() - stat.mtimeMs < SKIN_CACHE_TTL) {
+    const cached = await readCachedSkin(file);
+    if (cached) return { dataUrl: cached, model: remote.model, source: 'remote' };
+  }
+
+  try {
+    const dataUrl = await downloadSkin(remote.url, file);
+    return { dataUrl, model: remote.model, source: 'remote' };
+  } catch (error) {
+    console.warn('[skin] 下载皮肤失败:', error.message);
+    const cached = stat ? await readCachedSkin(file) : null;
+    return { dataUrl: cached, model: remote.model, source: cached ? 'remote-cache' : null };
   }
 }
 
@@ -318,6 +429,32 @@ function aliasFile() {
   return path.join(app.getPath('userData'), 'instance-display-names.json');
 }
 
+// ---------------- 游戏目录管理 ----------------
+
+let gameDirStore = null;
+
+function getGameDirStore() {
+  if (!gameDirStore) {
+    gameDirStore = createGameDirectoryStore({
+      storeDir: app.getPath('userData'),
+      defaultDir: mcdl.DEFAULT_GAME_DIR,
+      launcherHome: mcdl.LAUNCHER_HOME
+    });
+  }
+  return gameDirStore;
+}
+
+/**
+ * 当前被管理的所有游戏目录。
+ * 启动器自己的目录始终作为主目录扫描，其余管理目录一律当作外部目录。
+ */
+async function managedGameDirs() {
+  const paths = await getGameDirStore().paths();
+  const own = path.resolve(mcdl.DEFAULT_GAME_DIR);
+  const rest = paths.filter((dir) => path.resolve(dir).toLowerCase() !== own.toLowerCase());
+  return { primary: own, dirs: rest };
+}
+
 async function readAliases() {
   try {
     const raw = await fs.readFile(aliasFile(), 'utf8');
@@ -402,6 +539,27 @@ async function buildInstanceSnapshot(ownDir, externalDirs = []) {
   };
 }
 
+/**
+ * 按 id 找实例：扫描主目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器目录。
+ */
+async function findInstance(instanceId) {
+  const snapshot = await rescanInstances();
+  return {
+    snapshot,
+    instance: snapshot.instances.find((item) => item.id === instanceId) || null
+  };
+}
+
+async function rescanInstances(selectedId) {
+  const ownDir = await mcdl.detectGameDir();
+  const managed = await managedGameDirs();
+  const cachedDirs = await readScanCache();
+  const snapshot = await buildInstanceSnapshot(ownDir, uniqueDirs([...managed.dirs, ...cachedDirs]));
+  snapshot.managedDirs = managed.dirs;
+  if (selectedId) snapshot.selectedId = selectedId;
+  return snapshot;
+}
+
 function sendInstallOutput(win, bufferState) {
   return (text) => {
     bufferState.value += String(text);
@@ -461,8 +619,13 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     try {
       const ownDir = await mcdl.detectGameDir();
+      const managed = await managedGameDirs();
       const cachedDirs = await readScanCache();
-      return await buildInstanceSnapshot(ownDir, cachedDirs);
+      // 扫描顺序：启动器自己的目录 → 用户添加的游戏文件夹 → 主动扫描过的其他启动器
+      const externalDirs = uniqueDirs([...managed.dirs, ...cachedDirs]);
+      const snapshot = await buildInstanceSnapshot(ownDir, externalDirs);
+      snapshot.managedDirs = managed.dirs;
+      return snapshot;
     } catch (error) {
       console.error('[instance-data] failed to read instances:', error);
       throw new Error(`无法读取实例数据: ${error.message}`);
@@ -571,6 +734,190 @@ function registerIpcHandlers() {
     }
   });
 
+  // ---------------- 实例：重命名 / 复制 / 删除 / 打开目录 / 启动脚本 ----------------
+
+  ipcMain.handle('instances:rename', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instanceId = String(payload.instanceId || '');
+    const name = String(payload.name || '').trim();
+
+    if (!name) throw new Error('名称不能为空');
+    if (name.length > 48) throw new Error('名称不能超过 48 个字符');
+
+    const { instance } = await findInstance(instanceId);
+    if (!instance) throw new Error('实例不存在');
+
+    const aliases = await readAliases();
+    aliases[instance.path] = name;
+    await writeAliases(aliases);
+
+    return rescanInstances(instanceId);
+  });
+
+  ipcMain.handle('instances:duplicate', async (event, payload = {}) => {
+    assertAppWindow(event);
+
+    const { instance } = await findInstance(String(payload.instanceId || ''));
+    if (!instance) throw new Error('实例不存在');
+
+    const versionsDir = path.join(instance.gameDir, 'versions');
+    const baseName = path.basename(instance.path);
+
+    let target = '';
+    let targetName = '';
+    for (let index = 1; index <= 50; index += 1) {
+      targetName = index === 1 ? `${baseName} - 副本` : `${baseName} - 副本 ${index}`;
+      target = path.join(versionsDir, targetName);
+      try {
+        await fs.access(target);
+      } catch {
+        break;
+      }
+      target = '';
+    }
+    if (!target) throw new Error('副本数量太多，请先清理旧的副本');
+
+    await fs.cp(instance.path, target, { recursive: true });
+
+    const aliases = await readAliases();
+    const sourceAlias = aliases[instance.path] || instance.displayName || baseName;
+    aliases[target] = payload.name ? String(payload.name).trim() : `${sourceAlias} · 副本`;
+    await writeAliases(aliases);
+
+    const snapshot = await rescanInstances();
+    const created = snapshot.instances.find(
+      (item) => path.resolve(item.path).toLowerCase() === path.resolve(target).toLowerCase()
+    );
+    if (created) snapshot.selectedId = created.id;
+    return snapshot;
+  });
+
+  ipcMain.handle('instances:remove', async (event, payload = {}) => {
+    assertAppWindow(event);
+
+    const { instance } = await findInstance(String(payload.instanceId || ''));
+    if (!instance) throw new Error('实例不存在');
+
+    const versionsDir = path.resolve(instance.gameDir, 'versions');
+    if (path.resolve(path.dirname(instance.path)).toLowerCase() !== versionsDir.toLowerCase()) {
+      throw new Error('只能删除游戏目录 versions 下的实例文件夹');
+    }
+
+    await fs.rm(instance.path, { recursive: true, force: true });
+
+    const aliases = await readAliases();
+    delete aliases[instance.path];
+    await writeAliases(aliases);
+
+    return rescanInstances();
+  });
+
+  ipcMain.handle('instances:open-folder', async (event, payload = {}) => {
+    assertAppWindow(event);
+
+    const target = String(payload.path || '');
+    if (target) {
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+      return true;
+    }
+
+    const { instance } = await findInstance(String(payload.instanceId || ''));
+    if (!instance) throw new Error('实例不存在');
+    const error = await shell.openPath(instance.gameDir);
+    if (error) throw new Error(error);
+    return true;
+  });
+
+  /**
+   * 生成启动脚本：命令行可能超过 cmd 的 8191 字符上限，
+   * 所以主体写成 .ps1（参数数组，一行一个），再用 .bat 转调。
+   */
+  ipcMain.handle('instances:launch-script', async (event, payload = {}) => {
+    assertAppWindow(event);
+
+    const { instance } = await findInstance(String(payload.instanceId || ''));
+    if (!instance) throw new Error('实例不存在');
+
+    const store = getAccountStore();
+    let account = await store.getSelected();
+    if (!account) throw new Error('还没有选择账号，请先在「账户」页创建或登录');
+    if (account.type === 'microsoft') {
+      account = await accounts.ensureFreshToken(account);
+    }
+
+    const versionId = path.basename(instance.path);
+    const settings = await readSettings();
+
+    const plan = await launcher.buildLaunchPlan({
+      gameDir: instance.gameDir,
+      instanceId: versionId,
+      account,
+      settings,
+      dataDir: app.getPath('userData'),
+      resolveJava: (options) => resolveJavaRuntime(options)
+    });
+
+    const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
+    const script = [
+      '# 由 MCDL Launcher 生成，可直接双击运行',
+      `# 实例：${instance.displayName || versionId}`,
+      `Set-Location -LiteralPath ${psQuote(plan.gameDir)}`,
+      `$java = ${psQuote(plan.javaPath)}`,
+      '$javaArgs = @(',
+      ...plan.args.map((arg) => `  ${psQuote(arg)}`),
+      ')',
+      '& $java @javaArgs',
+      "Write-Host ''",
+      "Read-Host '按 Enter 关闭窗口'",
+      ''
+    ].join('\r\n');
+
+    const ps1 = path.join(instance.path, `启动-${versionId}.ps1`);
+    const bat = path.join(instance.path, `启动-${versionId}.bat`);
+    await fs.writeFile(ps1, script, 'utf8');
+    await fs.writeFile(bat, [
+      '@echo off',
+      'chcp 65001 >nul',
+      `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(ps1)}"`,
+      ''
+    ].join('\r\n'), 'utf8');
+
+    return { ps1, bat, dir: instance.path, warnings: plan.warnings };
+  });
+
+  // ---------------- 游戏目录管理 ----------------
+
+  ipcMain.handle('gamedirs:list', async (event) => {
+    assertAppWindow(event);
+    return getGameDirStore().list();
+  });
+
+  ipcMain.handle('gamedirs:save', async (event, payload = {}) => {
+    assertAppWindow(event);
+    return getGameDirStore().save({
+      id: payload && payload.id ? String(payload.id) : '',
+      dirPath: payload && payload.path,
+      useRelativePath: Boolean(payload && payload.useRelativePath)
+    });
+  });
+
+  ipcMain.handle('gamedirs:remove', async (event, id) => {
+    assertAppWindow(event);
+    return getGameDirStore().remove(String(id || ''));
+  });
+
+  ipcMain.handle('gamedirs:pick', async (event) => {
+    const win = assertAppWindow(event);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择游戏文件夹',
+      buttonLabel: '选择',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
     const logDirectory = app.getPath('logs');
@@ -659,6 +1006,11 @@ function registerIpcHandlers() {
       });
 
       await store.markUsed(account.id).catch(() => {});
+
+      // 「测试游戏」：启动后把本次输出日志直接打开，方便看堆栈。
+      if (payload && payload.test) {
+        await shell.openPath(result.logFile).catch(() => {});
+      }
 
       return {
         ok: true,
@@ -808,6 +1160,33 @@ function registerIpcHandlers() {
   ipcMain.handle('accounts:skin-data', async (event, id) => {
     assertAppWindow(event);
     return readSkinData(String(id || ''));
+  });
+
+  /** 重新向微软 / 认证服务器要一次皮肤（换了皮肤后用）。 */
+  ipcMain.handle('accounts:refresh-skin', async (event, id) => {
+    assertAppWindow(event);
+    const accountId = String(id || '');
+    const store = getAccountStore();
+    const account = await store.getById(accountId);
+    const previousUrl = account && account.skinUrl ? account.skinUrl : '';
+
+    await store.clearRemoteSkin(accountId);
+    let skin = await readSkinData(accountId);
+
+    // 刷新失败（令牌过期、离线、服务器拒绝）时退回原来的皮肤地址，
+    // 至少还能用到本机缓存，而不是把头像清空。
+    if ((!skin || !skin.dataUrl) && previousUrl) {
+      await store
+        .save({ id: accountId, skinUrl: previousUrl, skinModel: account.skinModel || 'classic' })
+        .catch(() => {});
+      const cached = await readSkinData(accountId);
+      return {
+        skin: cached,
+        error: '无法从服务器取到新皮肤，仍显示本机缓存'
+      };
+    }
+
+    return { skin };
   });
 
   // ---------------- 设置 ----------------
