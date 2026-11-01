@@ -1,0 +1,2077 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>MCDL Launcher 控件全量清单</title>
+<style>
+body{background:#14141d;color:#e6e6f0;font:13px/1.5 "Microsoft YaHei","Segoe UI",sans-serif;margin:24px;}
+h1{font-size:19px;color:#9ad7ff;margin:0 0 6px;}
+.meta{color:#9aa0b4;margin-bottom:14px;font-size:12px;}
+.bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center;}
+input,select{background:#23233a;color:#e6e6f0;border:1px solid #3a3a55;border-radius:6px;padding:6px 10px;font-size:13px;}
+button{background:#2f3f92;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;}
+table{border-collapse:collapse;width:100%;font-size:12.5px;}
+th{position:sticky;top:0;background:#23233a;color:#cfd3e4;cursor:pointer;text-align:left;padding:7px 9px;border-bottom:1px solid #3a3a55;}
+td{padding:6px 9px;border-bottom:1px solid #26263a;vertical-align:top;}
+tr:hover td{background:#1c1c2a;}
+.lv{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;}
+.l1{background:#1d3b57;color:#9ad7ff}.l2{background:#1d4030;color:#a5e8b8}.l3{background:#4a3c15;color:#ffe08a}.l4{background:#3a2450;color:#e0b0ff}.l5{background:#4d2029;color:#ff9fb0}.sh{background:#2a2a3a;color:#9aa0b4}
+.k{color:#8ea2c8;font-family:Consolas,monospace;font-size:11.5px;}
+.p{color:#c9c9dd;}.loc{color:#7b8199;font-family:Consolas,monospace;font-size:11px;}
+.act{color:#9fb0c9;}.dyn{color:#6f7488;font-style:italic;}
+</style></head><body>
+<h1>MCDL Launcher 按钮/控件全量清单</h1>
+<div class="meta">共 284 项 · 数据源 ui/**/*.java · 文案由 I18N_zh_Hans 解析</div>
+<div class="bar"><input id="q" placeholder="搜索文案 / key / 文件 / 页面" style="width:320px">
+<select id="lv"><option value="">全部层级</option><option value="L1">L1 骨架</option><option value="L2">L2 直达页</option><option value="L3">L3 页签</option><option value="L4">L4 详情页</option><option value="L5">L5 弹窗</option><option value="共享">共享组件</option></select>
+<select id="pg"><option value="">全部页面</option>
+<option>Java 管理</option>
+<option>Java 下载提示</option>
+<option>NBT 编辑器</option>
+<option>安装 Java</option>
+<option>安装向导-可选文件</option>
+<option>安装项</option>
+<option>版本列表</option>
+<option>崩溃窗口</option>
+<option>标题栏</option>
+<option>导出向导-类型</option>
+<option>导出向导-文件</option>
+<option>导出向导-信息</option>
+<option>个性化</option>
+<option>共享组件/框架</option>
+<option>关于</option>
+<option>加载器安装列表</option>
+<option>截图列表</option>
+<option>离线皮肤设置</option>
+<option>模组列表</option>
+<option>内容更新</option>
+<option>内容列表</option>
+<option>内容下载页</option>
+<option>日志窗口</option>
+<option>设置中心</option>
+<option>实例操作对话框</option>
+<option>实例列表</option>
+<option>实例图标选择</option>
+<option>实例详情</option>
+<option>实例右键菜单</option>
+<option>世界管理</option>
+<option>世界详情</option>
+<option>添加离线账户</option>
+<option>添加认证服务器</option>
+<option>通用设置</option>
+<option>投影列表</option>
+<option>微软登录</option>
+<option>下载设置</option>
+<option>下载中心</option>
+<option>游戏崩溃窗口</option>
+<option>游戏目录管理</option>
+<option>游戏设置</option>
+<option>游戏设置预设</option>
+<option>游戏主页</option>
+<option>账户</option>
+<option>整合包</option>
+<option>整合包类型选择</option>
+<option>正版登录对话框</option>
+<option>主窗口侧边栏</option>
+<option>主题包管理</option>
+<option>资源包列表</option>
+</select><button id="reset">重置</button><span id="cnt" style="color:#8d93a8;margin-left:8px"></span></div>
+<table><thead><tr><th>层级</th><th>页面</th><th>位置（文件:行）</th><th>类型</th><th>i18n key</th><th>中文文案</th><th>动作/去向</th></tr></thead><tbody>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>182</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">帮助（打开日志文件夹）</td>
+<td class="act">打开日志文件夹</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>193</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">最小化</td>
+<td class="act">最小化窗口</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>200</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">关闭</td>
+<td class="act">关闭窗口</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>264</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">返回</td>
+<td class="act">返回上一页</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>276</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">关闭当前页</td>
+<td class="act">关闭当前页面</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">标题栏</td>
+<td class="loc">decorator/MainWindowPane.java<br>315</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="p">刷新</td>
+<td class="act">刷新当前页面</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">主窗口侧边栏</td>
+<td class="loc">main/RootPage.java<br>98</td>
+<td>AccountAdvancedListItem</td>
+<td class="k"></td>
+<td class="p">账户（显示当前账户名）</td>
+<td class="act">跳转 账户页 getAccountListPage()</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">主窗口侧边栏</td>
+<td class="loc">main/RootPage.java<br>104</td>
+<td>GameAdvancedListItem</td>
+<td class="k"></td>
+<td class="p">游戏（显示当前实例名）</td>
+<td class="act">跳转 实例设置 / 实例列表</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">主窗口侧边栏</td>
+<td class="loc">main/RootPage.java<br>125</td>
+<td>AdvancedListItem</td>
+<td class="k">instance.manage</td>
+<td class="p">实例列表</td>
+<td class="act">动作 e -&gt; Controllers.navigate(Controllers.getGameListPage()));</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">主窗口侧边栏</td>
+<td class="loc">main/RootPage.java<br>132</td>
+<td>AdvancedListItem</td>
+<td class="k">download</td>
+<td class="p">下载</td>
+<td class="act">动作 e -&gt; Controllers.navigate(Controllers.getDownloadPage()));</td></tr>
+<tr><td><span class="lv l1">L1</span></td>
+<td class="p">主窗口侧边栏</td>
+<td class="loc">main/RootPage.java<br>142</td>
+<td>AdvancedListItem</td>
+<td class="k">settings</td>
+<td class="p">设置</td>
+<td class="act">跳转 设置页 getSettingsPage()</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>42</td>
+<td>TabItem</td>
+<td class="k">settings.type.global.manage</td>
+<td class="p">全局游戏设置</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>43</td>
+<td>TabItem</td>
+<td class="k">java.management</td>
+<td class="p">Java 管理</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>44</td>
+<td>TabItem</td>
+<td class="k">settings.launcher.general</td>
+<td class="p">通用</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>45</td>
+<td>TabItem</td>
+<td class="k">settings.launcher.appearance</td>
+<td class="p">外观</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>46</td>
+<td>TabItem</td>
+<td class="k">download</td>
+<td class="p">下载</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>47</td>
+<td>TabItem</td>
+<td class="k">about</td>
+<td class="p">关于</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>60</td>
+<td>导航页签</td>
+<td class="k">settings.type.global.manage</td>
+<td class="p">全局游戏设置</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>61</td>
+<td>导航页签</td>
+<td class="k">java.management</td>
+<td class="p">Java 管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>63</td>
+<td>导航页签</td>
+<td class="k">settings.launcher.general</td>
+<td class="p">通用</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>64</td>
+<td>导航页签</td>
+<td class="k">settings.launcher.appearance</td>
+<td class="p">外观</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>65</td>
+<td>导航页签</td>
+<td class="k">download</td>
+<td class="p">下载</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">设置中心</td>
+<td class="loc">main/LauncherSettingsPage.java<br>67</td>
+<td>导航页签</td>
+<td class="k">about</td>
+<td class="p">关于</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">实例列表</td>
+<td class="loc">instances/GameListPage.java<br>70</td>
+<td>IconedMenuItem</td>
+<td class="k">button.edit</td>
+<td class="p">修改</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">实例列表</td>
+<td class="loc">instances/GameListPage.java<br>84</td>
+<td>AdvancedListItem</td>
+<td class="k">game_directory.new</td>
+<td class="p">添加游戏文件夹</td>
+<td class="act">动作 e -&gt; Controllers.navigate(new GameDirectoryPage(null)));</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">实例列表</td>
+<td class="loc">instances/GameListPage.java<br>102</td>
+<td>导航项</td>
+<td class="k">settings.type.global.manage</td>
+<td class="p">全局游戏设置</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>92</td>
+<td>TabItem</td>
+<td class="k">install.installer.game</td>
+<td class="p">Minecraft</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>103</td>
+<td>强调按钮</td>
+<td class="k">install.modpack</td>
+<td class="p">安装整合包</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>129</td>
+<td>导航页签</td>
+<td class="k">game</td>
+<td class="p">游戏</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>130</td>
+<td>导航页签</td>
+<td class="k">modpack</td>
+<td class="p">整合包</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>132</td>
+<td>导航页签</td>
+<td class="k">mods</td>
+<td class="p">模组</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>133</td>
+<td>导航页签</td>
+<td class="k">resourcepack</td>
+<td class="p">资源包</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>134</td>
+<td>导航页签</td>
+<td class="k">download.shader</td>
+<td class="p">光影</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>135</td>
+<td>导航页签</td>
+<td class="k">world</td>
+<td class="p">世界</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">下载中心</td>
+<td class="loc">download/DownloadPage.java<br>143</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">游戏主页</td>
+<td class="loc">main/MainPage.java<br>140</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">游戏主页</td>
+<td class="loc">main/MainPage.java<br>177</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">账户</td>
+<td class="loc">account/AccountListPage.java<br>107</td>
+<td>AdvancedListItem</td>
+<td class="k">account.methods.microsoft</td>
+<td class="p">微软账户</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">账户</td>
+<td class="loc">account/AccountListPage.java<br>119</td>
+<td>AdvancedListItem</td>
+<td class="k">account.methods.offline</td>
+<td class="p">离线模式</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">账户</td>
+<td class="loc">account/AccountListPage.java<br>133</td>
+<td>AdvancedListItem</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l2">L2</span></td>
+<td class="p">账户</td>
+<td class="loc">account/AccountListPage.java<br>186</td>
+<td>AdvancedListItem</td>
+<td class="k">account.injector.add</td>
+<td class="p">添加认证服务器</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">Java 管理</td>
+<td class="loc">main/JavaManagementPage.java<br>266</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">版本列表</td>
+<td class="loc">download/VersionsPage.java<br>177</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">版本列表</td>
+<td class="loc">download/VersionsPage.java<br>346</td>
+<td>强调按钮</td>
+<td class="k">button.refresh</td>
+<td class="p">刷新</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">版本列表</td>
+<td class="loc">download/VersionsPage.java<br>410</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">版本列表</td>
+<td class="loc">download/VersionsPage.java<br>419</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>97</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>398</td>
+<td>LineButton·导航</td>
+<td class="k">theme_pack.theme</td>
+<td class="p">主题</td>
+<td class="act">动作 event -&gt;</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>407</td>
+<td>LineButton</td>
+<td class="k">theme_pack.export</td>
+<td class="p">导出当前主题</td>
+<td class="act">动作 event -&gt; exportCurrentThemePack());</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>420</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.brightness</td>
+<td class="p">主题模式</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>605</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.theme_color_style</td>
+<td class="p">色彩模式</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>852</td>
+<td>LineToggleButton</td>
+<td class="k">launcher.background.network.cache</td>
+<td class="p">缓存网络图片</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>897</td>
+<td>LineSelectButton</td>
+<td class="k">launcher.background.load_policy</td>
+<td class="p">背景加载方式</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>1064</td>
+<td>LineToggleButton</td>
+<td class="k">settings.launcher.title_transparent</td>
+<td class="p">标题栏透明</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>1128</td>
+<td>LineToggleButton</td>
+<td class="k">settings.launcher.window_transparent</td>
+<td class="p">窗口透明</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>1155</td>
+<td>LineToggleButton</td>
+<td class="k">settings.launcher.turn_off_animations</td>
+<td class="p">关闭动画</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">个性化</td>
+<td class="loc">main/PersonalizationPage.java<br>1254</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.font.anti_aliasing</td>
+<td class="p">抗锯齿</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">关于</td>
+<td class="loc">main/AboutPage.java<br>52</td>
+<td>LineButton·外部链接</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">关于</td>
+<td class="loc">main/AboutPage.java<br>159</td>
+<td>LineButton·外部链接</td>
+<td class="k">about.claim</td>
+<td class="p">用户协议</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">关于</td>
+<td class="loc">main/AboutPage.java<br>164</td>
+<td>LineButton·外部链接</td>
+<td class="k">about.open_source</td>
+<td class="p">开源</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">关于</td>
+<td class="loc">main/AboutPage.java<br>205</td>
+<td>LineButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 event -&gt; FXUtils.openLink(link));</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">内容列表</td>
+<td class="loc">instances/DownloadListPage.java<br>490</td>
+<td>强调按钮</td>
+<td class="k">search</td>
+<td class="p">搜索</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">内容列表</td>
+<td class="loc">instances/DownloadListPage.java<br>590</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>83</td>
+<td>TabItem</td>
+<td class="k">settings.game</td>
+<td class="p">游戏设置</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>84</td>
+<td>TabItem</td>
+<td class="k">settings.tabs.installers</td>
+<td class="p">自动安装</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>85</td>
+<td>TabItem</td>
+<td class="k">mods.manage</td>
+<td class="p">模组管理</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>86</td>
+<td>TabItem</td>
+<td class="k">resourcepack.manage</td>
+<td class="p">资源包管理</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>87</td>
+<td>TabItem</td>
+<td class="k">world.manage</td>
+<td class="p">世界管理</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>88</td>
+<td>TabItem</td>
+<td class="k">schematics.manage</td>
+<td class="p">原理图管理</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>89</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>356</td>
+<td>导航页签</td>
+<td class="k">settings.game</td>
+<td class="p">游戏设置</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>357</td>
+<td>导航页签</td>
+<td class="k">settings.tabs.installers</td>
+<td class="p">自动安装</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>358</td>
+<td>导航页签</td>
+<td class="k">mods.manage</td>
+<td class="p">模组管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>359</td>
+<td>导航页签</td>
+<td class="k">resourcepack.manage</td>
+<td class="p">资源包管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>360</td>
+<td>导航页签</td>
+<td class="k">world.manage</td>
+<td class="p">世界管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>361</td>
+<td>导航页签</td>
+<td class="k">schematics.manage</td>
+<td class="p">原理图管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>367</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.game</td>
+<td class="p">实例运行文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>368</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.config</td>
+<td class="p">配置文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>370</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.mod</td>
+<td class="p">模组文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>371</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.resourcepacks</td>
+<td class="p">资源包文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>372</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.saves</td>
+<td class="p">世界文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>373</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.schematics</td>
+<td class="p">原理图文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>374</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.shaderpacks</td>
+<td class="p">光影包文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>375</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.screenshots</td>
+<td class="p">截图文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>377</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.logs</td>
+<td class="p">日志文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>378</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.crash-reports</td>
+<td class="p">崩溃报告文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>384</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch.test</td>
+<td class="p">测试游戏</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>385</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch_script</td>
+<td class="p">生成启动脚本</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>387</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.rename</td>
+<td class="p">重命名该实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>388</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.duplicate</td>
+<td class="p">复制游戏实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>389</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.remove</td>
+<td class="p">删除该实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>390</td>
+<td>IconedMenuItem</td>
+<td class="k">modpack.export</td>
+<td class="p">导出整合包</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>394</td>
+<td>IconedMenuItem</td>
+<td class="k">screenshots.manage</td>
+<td class="p">截图管理</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>396</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.redownload_assets_index</td>
+<td class="p">更新游戏资源文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>397</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.remove_assets</td>
+<td class="p">删除所有游戏资源文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>398</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.remove_libraries</td>
+<td class="p">删除所有库文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>399</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.clean</td>
+<td class="p">清理游戏文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>403</td>
+<td>导航项</td>
+<td class="k">instance.update</td>
+<td class="p">更新整合包</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>406</td>
+<td>导航项</td>
+<td class="k">instance.launch.test</td>
+<td class="p">测试游戏</td>
+<td class="act">动作 e -&gt; browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth(</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>407</td>
+<td>导航项</td>
+<td class="k">settings.game.exploration</td>
+<td class="p">浏览</td>
+<td class="act">动作 e -&gt; browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth(</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">实例详情</td>
+<td class="loc">instances/GameInstancePage.java<br>410</td>
+<td>导航项</td>
+<td class="k">settings.game.management</td>
+<td class="p">管理</td>
+<td class="act">动作 e -&gt; managementPopup.show(managementItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, managementItem.getWidth(</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">通用设置</td>
+<td class="loc">main/SettingsPage.java<br>67</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.language</td>
+<td class="p">语言</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">通用设置</td>
+<td class="loc">main/SettingsPage.java<br>94</td>
+<td>LineToggleButton</td>
+<td class="k">settings.launcher.disable_april_fools</td>
+<td class="p">不启用愚人节功能</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">通用设置</td>
+<td class="loc">main/SettingsPage.java<br>108</td>
+<td>JFXButton</td>
+<td class="k">settings.launcher.launcher_log.reveal</td>
+<td class="p">打开日志文件夹</td>
+<td class="act">动作 e -&gt; openLogFolder());</td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">下载设置</td>
+<td class="loc">main/DownloadSettingsPage.java<br>70</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.version_list_source</td>
+<td class="p">版本列表源</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">下载设置</td>
+<td class="loc">main/DownloadSettingsPage.java<br>77</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.download_source</td>
+<td class="p">下载源</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">下载设置</td>
+<td class="loc">main/DownloadSettingsPage.java<br>84</td>
+<td>LineSelectButton</td>
+<td class="k">settings.launcher.default_addon_source</td>
+<td class="p">附加内容默认下载源</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">游戏设置</td>
+<td class="loc">game/GameSettingsPage.java<br>187</td>
+<td>LineSelectButton</td>
+<td class="k">settings.type.global.preset</td>
+<td class="p">预设</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">游戏设置</td>
+<td class="loc">game/GameSettingsPage.java<br>334</td>
+<td>LineSelectButton</td>
+<td class="k">settings.game.default_isolation</td>
+<td class="p">默认版本隔离策略</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">游戏设置</td>
+<td class="loc">game/GameSettingsPage.java<br>351</td>
+<td>LineToggleButton</td>
+<td class="k">settings.game.isolation</td>
+<td class="p">版本隔离</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">游戏设置</td>
+<td class="loc">game/GameSettingsPage.java<br>1348</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">游戏设置</td>
+<td class="loc">game/GameSettingsPage.java<br>2620</td>
+<td>LineSelectButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">整合包</td>
+<td class="loc">download/ModpackPage.java<br>85</td>
+<td>强调按钮</td>
+<td class="k">modpack.optional_files</td>
+<td class="p">可选文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l3">L3</span></td>
+<td class="p">整合包</td>
+<td class="loc">download/ModpackPage.java<br>90</td>
+<td>强调按钮</td>
+<td class="k">button.install</td>
+<td class="p">安装</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">NBT 编辑器</td>
+<td class="loc">nbt/NBTEditorPage.java<br>65</td>
+<td>强调按钮</td>
+<td class="k">button.save</td>
+<td class="p">保存</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">NBT 编辑器</td>
+<td class="loc">nbt/NBTEditorPage.java<br>75</td>
+<td>强调按钮</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">安装向导-可选文件</td>
+<td class="loc">download/OptionalFilesPage.java<br>131</td>
+<td>强调按钮</td>
+<td class="k">button.install</td>
+<td class="p">安装</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">安装向导-可选文件</td>
+<td class="loc">download/OptionalFilesPage.java<br>187</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">安装向导-可选文件</td>
+<td class="loc">download/OptionalFilesPage.java<br>289</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-类型</td>
+<td class="loc">export/ModpackTypeSelectionPage.java<br>48</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-文件</td>
+<td class="loc">export/ModpackFileSelectionPage.java<br>83</td>
+<td>强调按钮</td>
+<td class="k">wizard.next</td>
+<td class="p">下一步 &gt;</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>293</td>
+<td>LineSelectButton</td>
+<td class="k">account.injector.server</td>
+<td class="p">认证服务器</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>308</td>
+<td>LineToggleButton</td>
+<td class="k">modpack.wizard.step.initialization.force_update</td>
+<td class="p">强制升级整合包至最新版本 (需要自建服务器)</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>316</td>
+<td>LineToggleButton</td>
+<td class="k">modpack.wizard.step.initialization.include_launcher</td>
+<td class="p">包含启动器</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>325</td>
+<td>LineToggleButton</td>
+<td class="k">modpack.wizard.step.initialization.no_create_remote_files</td>
+<td class="p">不匹配远程文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>333</td>
+<td>LineToggleButton</td>
+<td class="k">modpack.wizard.step.initialization.skip_curseforge_remote_files</td>
+<td class="p">不匹配 CurseForge 远程资源</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">导出向导-信息</td>
+<td class="loc">export/ModpackInfoPage.java<br>346</td>
+<td>强调按钮</td>
+<td class="k">wizard.next</td>
+<td class="p">下一步 &gt;</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">加载器安装列表</td>
+<td class="loc">download/AbstractInstallersPage.java<br>168</td>
+<td>强调按钮</td>
+<td class="k">button.install</td>
+<td class="p">安装</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">截图列表</td>
+<td class="loc">instances/ScreenshotsPage.java<br>361</td>
+<td>JFXButton</td>
+<td class="k">screenshots.set_as_bg</td>
+<td class="p">设为启动器背景</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">截图列表</td>
+<td class="loc">instances/ScreenshotsPage.java<br>369</td>
+<td>JFXButton</td>
+<td class="k">menu.copy</td>
+<td class="p">复制</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">截图列表</td>
+<td class="loc">instances/ScreenshotsPage.java<br>376</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">模组列表</td>
+<td class="loc">instances/ModListPage.java<br>711</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">模组列表</td>
+<td class="loc">instances/ModListPage.java<br>846</td>
+<td>IconedMenuItem</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容更新</td>
+<td class="loc">instances/AddonUpdatesPage.java<br>139</td>
+<td>强调按钮</td>
+<td class="k">button.export</td>
+<td class="p">导出</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容更新</td>
+<td class="loc">instances/AddonUpdatesPage.java<br>142</td>
+<td>强调按钮</td>
+<td class="k">addon.check_update.confirm</td>
+<td class="p">更新</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容更新</td>
+<td class="loc">instances/AddonUpdatesPage.java<br>145</td>
+<td>强调按钮</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容更新</td>
+<td class="loc">instances/AddonUpdatesPage.java<br>379</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容更新</td>
+<td class="loc">instances/AddonUpdatesPage.java<br>462</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容下载页</td>
+<td class="loc">instances/DownloadPage.java<br>481</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">弹窗 AddonVersion</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容下载页</td>
+<td class="loc">instances/DownloadPage.java<br>539</td>
+<td>JFXButton</td>
+<td class="k">install.modpack</td>
+<td class="p">安装整合包</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容下载页</td>
+<td class="loc">instances/DownloadPage.java<br>549</td>
+<td>JFXButton</td>
+<td class="k">mods.save_as</td>
+<td class="p">下载到本地文件夹</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容下载页</td>
+<td class="loc">instances/DownloadPage.java<br>558</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">内容下载页</td>
+<td class="loc">instances/DownloadPage.java<br>678</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">实例右键菜单</td>
+<td class="loc">instances/GameListPopupMenu.java<br>153</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>72</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>73</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>74</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>203</td>
+<td>导航页签</td>
+<td class="k">world.info</td>
+<td class="p">世界信息</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>204</td>
+<td>导航页签</td>
+<td class="k">world.backup</td>
+<td class="p">备份管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>208</td>
+<td>导航页签</td>
+<td class="k">world.datapack</td>
+<td class="p">数据包管理</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>220</td>
+<td>导航项</td>
+<td class="k">instance.launch</td>
+<td class="p">启动游戏</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>228</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.seed_map</td>
+<td class="p">种子地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>229</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.stronghold</td>
+<td class="p">要塞地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>230</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.nether_fortress</td>
+<td class="p">下界要塞地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>235</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.end_city</td>
+<td class="p">末地城地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>238</td>
+<td>导航项</td>
+<td class="k">world.chunkbase</td>
+<td class="p">世界地图</td>
+<td class="act">动作 e -&gt;
+                                    chunkBasePopup.show(chunkBaseMenuItem,
+                                            JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                            chunkBaseMenuItem.getWidth(</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>245</td>
+<td>导航项</td>
+<td class="k">settings.game.exploration</td>
+<td class="p">浏览</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>253</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch</td>
+<td class="p">启动游戏</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>254</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch_script</td>
+<td class="p">生成启动脚本</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>260</td>
+<td>IconedMenuItem</td>
+<td class="k">world.export</td>
+<td class="p">导出此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>261</td>
+<td>IconedMenuItem</td>
+<td class="k">world.delete</td>
+<td class="p">删除此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>262</td>
+<td>IconedMenuItem</td>
+<td class="k">world.duplicate</td>
+<td class="p">复制此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界管理</td>
+<td class="loc">instances/WorldManagePage.java<br>265</td>
+<td>导航项</td>
+<td class="k">settings.game.management</td>
+<td class="p">管理</td>
+<td class="act">动作 e -&gt;
+                                managePopup.show(managePopupMenuItem,
+                                        JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                        managePopupMenuItem.getWidth(</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界详情</td>
+<td class="loc">instances/WorldInfoPage.java<br>216</td>
+<td>LineToggleButton</td>
+<td class="k">world.info.allow_cheats</td>
+<td class="p">允许命令(作弊)</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界详情</td>
+<td class="loc">instances/WorldInfoPage.java<br>224</td>
+<td>LineToggleButton</td>
+<td class="k">world.info.generate_features</td>
+<td class="p">生成建筑</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界详情</td>
+<td class="loc">instances/WorldInfoPage.java<br>244</td>
+<td>LineSelectButton</td>
+<td class="k">world.info.difficulty</td>
+<td class="p">难度</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界详情</td>
+<td class="loc">instances/WorldInfoPage.java<br>278</td>
+<td>LineToggleButton</td>
+<td class="k">world.info.difficulty_lock</td>
+<td class="p">锁定难度</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">世界详情</td>
+<td class="loc">instances/WorldInfoPage.java<br>343</td>
+<td>LineSelectButton</td>
+<td class="k">world.info.player.game_type</td>
+<td class="p">游戏模式</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">投影列表</td>
+<td class="loc">instances/SchematicsPage.java<br>673</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">投影列表</td>
+<td class="loc">instances/SchematicsPage.java<br>884</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">游戏目录管理</td>
+<td class="loc">directory/GameDirectoryPage.java<br>127</td>
+<td>LineToggleButton</td>
+<td class="k">game_directory.use_relative_path</td>
+<td class="p">若可能，游戏文件夹使用相对路径</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">游戏目录管理</td>
+<td class="loc">directory/GameDirectoryPage.java<br>150</td>
+<td>强调按钮</td>
+<td class="k">button.save</td>
+<td class="p">保存</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">整合包类型选择</td>
+<td class="loc">download/ModpackSelectionPage.java<br>74</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; action.run());</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">主题包管理</td>
+<td class="loc">main/ThemePackManagementPage.java<br>456</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">主题包管理</td>
+<td class="loc">main/ThemePackManagementPage.java<br>477</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 event -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">主题包管理</td>
+<td class="loc">main/ThemePackManagementPage.java<br>669</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l4">L4</span></td>
+<td class="p">资源包列表</td>
+<td class="loc">instances/ResourcePackListPage.java<br>672</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">Java 下载提示</td>
+<td class="loc">main/JavaDownloadDialog.java<br>225</td>
+<td>JFXButton</td>
+<td class="k">download</td>
+<td class="p">下载</td>
+<td class="act">动作 e -&gt; onDownload());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">Java 下载提示</td>
+<td class="loc">main/JavaDownloadDialog.java<br>230</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">安装 Java</td>
+<td class="loc">main/JavaInstallPage.java<br>136</td>
+<td>强调按钮</td>
+<td class="k">button.install</td>
+<td class="p">安装</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">安装项</td>
+<td class="loc">InstallerItem.java<br>333</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">崩溃窗口</td>
+<td class="loc">CrashWindow.java<br>39</td>
+<td>Button</td>
+<td class="k">settings.launcher.launcher_log.reveal</td>
+<td class="p">打开日志文件夹</td>
+<td class="act">动作 event -&gt; {</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">离线皮肤设置</td>
+<td class="loc">account/OfflineAccountSkinPane.java<br>226</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">离线皮肤设置</td>
+<td class="loc">account/OfflineAccountSkinPane.java<br>235</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">日志窗口</td>
+<td class="loc">LogWindow.java<br>288</td>
+<td>ToggleButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">日志窗口</td>
+<td class="loc">LogWindow.java<br>400</td>
+<td>JFXButton</td>
+<td class="k">button.export</td>
+<td class="p">导出</td>
+<td class="act">动作 e -&gt; getSkinnable().onExportLogs());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">日志窗口</td>
+<td class="loc">LogWindow.java<br>403</td>
+<td>JFXButton</td>
+<td class="k">logwindow.terminate_game</td>
+<td class="p">结束游戏进程</td>
+<td class="act">动作 e -&gt; getSkinnable().onTerminateGame());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">日志窗口</td>
+<td class="loc">LogWindow.java<br>408</td>
+<td>JFXButton</td>
+<td class="k">logwindow.export_dump</td>
+<td class="p">导出游戏运行栈</td>
+<td class="act">动作 e -&gt; getSkinnable().onExportDump(exportDumpPane));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">日志窗口</td>
+<td class="loc">LogWindow.java<br>417</td>
+<td>JFXButton</td>
+<td class="k">button.clear</td>
+<td class="p">清除</td>
+<td class="act">动作 e -&gt; getSkinnable().onClear());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">实例操作对话框</td>
+<td class="loc">instances/Instances.java<br>111</td>
+<td>JFXButton</td>
+<td class="k">button.delete</td>
+<td class="p">删除</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">实例操作对话框</td>
+<td class="loc">instances/Instances.java<br>337</td>
+<td>JFXButton</td>
+<td class="k">instance.empty.launch.goto_download</td>
+<td class="p">前往下载页面</td>
+<td class="act">动作 e -&gt; Controllers.navigate(Controllers.getDownloadPage()));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">实例图标选择</td>
+<td class="loc">instances/GameInstanceIconDialog.java<br>61</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 event -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">实例图标选择</td>
+<td class="loc">instances/GameInstanceIconDialog.java<br>94</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">实例图标选择</td>
+<td class="loc">instances/GameInstanceIconDialog.java<br>104</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>116</td>
+<td>JFXButton</td>
+<td class="k">account.login</td>
+<td class="p">登录</td>
+<td class="act">动作 e -&gt; onAccept());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>124</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onCancel());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>136</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>142</td>
+<td>TabItem</td>
+<td class="k"></td>
+<td class="dyn">（见对应导航页签）</td>
+<td class="act">页签容器</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>574</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; latch.countDown());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加离线账户</td>
+<td class="loc">account/CreateAccountPane.java<br>606</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加认证服务器</td>
+<td class="loc">account/AddAuthlibInjectorServerPane.java<br>61</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onAddCancel());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加认证服务器</td>
+<td class="loc">account/AddAuthlibInjectorServerPane.java<br>67</td>
+<td>JFXButton</td>
+<td class="k">wizard.next</td>
+<td class="p">下一步 &gt;</td>
+<td class="act">动作 e -&gt; onAddNext());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加认证服务器</td>
+<td class="loc">account/AddAuthlibInjectorServerPane.java<br>138</td>
+<td>JFXButton</td>
+<td class="k">wizard.prev</td>
+<td class="p">&lt; 上一步</td>
+<td class="act">动作 e -&gt; onAddPrev());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加认证服务器</td>
+<td class="loc">account/AddAuthlibInjectorServerPane.java<br>142</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onAddCancel());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">添加认证服务器</td>
+<td class="loc">account/AddAuthlibInjectorServerPane.java<br>146</td>
+<td>JFXButton</td>
+<td class="k">wizard.finish</td>
+<td class="p">完成</td>
+<td class="act">动作 e -&gt; onAddFinish());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">微软登录</td>
+<td class="loc">account/MicrosoftAccountLoginPane.java<br>88</td>
+<td>JFXButton</td>
+<td class="k">account.login</td>
+<td class="p">登录</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">微软登录</td>
+<td class="loc">account/MicrosoftAccountLoginPane.java<br>95</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onCancel());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">微软登录</td>
+<td class="loc">account/MicrosoftAccountLoginPane.java<br>216</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">游戏崩溃窗口</td>
+<td class="loc">GameCrashWindow.java<br>419</td>
+<td>强调按钮</td>
+<td class="k">logwindow.export_game_crash_logs</td>
+<td class="p">导出游戏崩溃信息</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">游戏崩溃窗口</td>
+<td class="loc">GameCrashWindow.java<br>446</td>
+<td>强调按钮</td>
+<td class="k">logwindow.title</td>
+<td class="p">日志</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">游戏崩溃窗口</td>
+<td class="loc">GameCrashWindow.java<br>449</td>
+<td>强调按钮</td>
+<td class="k">help</td>
+<td class="p">帮助</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">游戏设置预设</td>
+<td class="loc">game/PresetManagementPane.java<br>65</td>
+<td>LineButton</td>
+<td class="k">settings.type.global.preset.create</td>
+<td class="p">新建预设</td>
+<td class="act">动作 event -&gt; createPreset());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">正版登录对话框</td>
+<td class="loc">account/ClassicAccountLoginDialog.java<br>70</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; onAccept());</td></tr>
+<tr><td><span class="lv l5">L5</span></td>
+<td class="p">正版登录对话框</td>
+<td class="loc">account/ClassicAccountLoginDialog.java<br>74</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onCancel());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/IconedMenuItem.java<br>17</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/IconedMenuItem.java<br>19</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/DialogPane.java<br>20</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; onCancel());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/LineButton.java<br>20</td>
+<td>LineButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 event -&gt; FXUtils.openLink(url));</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/LineButton.java<br>26</td>
+<td>LineButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 event -&gt; FXUtils.openLink(url));</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/DialogPane.java<br>28</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; onAccept());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/FontComboBox.java<br>42</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">account/AccountListItemSkin.java<br>43</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">account/AccountListPopupMenu.java<br>45</td>
+<td>AccountAdvancedListItem</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/InputDialogPane.java<br>49</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/LineInheritableToggleButton.java<br>50</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">directory/GameDirectoryListItemSkin.java<br>52</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/InputDialogPane.java<br>53</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>57</td>
+<td>AdvancedListItem</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; onAction.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldExportPageSkin.java<br>60</td>
+<td>强调按钮</td>
+<td class="k">button.export</td>
+<td class="p">导出</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>66</td>
+<td>导航项</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/TaskExecutorDialogPane.java<br>66</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>67</td>
+<td>导航项</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>70</td>
+<td>导航项</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MenuUpDownButton.java<br>71</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">ToolbarListPageSkin.java<br>71</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; onClick.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">ToolbarListPageSkin.java<br>80</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; onClick.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">account/AccountListItemSkin.java<br>81</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>85</td>
+<td>导航页签</td>
+<td class="k"></td>
+<td class="dyn">（动态/程序设置）</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MDListCell.java<br>87</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/FileSelector.java<br>90</td>
+<td>IconedMenuItem</td>
+<td class="k">selector.choose_file</td>
+<td class="p">选择文件</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/FileSelector.java<br>91</td>
+<td>IconedMenuItem</td>
+<td class="k">selector.choose_directory</td>
+<td class="p">选择文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/AdvancedListBox.java<br>95</td>
+<td>导航页签</td>
+<td class="k"></td>
+<td class="dyn">（动态/程序设置）</td>
+<td class="act">切换页签</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/LineSelectButton.java<br>103</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MessageDialogPane.java<br>148</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; action.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MessageDialogPane.java<br>158</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; ok.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">HTMLRenderer.java<br>167</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MessageDialogPane.java<br>173</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; cancel.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/MessageDialogPane.java<br>185</td>
+<td>JFXButton</td>
+<td class="k">button.yes</td>
+<td class="p">是</td>
+<td class="act">动作 e -&gt; yes.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>186</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch.test</td>
+<td class="p">测试游戏</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>187</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch_script</td>
+<td class="p">生成启动脚本</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>189</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.rename</td>
+<td class="p">重命名该实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>190</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.duplicate</td>
+<td class="p">复制游戏实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>191</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.manage.remove</td>
+<td class="p">删除该实例</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>192</td>
+<td>IconedMenuItem</td>
+<td class="k">modpack.export</td>
+<td class="p">导出整合包</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/GameListCell.java<br>194</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.game</td>
+<td class="p">实例运行文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">construct/SpinnerPane.java<br>203</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">HTMLRenderer.java<br>246</td>
+<td>可点击面板</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">Controllers.java<br>347</td>
+<td>JFXButton</td>
+<td class="k">launcher.agreement.accept</td>
+<td class="p">同意</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">Controllers.java<br>354</td>
+<td>JFXButton</td>
+<td class="k">launcher.agreement.decline</td>
+<td class="p">拒绝</td>
+<td class="act">动作 e -&gt; javafx.application.Platform.exit());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>371</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch_and_enter_world</td>
+<td class="p">进入世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>376</td>
+<td>IconedMenuItem</td>
+<td class="k">instance.launch_script</td>
+<td class="p">生成启动脚本</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>381</td>
+<td>IconedMenuItem</td>
+<td class="k">world.manage.button</td>
+<td class="p">管理此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>386</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.seed_map</td>
+<td class="p">种子地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>387</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.stronghold</td>
+<td class="p">要塞地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>388</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.nether_fortress</td>
+<td class="p">下界要塞地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>392</td>
+<td>IconedMenuItem</td>
+<td class="k">world.chunkbase.end_city</td>
+<td class="p">末地城地图</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>396</td>
+<td>IconedMenuItem</td>
+<td class="k">world.export</td>
+<td class="p">导出此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>399</td>
+<td>IconedMenuItem</td>
+<td class="k">world.delete</td>
+<td class="p">删除此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>402</td>
+<td>IconedMenuItem</td>
+<td class="k">world.duplicate</td>
+<td class="p">复制此世界</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">instances/WorldListPage.java<br>414</td>
+<td>IconedMenuItem</td>
+<td class="k">folder.world</td>
+<td class="p">世界文件夹</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">Controllers.java<br>493</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; ok.run());</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1013</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1020</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1026</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1033</td>
+<td>JFXButton</td>
+<td class="k"></td>
+<td class="dyn">（运行时赋值）</td>
+<td class="act">动作 e -&gt; {</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1456</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.undo</td>
+<td class="p">撤销</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1457</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.redo</td>
+<td class="p">重做</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1458</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.cut</td>
+<td class="p">剪切</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1459</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.copy</td>
+<td class="p">复制</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1460</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.paste</td>
+<td class="p">粘贴</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1461</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.deleteselection</td>
+<td class="p">删除</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1462</td>
+<td>IconedMenuItem</td>
+<td class="k">menu.selectall</td>
+<td class="p">全选</td>
+<td class="act"></td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1572</td>
+<td>JFXButton</td>
+<td class="k">button.cancel</td>
+<td class="p">取消</td>
+<td class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</td></tr>
+<tr><td><span class="lv sh">共享</span></td>
+<td class="p">共享组件/框架</td>
+<td class="loc">FXUtils.java<br>1576</td>
+<td>JFXButton</td>
+<td class="k">button.ok</td>
+<td class="p">确定</td>
+<td class="act">动作 e -&gt; {</td></tr>
+</tbody></table>
+<script>
+const q=document.getElementById("q"),lv=document.getElementById("lv"),pg=document.getElementById("pg"),cnt=document.getElementById("cnt");
+const rows=[...document.querySelectorAll("tbody tr")];
+function apply(){const s=q.value.toLowerCase(),L=lv.value,P=pg.value;let n=0;rows.forEach(r=>{const t=r.textContent.toLowerCase();const ok=(!s||t.includes(s))&&(!L||r.children[0].textContent.trim()===L)&&(!P||r.children[1].textContent.trim()===P);r.style.display=ok?"":"none";if(ok)n++;});cnt.textContent=n+"/"+rows.length;}
+q.addEventListener("input",apply);lv.addEventListener("change",apply);pg.addEventListener("change",apply);
+document.getElementById("reset").onclick=()=>{q.value="";lv.value="";pg.value="";apply();};apply();
+</script></body></html>

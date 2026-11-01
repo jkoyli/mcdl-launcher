@@ -1,0 +1,20 @@
+# Electron
+/electron/node_modules/
+/electron/dist/
+/electron/out/
+/electron/*.log
+
+# mcdl build output（mcdl.jar 本身随工程分发）
+/mcdl/build/
+/mcdl/dist/
+
+# logs / temp
+*.log
+*.tmp
+*.class
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

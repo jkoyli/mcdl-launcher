@@ -1,0 +1,2349 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>MCDL Launcher 按钮逐层清单</title>
+<style>
+body{background:#15151f;color:#e7e7f2;font:13.5px/1.6 "Microsoft YaHei","Segoe UI",sans-serif;margin:28px 34px 60px;}
+h1{font-size:20px;margin:0 0 4px;color:#9ad7ff;}
+.meta{color:#9aa0b4;font-size:12.5px;margin-bottom:16px;}
+.toolbar{position:sticky;top:0;z-index:5;background:#15151fee;backdrop-filter:blur(6px);padding:8px 0 10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid #2a2a3e;margin-bottom:12px;}
+input,select{background:#23233a;color:#e6e6f0;border:1px solid #3a3a55;border-radius:6px;padding:5px 9px;font-size:12.5px;}
+button{background:#2f3f92;color:#fff;border:0;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12.5px;}
+button.ghost{background:#262637;color:#c9cce0;}
+.sum{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px;}
+.sum span{background:#1f1f2e;border:1px solid #2e2e46;border-radius:8px;padding:5px 11px;font-size:12.5px;color:#b9bfd4;}
+.sum b{color:#9ad7ff;}
+details{margin:2px 0 2px 0;}
+summary{cursor:pointer;list-style:none;padding:3px 6px;border-radius:6px;}
+summary::-webkit-details-marker{display:none;}
+summary:hover{background:#1d1d2c;}
+.node{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.name{font-weight:600;}
+.note{color:#7d8298;font-size:12px;}
+.cnt{color:#8d93a8;font-size:12px;}
+.lv{display:inline-block;padding:0 7px;border-radius:9px;font-size:11px;font-weight:700;line-height:18px;}
+.l1{background:#1d3b57;color:#9ad7ff}.l2{background:#1d4030;color:#a5e8b8}.l3{background:#4a3c15;color:#ffe08a}.l4{background:#3a2450;color:#e0b0ff}.l5{background:#4d2029;color:#ff9fb0}.sh{background:#2a2a3a;color:#9aa0b4}
+ul.ctl{list-style:none;margin:4px 0 8px 18px;padding:0 0 0 14px;border-left:1px dashed #34344a;}
+ul.ctl li{display:grid;grid-template-columns:22px minmax(150px,1.4fr) 90px 1.1fr 1.5fr 150px;gap:10px;align-items:start;padding:4px 6px;border-radius:6px;}
+ul.ctl li:hover{background:#1b1b29;}
+ul.ctl li.done{opacity:.55;}
+.t{color:#e7e7f2;} ul.ctl li.done .t{text-decoration:line-through;}
+.k{color:#7f93ba;font-family:Consolas,monospace;font-size:11.5px;overflow-wrap:anywhere;}
+.kind{color:#a8b3c9;font-size:12px;}
+.act{color:#93a4bd;font-size:12px;}
+.loc{color:#6f7488;font-family:Consolas,monospace;font-size:11px;text-align:right;}
+.dyn{color:#6f7488;font-style:italic;}
+.kids{margin-left:16px;padding-left:10px;border-left:1px solid #262636;}
+.empty{color:#676c81;font-size:12px;margin:2px 0 8px 32px;}
+pre.export{display:none;background:#101018;border:1px solid #2e2e46;border-radius:8px;padding:12px;max-height:280px;overflow:auto;white-space:pre-wrap;font-size:12px;color:#c9cee6;}
+</style></head><body>
+<h1>MCDL Launcher 按钮 / 控件逐层清单</h1>
+<div class="meta">共 284 项控件 · 按 L1→L5 逐层展开；勾选 = 重新设计时「预留」该按钮，勾选状态存在浏览器本地。</div>
+<div class="toolbar">
+<input id="q" placeholder="搜索文案 / key / 文件" style="width:280px">
+<select id="lv"><option value="">全部层级</option><option value="L1">L1 骨架</option><option value="L2">L2 直达页</option><option value="L3">L3 页签</option><option value="L4">L4 详情页</option><option value="L5">L5 弹窗</option><option value="共享">共享组件</option></select>
+<button id="openAll" class="ghost">全部展开</button><button id="closeAll" class="ghost">全部折叠</button>
+<button id="expandLevels" class="ghost">逐层展开 L1→L5</button>
+<button id="export">导出已预留</button><button id="reset" class="ghost">清空勾选</button>
+</div>
+<div class="sum" id="sum"></div>
+<pre class="export" id="out"></pre>
+<details open data-level="L1" data-node="root">
+<summary><span class="node">
+<span class="lv l1">L1</span>
+<span class="name">MCDL Launcher 主窗口</span>
+<span class="cnt">直接 0 · 含子页 273</span>
+<span class="note">一级：窗口骨架</span>
+</span></summary>
+<div class="kids">
+<details open data-level="L1" data-node="titlebar">
+<summary><span class="node">
+<span class="lv l1">L1</span>
+<span class="name">标题栏</span>
+<span class="cnt">直接 6 · 含子页 6</span>
+<span class="note">最小化 / 最大化 / 关闭 / 帮助</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8MTgyfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">帮助（打开日志文件夹）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">打开日志文件夹</span>
+<span class="loc">decorator/MainWindowPane.java:182</span></li>
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8MTkzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">最小化</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">最小化窗口</span>
+<span class="loc">decorator/MainWindowPane.java:193</span></li>
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8MjAwfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">关闭</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">关闭窗口</span>
+<span class="loc">decorator/MainWindowPane.java:200</span></li>
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8MjY0fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">返回</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">返回上一页</span>
+<span class="loc">decorator/MainWindowPane.java:264</span></li>
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8Mjc2fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">关闭当前页</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">关闭当前页面</span>
+<span class="loc">decorator/MainWindowPane.java:276</span></li>
+<li data-cid="dGl0bGViYXJ8ZGVjb3JhdG9yXE1haW5XaW5kb3dQYW5lLmphdmF8MzE1fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">刷新</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">刷新当前页面</span>
+<span class="loc">decorator/MainWindowPane.java:315</span></li>
+</ul>
+</details>
+<details open data-level="L1" data-node="sidebar">
+<summary><span class="node">
+<span class="lv l1">L1</span>
+<span class="name">侧边栏</span>
+<span class="cnt">直接 5 · 含子页 183</span>
+<span class="note">5 个常驻导航项</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="c2lkZWJhcnxtYWluXFJvb3RQYWdlLmphdmF8OTh8QWNjb3VudEFkdmFuY2VkTGlzdEl0ZW0"><input type="checkbox" class="pick">
+<span class="t">账户（显示当前账户名）</span>
+<span class="kind">AccountAdvancedListItem</span>
+<span class="k"></span>
+<span class="act">跳转 账户页 getAccountListPage()</span>
+<span class="loc">main/RootPage.java:98</span></li>
+<li data-cid="c2lkZWJhcnxtYWluXFJvb3RQYWdlLmphdmF8MTA0fEdhbWVBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t">游戏（显示当前实例名）</span>
+<span class="kind">GameAdvancedListItem</span>
+<span class="k"></span>
+<span class="act">跳转 实例设置 / 实例列表</span>
+<span class="loc">main/RootPage.java:104</span></li>
+<li data-cid="c2lkZWJhcnxtYWluXFJvb3RQYWdlLmphdmF8MTI1fEFkdmFuY2VkTGlzdEl0ZW0"><input type="checkbox" class="pick">
+<span class="t">实例列表</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">instance.manage</span>
+<span class="act">动作 e -&gt; Controllers.navigate(Controllers.getGameListPage()));</span>
+<span class="loc">main/RootPage.java:125</span></li>
+<li data-cid="c2lkZWJhcnxtYWluXFJvb3RQYWdlLmphdmF8MTMyfEFkdmFuY2VkTGlzdEl0ZW0"><input type="checkbox" class="pick">
+<span class="t">下载</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">download</span>
+<span class="act">动作 e -&gt; Controllers.navigate(Controllers.getDownloadPage()));</span>
+<span class="loc">main/RootPage.java:132</span></li>
+<li data-cid="c2lkZWJhcnxtYWluXFJvb3RQYWdlLmphdmF8MTQyfEFkdmFuY2VkTGlzdEl0ZW0"><input type="checkbox" class="pick">
+<span class="t">设置</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">settings</span>
+<span class="act">跳转 设置页 getSettingsPage()</span>
+<span class="loc">main/RootPage.java:142</span></li>
+</ul>
+<div class="kids">
+<details open data-level="L2" data-node="account">
+<summary><span class="node">
+<span class="lv l2">L2</span>
+<span class="name">账户</span>
+<span class="cnt">直接 4 · 含子页 22</span>
+<span class="note">页面</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="YWNjb3VudHxhY2NvdW50XEFjY291bnRMaXN0UGFnZS5qYXZhfDEwN3xBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t">微软账户</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">account.methods.microsoft</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListPage.java:107</span></li>
+<li data-cid="YWNjb3VudHxhY2NvdW50XEFjY291bnRMaXN0UGFnZS5qYXZhfDExOXxBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t">离线模式</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">account.methods.offline</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListPage.java:119</span></li>
+<li data-cid="YWNjb3VudHxhY2NvdW50XEFjY291bnRMaXN0UGFnZS5qYXZhfDEzM3xBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListPage.java:133</span></li>
+<li data-cid="YWNjb3VudHxhY2NvdW50XEFjY291bnRMaXN0UGFnZS5qYXZhfDE4NnxBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t">添加认证服务器</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">account.injector.add</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListPage.java:186</span></li>
+</ul>
+<div class="kids">
+<details data-level="L5" data-node="mslogin">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">微软登录</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="bXNsb2dpbnxhY2NvdW50XE1pY3Jvc29mdEFjY291bnRMb2dpblBhbmUuamF2YXw4OHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">登录</span>
+<span class="kind">JFXButton</span>
+<span class="k">account.login</span>
+<span class="act"></span>
+<span class="loc">account/MicrosoftAccountLoginPane.java:88</span></li>
+<li data-cid="bXNsb2dpbnxhY2NvdW50XE1pY3Jvc29mdEFjY291bnRMb2dpblBhbmUuamF2YXw5NXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onCancel());</span>
+<span class="loc">account/MicrosoftAccountLoginPane.java:95</span></li>
+<li data-cid="bXNsb2dpbnxhY2NvdW50XE1pY3Jvc29mdEFjY291bnRMb2dpblBhbmUuamF2YXwyMTZ85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">account/MicrosoftAccountLoginPane.java:216</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="offlineadd">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">添加离线账户</span>
+<span class="cnt">直接 6 · 含子页 6</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8MTE2fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">登录</span>
+<span class="kind">JFXButton</span>
+<span class="k">account.login</span>
+<span class="act">动作 e -&gt; onAccept());</span>
+<span class="loc">account/CreateAccountPane.java:116</span></li>
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8MTI0fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onCancel());</span>
+<span class="loc">account/CreateAccountPane.java:124</span></li>
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8MTM2fFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">account/CreateAccountPane.java:136</span></li>
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8MTQyfFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">account/CreateAccountPane.java:142</span></li>
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8NTc0fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; latch.countDown());</span>
+<span class="loc">account/CreateAccountPane.java:574</span></li>
+<li data-cid="b2ZmbGluZWFkZHxhY2NvdW50XENyZWF0ZUFjY291bnRQYW5lLmphdmF8NjA2fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">account/CreateAccountPane.java:606</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="classic">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">正版登录对话框</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="Y2xhc3NpY3xhY2NvdW50XENsYXNzaWNBY2NvdW50TG9naW5EaWFsb2cuamF2YXw3MHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; onAccept());</span>
+<span class="loc">account/ClassicAccountLoginDialog.java:70</span></li>
+<li data-cid="Y2xhc3NpY3xhY2NvdW50XENsYXNzaWNBY2NvdW50TG9naW5EaWFsb2cuamF2YXw3NHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onCancel());</span>
+<span class="loc">account/ClassicAccountLoginDialog.java:74</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="authserver">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">添加认证服务器</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="YXV0aHNlcnZlcnxhY2NvdW50XEFkZEF1dGhsaWJJbmplY3RvclNlcnZlclBhbmUuamF2YXw2MXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onAddCancel());</span>
+<span class="loc">account/AddAuthlibInjectorServerPane.java:61</span></li>
+<li data-cid="YXV0aHNlcnZlcnxhY2NvdW50XEFkZEF1dGhsaWJJbmplY3RvclNlcnZlclBhbmUuamF2YXw2N3xKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">下一步 &gt;</span>
+<span class="kind">JFXButton</span>
+<span class="k">wizard.next</span>
+<span class="act">动作 e -&gt; onAddNext());</span>
+<span class="loc">account/AddAuthlibInjectorServerPane.java:67</span></li>
+<li data-cid="YXV0aHNlcnZlcnxhY2NvdW50XEFkZEF1dGhsaWJJbmplY3RvclNlcnZlclBhbmUuamF2YXwxMzh8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">&lt; 上一步</span>
+<span class="kind">JFXButton</span>
+<span class="k">wizard.prev</span>
+<span class="act">动作 e -&gt; onAddPrev());</span>
+<span class="loc">account/AddAuthlibInjectorServerPane.java:138</span></li>
+<li data-cid="YXV0aHNlcnZlcnxhY2NvdW50XEFkZEF1dGhsaWJJbmplY3RvclNlcnZlclBhbmUuamF2YXwxNDJ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onAddCancel());</span>
+<span class="loc">account/AddAuthlibInjectorServerPane.java:142</span></li>
+<li data-cid="YXV0aHNlcnZlcnxhY2NvdW50XEFkZEF1dGhsaWJJbmplY3RvclNlcnZlclBhbmUuamF2YXwxNDZ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">完成</span>
+<span class="kind">JFXButton</span>
+<span class="k">wizard.finish</span>
+<span class="act">动作 e -&gt; onAddFinish());</span>
+<span class="loc">account/AddAuthlibInjectorServerPane.java:146</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="skin">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">离线皮肤设置</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="c2tpbnxhY2NvdW50XE9mZmxpbmVBY2NvdW50U2tpblBhbmUuamF2YXwyMjZ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/OfflineAccountSkinPane.java:226</span></li>
+<li data-cid="c2tpbnxhY2NvdW50XE9mZmxpbmVBY2NvdW50U2tpblBhbmUuamF2YXwyMzV8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">account/OfflineAccountSkinPane.java:235</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details open data-level="L2" data-node="home">
+<summary><span class="node">
+<span class="lv l2">L2</span>
+<span class="name">游戏（当前实例）</span>
+<span class="cnt">直接 2 · 含子页 79</span>
+<span class="note">主页；无实例时跳实例列表</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aG9tZXxtYWluXE1haW5QYWdlLmphdmF8MTQwfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">main/MainPage.java:140</span></li>
+<li data-cid="aG9tZXxtYWluXE1haW5QYWdlLmphdmF8MTc3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">main/MainPage.java:177</span></li>
+</ul>
+<div class="kids">
+<details data-level="L3" data-node="instance">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">实例详情</span>
+<span class="cnt">直接 38 · 含子页 74</span>
+<span class="note">6 页签 + 4 侧栏项</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4M3xUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">游戏设置</span>
+<span class="kind">TabItem</span>
+<span class="k">settings.game</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:83</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4NHxUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">自动安装</span>
+<span class="kind">TabItem</span>
+<span class="k">settings.tabs.installers</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:84</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4NXxUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">模组管理</span>
+<span class="kind">TabItem</span>
+<span class="k">mods.manage</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:85</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4NnxUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">资源包管理</span>
+<span class="kind">TabItem</span>
+<span class="k">resourcepack.manage</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:86</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4N3xUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">世界管理</span>
+<span class="kind">TabItem</span>
+<span class="k">world.manage</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:87</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4OHxUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t">原理图管理</span>
+<span class="kind">TabItem</span>
+<span class="k">schematics.manage</span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:88</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw4OXxUYWJJdGVt"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">instances/GameInstancePage.java:89</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNTZ85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">游戏设置</span>
+<span class="kind">导航页签</span>
+<span class="k">settings.game</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:356</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNTd85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">自动安装</span>
+<span class="kind">导航页签</span>
+<span class="k">settings.tabs.installers</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:357</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNTh85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">模组管理</span>
+<span class="kind">导航页签</span>
+<span class="k">mods.manage</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:358</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNTl85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">资源包管理</span>
+<span class="kind">导航页签</span>
+<span class="k">resourcepack.manage</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:359</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNjB85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">世界管理</span>
+<span class="kind">导航页签</span>
+<span class="k">world.manage</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:360</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNjF85a-86Iiq6aG1562-"><input type="checkbox" class="pick">
+<span class="t">原理图管理</span>
+<span class="kind">导航页签</span>
+<span class="k">schematics.manage</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/GameInstancePage.java:361</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNjd8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">实例运行文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.game</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:367</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNjh8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">配置文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.config</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:368</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzB8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">模组文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.mod</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:370</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzF8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">资源包文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.resourcepacks</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:371</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzJ8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">世界文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.saves</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:372</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzN8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">原理图文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.schematics</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:373</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzR8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">光影包文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.shaderpacks</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:374</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzV8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">截图文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.screenshots</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:375</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzd8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">日志文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.logs</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:377</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzNzh8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">崩溃报告文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.crash-reports</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:378</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzODR8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">测试游戏</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch.test</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:384</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzODV8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">生成启动脚本</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch_script</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:385</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzODd8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">重命名该实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.rename</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:387</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzODh8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">复制游戏实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.duplicate</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:388</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzODl8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">删除该实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.remove</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:389</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTB8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">导出整合包</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">modpack.export</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:390</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTR8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">截图管理</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">screenshots.manage</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:394</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTZ8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">更新游戏资源文件</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.redownload_assets_index</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:396</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTd8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">删除所有游戏资源文件</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.remove_assets</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:397</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTh8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">删除所有库文件</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.remove_libraries</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:398</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXwzOTl8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">清理游戏文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.clean</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:399</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw0MDN85a-86Iiq6aG5"><input type="checkbox" class="pick">
+<span class="t">更新整合包</span>
+<span class="kind">导航项</span>
+<span class="k">instance.update</span>
+<span class="act"></span>
+<span class="loc">instances/GameInstancePage.java:403</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw0MDZ85a-86Iiq6aG5"><input type="checkbox" class="pick">
+<span class="t">测试游戏</span>
+<span class="kind">导航项</span>
+<span class="k">instance.launch.test</span>
+<span class="act">动作 e -&gt; browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth(</span>
+<span class="loc">instances/GameInstancePage.java:406</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw0MDd85a-86Iiq6aG5"><input type="checkbox" class="pick">
+<span class="t">浏览</span>
+<span class="kind">导航项</span>
+<span class="k">settings.game.exploration</span>
+<span class="act">动作 e -&gt; browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth(</span>
+<span class="loc">instances/GameInstancePage.java:407</span></li>
+<li data-cid="aW5zdGFuY2V8aW5zdGFuY2VzXEdhbWVJbnN0YW5jZVBhZ2UuamF2YXw0MTB85a-86Iiq6aG5"><input type="checkbox" class="pick">
+<span class="t">管理</span>
+<span class="kind">导航项</span>
+<span class="k">settings.game.management</span>
+<span class="act">动作 e -&gt; managementPopup.show(managementItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, managementItem.getWidth(</span>
+<span class="loc">instances/GameInstancePage.java:410</span></li>
+</ul>
+<div class="kids">
+<details data-level="L3" data-node="iset-game">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">游戏设置</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+<span class="note">与「设置 → 游戏设置」同一页面类</span>
+</span></summary>
+</details>
+<details data-level="L3" data-node="iset-inst">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">自动安装</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC1pbnN0fGRvd25sb2FkXEFic3RyYWN0SW5zdGFsbGVyc1BhZ2UuamF2YXwxNjh85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">安装</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.install</span>
+<span class="act"></span>
+<span class="loc">download/AbstractInstallersPage.java:168</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-mod">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">模组</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC1tb2R8aW5zdGFuY2VzXE1vZExpc3RQYWdlLmphdmF8NzExfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/ModListPage.java:711</span></li>
+<li data-cid="aXNldC1tb2R8aW5zdGFuY2VzXE1vZExpc3RQYWdlLmphdmF8ODQ2fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/ModListPage.java:846</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-rp">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">资源包</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC1ycHxpbnN0YW5jZXNcUmVzb3VyY2VQYWNrTGlzdFBhZ2UuamF2YXw2NzJ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/ResourcePackListPage.java:672</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-world">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">世界</span>
+<span class="cnt">直接 0 · 含子页 24</span>
+</span></summary>
+<div class="kids">
+<details data-level="L4" data-node="iset-worldinfo">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">世界详情</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC13b3JsZGluZm98aW5zdGFuY2VzXFdvcmxkSW5mb1BhZ2UuamF2YXwyMTZ8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">允许命令(作弊)</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">world.info.allow_cheats</span>
+<span class="act"></span>
+<span class="loc">instances/WorldInfoPage.java:216</span></li>
+<li data-cid="aXNldC13b3JsZGluZm98aW5zdGFuY2VzXFdvcmxkSW5mb1BhZ2UuamF2YXwyMjR8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">生成建筑</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">world.info.generate_features</span>
+<span class="act"></span>
+<span class="loc">instances/WorldInfoPage.java:224</span></li>
+<li data-cid="aXNldC13b3JsZGluZm98aW5zdGFuY2VzXFdvcmxkSW5mb1BhZ2UuamF2YXwyNDR8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">难度</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">world.info.difficulty</span>
+<span class="act"></span>
+<span class="loc">instances/WorldInfoPage.java:244</span></li>
+<li data-cid="aXNldC13b3JsZGluZm98aW5zdGFuY2VzXFdvcmxkSW5mb1BhZ2UuamF2YXwyNzh8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">锁定难度</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">world.info.difficulty_lock</span>
+<span class="act"></span>
+<span class="loc">instances/WorldInfoPage.java:278</span></li>
+<li data-cid="aXNldC13b3JsZGluZm98aW5zdGFuY2VzXFdvcmxkSW5mb1BhZ2UuamF2YXwzNDN8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">游戏模式</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">world.info.player.game_type</span>
+<span class="act"></span>
+<span class="loc">instances/WorldInfoPage.java:343</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-worldmgr">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">世界管理</span>
+<span class="cnt">直接 19 · 含子页 19</span>
+<span class="note">3 页签</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8NzJ8VGFiSXRlbQ"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">instances/WorldManagePage.java:72</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8NzN8VGFiSXRlbQ"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">instances/WorldManagePage.java:73</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8NzR8VGFiSXRlbQ"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">instances/WorldManagePage.java:74</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjAzfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">世界信息</span>
+<span class="kind">导航页签</span>
+<span class="k">world.info</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/WorldManagePage.java:203</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjA0fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">备份管理</span>
+<span class="kind">导航页签</span>
+<span class="k">world.backup</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/WorldManagePage.java:204</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjA4fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">数据包管理</span>
+<span class="kind">导航页签</span>
+<span class="k">world.datapack</span>
+<span class="act">切换页签</span>
+<span class="loc">instances/WorldManagePage.java:208</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjIwfOWvvOiIqumhuQ"><input type="checkbox" class="pick">
+<span class="t">启动游戏</span>
+<span class="kind">导航项</span>
+<span class="k">instance.launch</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:220</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjI4fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">种子地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.seed_map</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:228</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjI5fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">要塞地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.stronghold</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:229</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjMwfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">下界要塞地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.nether_fortress</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:230</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjM1fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">末地城地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.end_city</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:235</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjM4fOWvvOiIqumhuQ"><input type="checkbox" class="pick">
+<span class="t">世界地图</span>
+<span class="kind">导航项</span>
+<span class="k">world.chunkbase</span>
+<span class="act">动作 e -&gt;
+                                    chunkBasePopup.show(chunkBaseMenuItem,
+                                            JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                            chunkBaseMenuItem.getWidth(</span>
+<span class="loc">instances/WorldManagePage.java:238</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjQ1fOWvvOiIqumhuQ"><input type="checkbox" class="pick">
+<span class="t">浏览</span>
+<span class="kind">导航项</span>
+<span class="k">settings.game.exploration</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:245</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjUzfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">启动游戏</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:253</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjU0fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">生成启动脚本</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch_script</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:254</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjYwfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">导出此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.export</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:260</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjYxfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">删除此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.delete</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:261</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjYyfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">复制此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.duplicate</span>
+<span class="act"></span>
+<span class="loc">instances/WorldManagePage.java:262</span></li>
+<li data-cid="aXNldC13b3JsZG1ncnxpbnN0YW5jZXNcV29ybGRNYW5hZ2VQYWdlLmphdmF8MjY1fOWvvOiIqumhuQ"><input type="checkbox" class="pick">
+<span class="t">管理</span>
+<span class="kind">导航项</span>
+<span class="k">settings.game.management</span>
+<span class="act">动作 e -&gt;
+                                managePopup.show(managePopupMenuItem,
+                                        JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                        managePopupMenuItem.getWidth(</span>
+<span class="loc">instances/WorldManagePage.java:265</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="L4" data-node="iset-schema">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">投影</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC1zY2hlbWF8aW5zdGFuY2VzXFNjaGVtYXRpY3NQYWdlLmphdmF8NjczfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/SchematicsPage.java:673</span></li>
+<li data-cid="aXNldC1zY2hlbWF8aW5zdGFuY2VzXFNjaGVtYXRpY3NQYWdlLmphdmF8ODg0fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/SchematicsPage.java:884</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-shot">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">截图</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC1zaG90fGluc3RhbmNlc1xTY3JlZW5zaG90c1BhZ2UuamF2YXwzNjF8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">设为启动器背景</span>
+<span class="kind">JFXButton</span>
+<span class="k">screenshots.set_as_bg</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">instances/ScreenshotsPage.java:361</span></li>
+<li data-cid="aXNldC1zaG90fGluc3RhbmNlc1xTY3JlZW5zaG90c1BhZ2UuamF2YXwzNjl8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">复制</span>
+<span class="kind">JFXButton</span>
+<span class="k">menu.copy</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">instances/ScreenshotsPage.java:369</span></li>
+<li data-cid="aXNldC1zaG90fGluc3RhbmNlc1xTY3JlZW5zaG90c1BhZ2UuamF2YXwzNzZ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/ScreenshotsPage.java:376</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="iset-upd">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">内容更新</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aXNldC11cGR8aW5zdGFuY2VzXEFkZG9uVXBkYXRlc1BhZ2UuamF2YXwxMzl85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">导出</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.export</span>
+<span class="act"></span>
+<span class="loc">instances/AddonUpdatesPage.java:139</span></li>
+<li data-cid="aXNldC11cGR8aW5zdGFuY2VzXEFkZG9uVXBkYXRlc1BhZ2UuamF2YXwxNDJ85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">更新</span>
+<span class="kind">强调按钮</span>
+<span class="k">addon.check_update.confirm</span>
+<span class="act"></span>
+<span class="loc">instances/AddonUpdatesPage.java:142</span></li>
+<li data-cid="aXNldC11cGR8aW5zdGFuY2VzXEFkZG9uVXBkYXRlc1BhZ2UuamF2YXwxNDV85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.cancel</span>
+<span class="act"></span>
+<span class="loc">instances/AddonUpdatesPage.java:145</span></li>
+<li data-cid="aXNldC11cGR8aW5zdGFuY2VzXEFkZG9uVXBkYXRlc1BhZ2UuamF2YXwzNzl85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/AddonUpdatesPage.java:379</span></li>
+<li data-cid="aXNldC11cGR8aW5zdGFuY2VzXEFkZG9uVXBkYXRlc1BhZ2UuamF2YXw0NjJ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/AddonUpdatesPage.java:462</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="L5" data-node="icon">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">实例图标选择</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+<span class="note">弹窗</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aWNvbnxpbnN0YW5jZXNcR2FtZUluc3RhbmNlSWNvbkRpYWxvZy5qYXZhfDYxfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 event -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/GameInstanceIconDialog.java:61</span></li>
+<li data-cid="aWNvbnxpbnN0YW5jZXNcR2FtZUluc3RhbmNlSWNvbkRpYWxvZy5qYXZhfDk0fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/GameInstanceIconDialog.java:94</span></li>
+<li data-cid="aWNvbnxpbnN0YW5jZXNcR2FtZUluc3RhbmNlSWNvbkRpYWxvZy5qYXZhfDEwNHzlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/GameInstanceIconDialog.java:104</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details open data-level="L2" data-node="gamelist">
+<summary><span class="node">
+<span class="lv l2">L2</span>
+<span class="name">实例管理</span>
+<span class="cnt">直接 3 · 含子页 7</span>
+<span class="note">页面</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="Z2FtZWxpc3R8aW5zdGFuY2VzXEdhbWVMaXN0UGFnZS5qYXZhfDcwfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">修改</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">button.edit</span>
+<span class="act"></span>
+<span class="loc">instances/GameListPage.java:70</span></li>
+<li data-cid="Z2FtZWxpc3R8aW5zdGFuY2VzXEdhbWVMaXN0UGFnZS5qYXZhfDg0fEFkdmFuY2VkTGlzdEl0ZW0"><input type="checkbox" class="pick">
+<span class="t">添加游戏文件夹</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k">game_directory.new</span>
+<span class="act">动作 e -&gt; Controllers.navigate(new GameDirectoryPage(null)));</span>
+<span class="loc">instances/GameListPage.java:84</span></li>
+<li data-cid="Z2FtZWxpc3R8aW5zdGFuY2VzXEdhbWVMaXN0UGFnZS5qYXZhfDEwMnzlr7zoiKrpobk"><input type="checkbox" class="pick">
+<span class="t">全局游戏设置</span>
+<span class="kind">导航项</span>
+<span class="k">settings.type.global.manage</span>
+<span class="act"></span>
+<span class="loc">instances/GameListPage.java:102</span></li>
+</ul>
+<div class="kids">
+<details data-level="L4" data-node="gamedir">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">游戏目录管理</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="Z2FtZWRpcnxkaXJlY3RvcnlcR2FtZURpcmVjdG9yeVBhZ2UuamF2YXwxMjd8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">若可能，游戏文件夹使用相对路径</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">game_directory.use_relative_path</span>
+<span class="act"></span>
+<span class="loc">directory/GameDirectoryPage.java:127</span></li>
+<li data-cid="Z2FtZWRpcnxkaXJlY3RvcnlcR2FtZURpcmVjdG9yeVBhZ2UuamF2YXwxNTB85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">保存</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.save</span>
+<span class="act"></span>
+<span class="loc">directory/GameDirectoryPage.java:150</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="ctxmenu">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">实例右键菜单</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="Y3R4bWVudXxpbnN0YW5jZXNcR2FtZUxpc3RQb3B1cE1lbnUuamF2YXwxNTN85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/GameListPopupMenu.java:153</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="instops">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">实例操作对话框</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+<span class="note">重命名/复制/删除等</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="aW5zdG9wc3xpbnN0YW5jZXNcSW5zdGFuY2VzLmphdmF8MTExfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">删除</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.delete</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">instances/Instances.java:111</span></li>
+<li data-cid="aW5zdG9wc3xpbnN0YW5jZXNcSW5zdGFuY2VzLmphdmF8MzM3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">前往下载页面</span>
+<span class="kind">JFXButton</span>
+<span class="k">instance.empty.launch.goto_download</span>
+<span class="act">动作 e -&gt; Controllers.navigate(Controllers.getDownloadPage()));</span>
+<span class="loc">instances/Instances.java:337</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details open data-level="L2" data-node="download">
+<summary><span class="node">
+<span class="lv l2">L2</span>
+<span class="name">下载</span>
+<span class="cnt">直接 9 · 含子页 25</span>
+<span class="note">页面</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8OTJ8VGFiSXRlbQ"><input type="checkbox" class="pick">
+<span class="t">Minecraft</span>
+<span class="kind">TabItem</span>
+<span class="k">install.installer.game</span>
+<span class="act"></span>
+<span class="loc">download/DownloadPage.java:92</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTAzfOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">安装整合包</span>
+<span class="kind">强调按钮</span>
+<span class="k">install.modpack</span>
+<span class="act"></span>
+<span class="loc">download/DownloadPage.java:103</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTI5fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">游戏</span>
+<span class="kind">导航页签</span>
+<span class="k">game</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:129</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTMwfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">整合包</span>
+<span class="kind">导航页签</span>
+<span class="k">modpack</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:130</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTMyfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">模组</span>
+<span class="kind">导航页签</span>
+<span class="k">mods</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:132</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTMzfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">资源包</span>
+<span class="kind">导航页签</span>
+<span class="k">resourcepack</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:133</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTM0fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">光影</span>
+<span class="kind">导航页签</span>
+<span class="k">download.shader</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:134</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTM1fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">世界</span>
+<span class="kind">导航页签</span>
+<span class="k">world</span>
+<span class="act">切换页签</span>
+<span class="loc">download/DownloadPage.java:135</span></li>
+<li data-cid="ZG93bmxvYWR8ZG93bmxvYWRcRG93bmxvYWRQYWdlLmphdmF8MTQzfFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t dyn">（见对应导航页签）</span>
+<span class="kind">TabItem</span>
+<span class="k"></span>
+<span class="act">页签容器</span>
+<span class="loc">download/DownloadPage.java:143</span></li>
+</ul>
+<div class="kids">
+<details data-level="L3" data-node="dl-game">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">游戏版本</span>
+<span class="cnt">直接 4 · 含子页 7</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtZ2FtZXxkb3dubG9hZFxWZXJzaW9uc1BhZ2UuamF2YXwxNzd85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">download/VersionsPage.java:177</span></li>
+<li data-cid="ZGwtZ2FtZXxkb3dubG9hZFxWZXJzaW9uc1BhZ2UuamF2YXwzNDZ85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">刷新</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.refresh</span>
+<span class="act"></span>
+<span class="loc">download/VersionsPage.java:346</span></li>
+<li data-cid="ZGwtZ2FtZXxkb3dubG9hZFxWZXJzaW9uc1BhZ2UuamF2YXw0MTB85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">download/VersionsPage.java:410</span></li>
+<li data-cid="ZGwtZ2FtZXxkb3dubG9hZFxWZXJzaW9uc1BhZ2UuamF2YXw0MTl85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">download/VersionsPage.java:419</span></li>
+</ul>
+<div class="kids">
+<details data-level="L4" data-node="dl-optfile">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">安装向导 &#183; 可选文件</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtb3B0ZmlsZXxkb3dubG9hZFxPcHRpb25hbEZpbGVzUGFnZS5qYXZhfDEzMXzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">安装</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.install</span>
+<span class="act"></span>
+<span class="loc">download/OptionalFilesPage.java:131</span></li>
+<li data-cid="ZGwtb3B0ZmlsZXxkb3dubG9hZFxPcHRpb25hbEZpbGVzUGFnZS5qYXZhfDE4N3xKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">download/OptionalFilesPage.java:187</span></li>
+<li data-cid="ZGwtb3B0ZmlsZXxkb3dubG9hZFxPcHRpb25hbEZpbGVzUGFnZS5qYXZhfDI4OXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">download/OptionalFilesPage.java:289</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="dl-loader">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">加载器版本选择</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+</span></summary>
+</details>
+<details data-level="L4" data-node="dl-addinst">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">可选安装器</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+</span></summary>
+</details>
+</div>
+</details>
+<details data-level="L3" data-node="dl-modpack">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">整合包</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtbW9kcGFja3xkb3dubG9hZFxNb2RwYWNrUGFnZS5qYXZhfDg1fOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">可选文件</span>
+<span class="kind">强调按钮</span>
+<span class="k">modpack.optional_files</span>
+<span class="act"></span>
+<span class="loc">download/ModpackPage.java:85</span></li>
+<li data-cid="ZGwtbW9kcGFja3xkb3dubG9hZFxNb2RwYWNrUGFnZS5qYXZhfDkwfOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">安装</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.install</span>
+<span class="act"></span>
+<span class="loc">download/ModpackPage.java:90</span></li>
+</ul>
+<div class="kids">
+<details data-level="L4" data-node="dl-mptype">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">整合包类型选择</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtbXB0eXBlfGRvd25sb2FkXE1vZHBhY2tTZWxlY3Rpb25QYWdlLmphdmF8NzR8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; action.run());</span>
+<span class="loc">download/ModpackSelectionPage.java:74</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="dl-mpremote">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">整合包来源</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+</span></summary>
+</details>
+<details data-level="L4" data-node="dl-mplocal">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">本地整合包</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+</span></summary>
+</details>
+</div>
+</details>
+<details data-level="L3" data-node="dl-content">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">内容列表（模组/资源/光影/世界）</span>
+<span class="cnt">直接 2 · 含子页 7</span>
+<span class="note">同一页面类复用于 4 个页签</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtY29udGVudHxpbnN0YW5jZXNcRG93bmxvYWRMaXN0UGFnZS5qYXZhfDQ5MHzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">搜索</span>
+<span class="kind">强调按钮</span>
+<span class="k">search</span>
+<span class="act"></span>
+<span class="loc">instances/DownloadListPage.java:490</span></li>
+<li data-cid="ZGwtY29udGVudHxpbnN0YW5jZXNcRG93bmxvYWRMaXN0UGFnZS5qYXZhfDU5MHzlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">instances/DownloadListPage.java:590</span></li>
+</ul>
+<div class="kids">
+<details data-level="L4" data-node="dl-cpage">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">内容下载页</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZGwtY3BhZ2V8aW5zdGFuY2VzXERvd25sb2FkUGFnZS5qYXZhfDQ4MXzlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act">弹窗 AddonVersion</span>
+<span class="loc">instances/DownloadPage.java:481</span></li>
+<li data-cid="ZGwtY3BhZ2V8aW5zdGFuY2VzXERvd25sb2FkUGFnZS5qYXZhfDUzOXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">安装整合包</span>
+<span class="kind">JFXButton</span>
+<span class="k">install.modpack</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">instances/DownloadPage.java:539</span></li>
+<li data-cid="ZGwtY3BhZ2V8aW5zdGFuY2VzXERvd25sb2FkUGFnZS5qYXZhfDU0OXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">下载到本地文件夹</span>
+<span class="kind">JFXButton</span>
+<span class="k">mods.save_as</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">instances/DownloadPage.java:549</span></li>
+<li data-cid="ZGwtY3BhZ2V8aW5zdGFuY2VzXERvd25sb2FkUGFnZS5qYXZhfDU1OHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/DownloadPage.java:558</span></li>
+<li data-cid="ZGwtY3BhZ2V8aW5zdGFuY2VzXERvd25sb2FkUGFnZS5qYXZhfDY3OHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">instances/DownloadPage.java:678</span></li>
+</ul>
+</details>
+</div>
+</details>
+</div>
+</details>
+<details open data-level="L2" data-node="settings">
+<summary><span class="node">
+<span class="lv l2">L2</span>
+<span class="name">设置</span>
+<span class="cnt">直接 12 · 含子页 45</span>
+<span class="note">页面</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQyfFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">全局游戏设置</span>
+<span class="kind">TabItem</span>
+<span class="k">settings.type.global.manage</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:42</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQzfFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">Java 管理</span>
+<span class="kind">TabItem</span>
+<span class="k">java.management</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:43</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQ0fFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">通用</span>
+<span class="kind">TabItem</span>
+<span class="k">settings.launcher.general</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:44</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQ1fFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">外观</span>
+<span class="kind">TabItem</span>
+<span class="k">settings.launcher.appearance</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:45</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQ2fFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">下载</span>
+<span class="kind">TabItem</span>
+<span class="k">download</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:46</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDQ3fFRhYkl0ZW0"><input type="checkbox" class="pick">
+<span class="t">关于</span>
+<span class="kind">TabItem</span>
+<span class="k">about</span>
+<span class="act">页签容器</span>
+<span class="loc">main/LauncherSettingsPage.java:47</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDYwfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">全局游戏设置</span>
+<span class="kind">导航页签</span>
+<span class="k">settings.type.global.manage</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:60</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDYxfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">Java 管理</span>
+<span class="kind">导航页签</span>
+<span class="k">java.management</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:61</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDYzfOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">通用</span>
+<span class="kind">导航页签</span>
+<span class="k">settings.launcher.general</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:63</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDY0fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">外观</span>
+<span class="kind">导航页签</span>
+<span class="k">settings.launcher.appearance</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:64</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDY1fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">下载</span>
+<span class="kind">导航页签</span>
+<span class="k">download</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:65</span></li>
+<li data-cid="c2V0dGluZ3N8bWFpblxMYXVuY2hlclNldHRpbmdzUGFnZS5qYXZhfDY3fOWvvOiIqumhteetvg"><input type="checkbox" class="pick">
+<span class="t">关于</span>
+<span class="kind">导航页签</span>
+<span class="k">about</span>
+<span class="act">切换页签</span>
+<span class="loc">main/LauncherSettingsPage.java:67</span></li>
+</ul>
+<div class="kids">
+<details data-level="L3" data-node="s-game">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">游戏设置</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+<span class="note">全局/实例共用</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1nYW1lfGdhbWVcR2FtZVNldHRpbmdzUGFnZS5qYXZhfDE4N3xMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">预设</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.type.global.preset</span>
+<span class="act"></span>
+<span class="loc">game/GameSettingsPage.java:187</span></li>
+<li data-cid="cy1nYW1lfGdhbWVcR2FtZVNldHRpbmdzUGFnZS5qYXZhfDMzNHxMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">默认版本隔离策略</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.game.default_isolation</span>
+<span class="act"></span>
+<span class="loc">game/GameSettingsPage.java:334</span></li>
+<li data-cid="cy1nYW1lfGdhbWVcR2FtZVNldHRpbmdzUGFnZS5qYXZhfDM1MXxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">版本隔离</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">settings.game.isolation</span>
+<span class="act"></span>
+<span class="loc">game/GameSettingsPage.java:351</span></li>
+<li data-cid="cy1nYW1lfGdhbWVcR2FtZVNldHRpbmdzUGFnZS5qYXZhfDEzNDh8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">game/GameSettingsPage.java:1348</span></li>
+<li data-cid="cy1nYW1lfGdhbWVcR2FtZVNldHRpbmdzUGFnZS5qYXZhfDI2MjB8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">LineSelectButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">game/GameSettingsPage.java:2620</span></li>
+</ul>
+</details>
+<details data-level="L3" data-node="s-java">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">Java 管理</span>
+<span class="cnt">直接 1 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1qYXZhfG1haW5cSmF2YU1hbmFnZW1lbnRQYWdlLmphdmF8MjY2fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">main/JavaManagementPage.java:266</span></li>
+</ul>
+<div class="kids">
+<details data-level="L5" data-node="s-jinstall">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">安装 Java</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1qaW5zdGFsbHxtYWluXEphdmFJbnN0YWxsUGFnZS5qYXZhfDEzNnzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">安装</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.install</span>
+<span class="act"></span>
+<span class="loc">main/JavaInstallPage.java:136</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="s-jrestore">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">恢复 Java</span>
+<span class="cnt">直接 0 · 含子页 0</span>
+</span></summary>
+</details>
+<details data-level="L5" data-node="s-jdl">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">Java 下载提示</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1qZGx8bWFpblxKYXZhRG93bmxvYWREaWFsb2cuamF2YXwyMjV8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">下载</span>
+<span class="kind">JFXButton</span>
+<span class="k">download</span>
+<span class="act">动作 e -&gt; onDownload());</span>
+<span class="loc">main/JavaDownloadDialog.java:225</span></li>
+<li data-cid="cy1qZGx8bWFpblxKYXZhRG93bmxvYWREaWFsb2cuamF2YXwyMzB8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">main/JavaDownloadDialog.java:230</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="L3" data-node="s-common">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">通用设置</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1jb21tb258bWFpblxTZXR0aW5nc1BhZ2UuamF2YXw2N3xMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">语言</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.language</span>
+<span class="act"></span>
+<span class="loc">main/SettingsPage.java:67</span></li>
+<li data-cid="cy1jb21tb258bWFpblxTZXR0aW5nc1BhZ2UuamF2YXw5NHxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">不启用愚人节功能</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">settings.launcher.disable_april_fools</span>
+<span class="act"></span>
+<span class="loc">main/SettingsPage.java:94</span></li>
+<li data-cid="cy1jb21tb258bWFpblxTZXR0aW5nc1BhZ2UuamF2YXwxMDh8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">打开日志文件夹</span>
+<span class="kind">JFXButton</span>
+<span class="k">settings.launcher.launcher_log.reveal</span>
+<span class="act">动作 e -&gt; openLogFolder());</span>
+<span class="loc">main/SettingsPage.java:108</span></li>
+</ul>
+</details>
+<details data-level="L3" data-node="s-look">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">个性化</span>
+<span class="cnt">直接 11 · 含子页 14</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDk3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:97</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDM5OHxMaW5lQnV0dG9uwrflr7zoiKo"><input type="checkbox" class="pick">
+<span class="t">主题</span>
+<span class="kind">LineButton&#183;导航</span>
+<span class="k">theme_pack.theme</span>
+<span class="act">动作 event -&gt;</span>
+<span class="loc">main/PersonalizationPage.java:398</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDQwN3xMaW5lQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">导出当前主题</span>
+<span class="kind">LineButton</span>
+<span class="k">theme_pack.export</span>
+<span class="act">动作 event -&gt; exportCurrentThemePack());</span>
+<span class="loc">main/PersonalizationPage.java:407</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDQyMHxMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">主题模式</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.brightness</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:420</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDYwNXxMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">色彩模式</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.theme_color_style</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:605</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDg1MnxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">缓存网络图片</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">launcher.background.network.cache</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:852</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDg5N3xMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">背景加载方式</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">launcher.background.load_policy</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:897</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDEwNjR8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">标题栏透明</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">settings.launcher.title_transparent</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:1064</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDExMjh8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">窗口透明</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">settings.launcher.window_transparent</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:1128</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDExNTV8TGluZVRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">关闭动画</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">settings.launcher.turn_off_animations</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:1155</span></li>
+<li data-cid="cy1sb29rfG1haW5cUGVyc29uYWxpemF0aW9uUGFnZS5qYXZhfDEyNTR8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">抗锯齿</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.font.anti_aliasing</span>
+<span class="act"></span>
+<span class="loc">main/PersonalizationPage.java:1254</span></li>
+</ul>
+<div class="kids">
+<details data-level="L4" data-node="s-theme">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">主题包管理</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy10aGVtZXxtYWluXFRoZW1lUGFja01hbmFnZW1lbnRQYWdlLmphdmF8NDU2fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">main/ThemePackManagementPage.java:456</span></li>
+<li data-cid="cy10aGVtZXxtYWluXFRoZW1lUGFja01hbmFnZW1lbnRQYWdlLmphdmF8NDc3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 event -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">main/ThemePackManagementPage.java:477</span></li>
+<li data-cid="cy10aGVtZXxtYWluXFRoZW1lUGFja01hbmFnZW1lbnRQYWdlLmphdmF8NjY5fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">main/ThemePackManagementPage.java:669</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="L3" data-node="s-dlset">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">下载设置</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1kbHNldHxtYWluXERvd25sb2FkU2V0dGluZ3NQYWdlLmphdmF8NzB8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">版本列表源</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.version_list_source</span>
+<span class="act"></span>
+<span class="loc">main/DownloadSettingsPage.java:70</span></li>
+<li data-cid="cy1kbHNldHxtYWluXERvd25sb2FkU2V0dGluZ3NQYWdlLmphdmF8Nzd8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">下载源</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.download_source</span>
+<span class="act"></span>
+<span class="loc">main/DownloadSettingsPage.java:77</span></li>
+<li data-cid="cy1kbHNldHxtYWluXERvd25sb2FkU2V0dGluZ3NQYWdlLmphdmF8ODR8TGluZVNlbGVjdEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">附加内容默认下载源</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">settings.launcher.default_addon_source</span>
+<span class="act"></span>
+<span class="loc">main/DownloadSettingsPage.java:84</span></li>
+</ul>
+</details>
+<details data-level="L3" data-node="s-about">
+<summary><span class="node">
+<span class="lv l3">L3</span>
+<span class="name">关于</span>
+<span class="cnt">直接 4 · 含子页 4</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1hYm91dHxtYWluXEFib3V0UGFnZS5qYXZhfDUyfExpbmVCdXR0b27Ct-WklumDqOmTvuaOpQ"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">LineButton&#183;外部链接</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">main/AboutPage.java:52</span></li>
+<li data-cid="cy1hYm91dHxtYWluXEFib3V0UGFnZS5qYXZhfDE1OXxMaW5lQnV0dG9uwrflpJbpg6jpk77mjqU"><input type="checkbox" class="pick">
+<span class="t">用户协议</span>
+<span class="kind">LineButton&#183;外部链接</span>
+<span class="k">about.claim</span>
+<span class="act"></span>
+<span class="loc">main/AboutPage.java:159</span></li>
+<li data-cid="cy1hYm91dHxtYWluXEFib3V0UGFnZS5qYXZhfDE2NHxMaW5lQnV0dG9uwrflpJbpg6jpk77mjqU"><input type="checkbox" class="pick">
+<span class="t">开源</span>
+<span class="kind">LineButton&#183;外部链接</span>
+<span class="k">about.open_source</span>
+<span class="act"></span>
+<span class="loc">main/AboutPage.java:164</span></li>
+<li data-cid="cy1hYm91dHxtYWluXEFib3V0UGFnZS5qYXZhfDIwNXxMaW5lQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">LineButton</span>
+<span class="k"></span>
+<span class="act">动作 event -&gt; FXUtils.openLink(link));</span>
+<span class="loc">main/AboutPage.java:205</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="s-nbt">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">NBT 编辑器</span>
+<span class="cnt">直接 2 · 含子页 2</span>
+<span class="note">从世界等入口打开</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="cy1uYnR8bmJ0XE5CVEVkaXRvclBhZ2UuamF2YXw2NXzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">保存</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.save</span>
+<span class="act"></span>
+<span class="loc">nbt/NBTEditorPage.java:65</span></li>
+<li data-cid="cy1uYnR8bmJ0XE5CVEVkaXRvclBhZ2UuamF2YXw3NXzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.cancel</span>
+<span class="act"></span>
+<span class="loc">nbt/NBTEditorPage.java:75</span></li>
+</ul>
+</details>
+</div>
+</details>
+</div>
+</details>
+<details data-level="L4" data-node="export">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">导出整合包向导</span>
+<span class="cnt">直接 0 · 含子页 6</span>
+<span class="note">向导</span>
+</span></summary>
+<div class="kids">
+<details data-level="L4" data-node="exp-type">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">类型选择</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZXhwLXR5cGV8ZXhwb3J0XE1vZHBhY2tUeXBlU2VsZWN0aW9uUGFnZS5qYXZhfDQ4fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">export/ModpackTypeSelectionPage.java:48</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="exp-info">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">信息填写</span>
+<span class="cnt">直接 6 · 含子页 6</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDI5M3xMaW5lU2VsZWN0QnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">认证服务器</span>
+<span class="kind">LineSelectButton</span>
+<span class="k">account.injector.server</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:293</span></li>
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDMwOHxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">强制升级整合包至最新版本 (需要自建服务器)</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">modpack.wizard.step.initialization.force_update</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:308</span></li>
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDMxNnxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">包含启动器</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">modpack.wizard.step.initialization.include_launcher</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:316</span></li>
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDMyNXxMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">不匹配远程文件</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">modpack.wizard.step.initialization.no_create_remote_files</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:325</span></li>
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDMzM3xMaW5lVG9nZ2xlQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">不匹配 CurseForge 远程资源</span>
+<span class="kind">LineToggleButton</span>
+<span class="k">modpack.wizard.step.initialization.skip_curseforge_remote_files</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:333</span></li>
+<li data-cid="ZXhwLWluZm98ZXhwb3J0XE1vZHBhY2tJbmZvUGFnZS5qYXZhfDM0NnzlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">下一步 &gt;</span>
+<span class="kind">强调按钮</span>
+<span class="k">wizard.next</span>
+<span class="act"></span>
+<span class="loc">export/ModpackInfoPage.java:346</span></li>
+</ul>
+</details>
+<details data-level="L4" data-node="exp-files">
+<summary><span class="node">
+<span class="lv l4">L4</span>
+<span class="name">文件选择</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZXhwLWZpbGVzfGV4cG9ydFxNb2RwYWNrRmlsZVNlbGVjdGlvblBhZ2UuamF2YXw4M3zlvLrosIPmjInpkq4"><input type="checkbox" class="pick">
+<span class="t">下一步 &gt;</span>
+<span class="kind">强调按钮</span>
+<span class="k">wizard.next</span>
+<span class="act"></span>
+<span class="loc">export/ModpackFileSelectionPage.java:83</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="L5" data-node="dialogs">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">全局弹窗</span>
+<span class="cnt">直接 0 · 含子页 8</span>
+<span class="note">任意页面可弹出</span>
+</span></summary>
+<div class="kids">
+<details data-level="L5" data-node="d-log">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">日志窗口</span>
+<span class="cnt">直接 5 · 含子页 5</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZC1sb2d8TG9nV2luZG93LmphdmF8Mjg4fFRvZ2dsZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">ToggleButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">LogWindow.java:288</span></li>
+<li data-cid="ZC1sb2d8TG9nV2luZG93LmphdmF8NDAwfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">导出</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.export</span>
+<span class="act">动作 e -&gt; getSkinnable().onExportLogs());</span>
+<span class="loc">LogWindow.java:400</span></li>
+<li data-cid="ZC1sb2d8TG9nV2luZG93LmphdmF8NDAzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">结束游戏进程</span>
+<span class="kind">JFXButton</span>
+<span class="k">logwindow.terminate_game</span>
+<span class="act">动作 e -&gt; getSkinnable().onTerminateGame());</span>
+<span class="loc">LogWindow.java:403</span></li>
+<li data-cid="ZC1sb2d8TG9nV2luZG93LmphdmF8NDA4fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">导出游戏运行栈</span>
+<span class="kind">JFXButton</span>
+<span class="k">logwindow.export_dump</span>
+<span class="act">动作 e -&gt; getSkinnable().onExportDump(exportDumpPane));</span>
+<span class="loc">LogWindow.java:408</span></li>
+<li data-cid="ZC1sb2d8TG9nV2luZG93LmphdmF8NDE3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">清除</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.clear</span>
+<span class="act">动作 e -&gt; getSkinnable().onClear());</span>
+<span class="loc">LogWindow.java:417</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="d-crash">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">崩溃窗口</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZC1jcmFzaHxDcmFzaFdpbmRvdy5qYXZhfDM5fEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">打开日志文件夹</span>
+<span class="kind">Button</span>
+<span class="k">settings.launcher.launcher_log.reveal</span>
+<span class="act">动作 event -&gt; {</span>
+<span class="loc">CrashWindow.java:39</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="d-gcrash">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">游戏崩溃窗口</span>
+<span class="cnt">直接 3 · 含子页 3</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZC1nY3Jhc2h8R2FtZUNyYXNoV2luZG93LmphdmF8NDE5fOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">导出游戏崩溃信息</span>
+<span class="kind">强调按钮</span>
+<span class="k">logwindow.export_game_crash_logs</span>
+<span class="act"></span>
+<span class="loc">GameCrashWindow.java:419</span></li>
+<li data-cid="ZC1nY3Jhc2h8R2FtZUNyYXNoV2luZG93LmphdmF8NDQ2fOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">日志</span>
+<span class="kind">强调按钮</span>
+<span class="k">logwindow.title</span>
+<span class="act"></span>
+<span class="loc">GameCrashWindow.java:446</span></li>
+<li data-cid="ZC1nY3Jhc2h8R2FtZUNyYXNoV2luZG93LmphdmF8NDQ5fOW8uuiwg-aMiemSrg"><input type="checkbox" class="pick">
+<span class="t">帮助</span>
+<span class="kind">强调按钮</span>
+<span class="k">help</span>
+<span class="act"></span>
+<span class="loc">GameCrashWindow.java:449</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="d-preset">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">游戏设置预设</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZC1wcmVzZXR8Z2FtZVxQcmVzZXRNYW5hZ2VtZW50UGFuZS5qYXZhfDY1fExpbmVCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">新建预设</span>
+<span class="kind">LineButton</span>
+<span class="k">settings.type.global.preset.create</span>
+<span class="act">动作 event -&gt; createPreset());</span>
+<span class="loc">game/PresetManagementPane.java:65</span></li>
+</ul>
+</details>
+<details data-level="L5" data-node="d-institem">
+<summary><span class="node">
+<span class="lv l5">L5</span>
+<span class="name">安装项</span>
+<span class="cnt">直接 1 · 含子页 </span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="ZC1pbnN0aXRlbXxJbnN0YWxsZXJJdGVtLmphdmF8MzMzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">InstallerItem.java:333</span></li>
+</ul>
+</details>
+</div>
+</details>
+<details data-level="共享" data-node="shared">
+<summary><span class="node">
+<span class="lv sh">共享</span>
+<span class="name">共享组件 / 框架</span>
+<span class="cnt">直接 70 · 含子页 70</span>
+<span class="note">对话框按钮等，被各页复用</span>
+</span></summary>
+<ul class="ctl">
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxJY29uZWRNZW51SXRlbS5qYXZhfDE3fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/IconedMenuItem.java:17</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxJY29uZWRNZW51SXRlbS5qYXZhfDE5fOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/IconedMenuItem.java:19</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxEaWFsb2dQYW5lLmphdmF8MjB8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; onCancel());</span>
+<span class="loc">construct/DialogPane.java:20</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxMaW5lQnV0dG9uLmphdmF8MjB8TGluZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">LineButton</span>
+<span class="k"></span>
+<span class="act">动作 event -&gt; FXUtils.openLink(url));</span>
+<span class="loc">construct/LineButton.java:20</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxMaW5lQnV0dG9uLmphdmF8MjZ8TGluZUJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">LineButton</span>
+<span class="k"></span>
+<span class="act">动作 event -&gt; FXUtils.openLink(url));</span>
+<span class="loc">construct/LineButton.java:26</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxEaWFsb2dQYW5lLmphdmF8Mjh8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; onAccept());</span>
+<span class="loc">construct/DialogPane.java:28</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxGb250Q29tYm9Cb3guamF2YXw0Mnzlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/FontComboBox.java:42</span></li>
+<li data-cid="c2hhcmVkfGFjY291bnRcQWNjb3VudExpc3RJdGVtU2tpbi5qYXZhfDQzfOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">account/AccountListItemSkin.java:43</span></li>
+<li data-cid="c2hhcmVkfGFjY291bnRcQWNjb3VudExpc3RQb3B1cE1lbnUuamF2YXw0NXxBY2NvdW50QWR2YW5jZWRMaXN0SXRlbQ"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">AccountAdvancedListItem</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListPopupMenu.java:45</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxJbnB1dERpYWxvZ1BhbmUuamF2YXw0OXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">construct/InputDialogPane.java:49</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxMaW5lSW5oZXJpdGFibGVUb2dnbGVCdXR0b24uamF2YXw1MHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/LineInheritableToggleButton.java:50</span></li>
+<li data-cid="c2hhcmVkfGRpcmVjdG9yeVxHYW1lRGlyZWN0b3J5TGlzdEl0ZW1Ta2luLmphdmF8NTJ85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">directory/GameDirectoryListItemSkin.java:52</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxJbnB1dERpYWxvZ1BhbmUuamF2YXw1M3xKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">construct/InputDialogPane.java:53</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw1N3xBZHZhbmNlZExpc3RJdGVt"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">AdvancedListItem</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; onAction.run());</span>
+<span class="loc">construct/AdvancedListBox.java:57</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZEV4cG9ydFBhZ2VTa2luLmphdmF8NjB85by66LCD5oyJ6ZKu"><input type="checkbox" class="pick">
+<span class="t">导出</span>
+<span class="kind">强调按钮</span>
+<span class="k">button.export</span>
+<span class="act"></span>
+<span class="loc">instances/WorldExportPageSkin.java:60</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw2Nnzlr7zoiKrpobk"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">导航项</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/AdvancedListBox.java:66</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxUYXNrRXhlY3V0b3JEaWFsb2dQYW5lLmphdmF8NjZ8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">construct/TaskExecutorDialogPane.java:66</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw2N3zlr7zoiKrpobk"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">导航项</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/AdvancedListBox.java:67</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw3MHzlr7zoiKrpobk"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">导航项</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/AdvancedListBox.java:70</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNZW51VXBEb3duQnV0dG9uLmphdmF8NzF8SkZYQnV0dG9u"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">construct/MenuUpDownButton.java:71</span></li>
+<li data-cid="c2hhcmVkfFRvb2xiYXJMaXN0UGFnZVNraW4uamF2YXw3MXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; onClick.run());</span>
+<span class="loc">ToolbarListPageSkin.java:71</span></li>
+<li data-cid="c2hhcmVkfFRvb2xiYXJMaXN0UGFnZVNraW4uamF2YXw4MHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; onClick.run());</span>
+<span class="loc">ToolbarListPageSkin.java:80</span></li>
+<li data-cid="c2hhcmVkfGFjY291bnRcQWNjb3VudExpc3RJdGVtU2tpbi5qYXZhfDgxfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">account/AccountListItemSkin.java:81</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw4NXzlr7zoiKrpobXnrb4"><input type="checkbox" class="pick">
+<span class="t dyn">（动态/程序设置）</span>
+<span class="kind">导航页签</span>
+<span class="k"></span>
+<span class="act">切换页签</span>
+<span class="loc">construct/AdvancedListBox.java:85</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNRExpc3RDZWxsLmphdmF8ODd85Y-v54K55Ye76Z2i5p2_"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/MDListCell.java:87</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxGaWxlU2VsZWN0b3IuamF2YXw5MHxJY29uZWRNZW51SXRlbQ"><input type="checkbox" class="pick">
+<span class="t">选择文件</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">selector.choose_file</span>
+<span class="act"></span>
+<span class="loc">construct/FileSelector.java:90</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxGaWxlU2VsZWN0b3IuamF2YXw5MXxJY29uZWRNZW51SXRlbQ"><input type="checkbox" class="pick">
+<span class="t">选择文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">selector.choose_directory</span>
+<span class="act"></span>
+<span class="loc">construct/FileSelector.java:91</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxBZHZhbmNlZExpc3RCb3guamF2YXw5NXzlr7zoiKrpobXnrb4"><input type="checkbox" class="pick">
+<span class="t dyn">（动态/程序设置）</span>
+<span class="kind">导航页签</span>
+<span class="k"></span>
+<span class="act">切换页签</span>
+<span class="loc">construct/AdvancedListBox.java:95</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxMaW5lU2VsZWN0QnV0dG9uLmphdmF8MTAzfOWPr-eCueWHu-mdouadvw"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/LineSelectButton.java:103</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNZXNzYWdlRGlhbG9nUGFuZS5qYXZhfDE0OHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; action.run());</span>
+<span class="loc">construct/MessageDialogPane.java:148</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNZXNzYWdlRGlhbG9nUGFuZS5qYXZhfDE1OHxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; ok.run());</span>
+<span class="loc">construct/MessageDialogPane.java:158</span></li>
+<li data-cid="c2hhcmVkfEhUTUxSZW5kZXJlci5qYXZhfDE2N3zlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">HTMLRenderer.java:167</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNZXNzYWdlRGlhbG9nUGFuZS5qYXZhfDE3M3xKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; cancel.run());</span>
+<span class="loc">construct/MessageDialogPane.java:173</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxNZXNzYWdlRGlhbG9nUGFuZS5qYXZhfDE4NXxKRlhCdXR0b24"><input type="checkbox" class="pick">
+<span class="t">是</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.yes</span>
+<span class="act">动作 e -&gt; yes.run());</span>
+<span class="loc">construct/MessageDialogPane.java:185</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxODZ8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">测试游戏</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch.test</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:186</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxODd8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">生成启动脚本</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch_script</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:187</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxODl8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">重命名该实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.rename</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:189</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxOTB8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">复制游戏实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.duplicate</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:190</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxOTF8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">删除该实例</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.manage.remove</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:191</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxOTJ8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">导出整合包</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">modpack.export</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:192</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xHYW1lTGlzdENlbGwuamF2YXwxOTR8SWNvbmVkTWVudUl0ZW0"><input type="checkbox" class="pick">
+<span class="t">实例运行文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.game</span>
+<span class="act"></span>
+<span class="loc">instances/GameListCell.java:194</span></li>
+<li data-cid="c2hhcmVkfGNvbnN0cnVjdFxTcGlubmVyUGFuZS5qYXZhfDIwM3zlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">construct/SpinnerPane.java:203</span></li>
+<li data-cid="c2hhcmVkfEhUTUxSZW5kZXJlci5qYXZhfDI0Nnzlj6_ngrnlh7vpnaLmnb8"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">可点击面板</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">HTMLRenderer.java:246</span></li>
+<li data-cid="c2hhcmVkfENvbnRyb2xsZXJzLmphdmF8MzQ3fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">同意</span>
+<span class="kind">JFXButton</span>
+<span class="k">launcher.agreement.accept</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">Controllers.java:347</span></li>
+<li data-cid="c2hhcmVkfENvbnRyb2xsZXJzLmphdmF8MzU0fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">拒绝</span>
+<span class="kind">JFXButton</span>
+<span class="k">launcher.agreement.decline</span>
+<span class="act">动作 e -&gt; javafx.application.Platform.exit());</span>
+<span class="loc">Controllers.java:354</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8MzcxfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">进入世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch_and_enter_world</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:371</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzc2fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">生成启动脚本</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">instance.launch_script</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:376</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8MzgxfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">管理此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.manage.button</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:381</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzg2fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">种子地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.seed_map</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:386</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzg3fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">要塞地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.stronghold</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:387</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzg4fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">下界要塞地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.nether_fortress</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:388</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8MzkyfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">末地城地图</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.chunkbase.end_city</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:392</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzk2fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">导出此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.export</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:396</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8Mzk5fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">删除此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.delete</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:399</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8NDAyfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">复制此世界</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">world.duplicate</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:402</span></li>
+<li data-cid="c2hhcmVkfGluc3RhbmNlc1xXb3JsZExpc3RQYWdlLmphdmF8NDE0fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">世界文件夹</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">folder.world</span>
+<span class="act"></span>
+<span class="loc">instances/WorldListPage.java:414</span></li>
+<li data-cid="c2hhcmVkfENvbnRyb2xsZXJzLmphdmF8NDkzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; ok.run());</span>
+<span class="loc">Controllers.java:493</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxMDEzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1013</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxMDIwfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1020</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxMDI2fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1026</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxMDMzfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t dyn">（运行时赋值）</span>
+<span class="kind">JFXButton</span>
+<span class="k"></span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">FXUtils.java:1033</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDU2fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">撤销</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.undo</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1456</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDU3fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">重做</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.redo</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1457</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDU4fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">剪切</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.cut</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1458</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDU5fEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">复制</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.copy</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1459</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDYwfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">粘贴</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.paste</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1460</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDYxfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">删除</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.deleteselection</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1461</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNDYyfEljb25lZE1lbnVJdGVt"><input type="checkbox" class="pick">
+<span class="t">全选</span>
+<span class="kind">IconedMenuItem</span>
+<span class="k">menu.selectall</span>
+<span class="act"></span>
+<span class="loc">FXUtils.java:1462</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNTcyfEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">取消</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.cancel</span>
+<span class="act">动作 e -&gt; fireEvent(new DialogCloseEvent()));</span>
+<span class="loc">FXUtils.java:1572</span></li>
+<li data-cid="c2hhcmVkfEZYVXRpbHMuamF2YXwxNTc2fEpGWEJ1dHRvbg"><input type="checkbox" class="pick">
+<span class="t">确定</span>
+<span class="kind">JFXButton</span>
+<span class="k">button.ok</span>
+<span class="act">动作 e -&gt; {</span>
+<span class="loc">FXUtils.java:1576</span></li>
+</ul>
+</details>
+</div>
+</details>
+<script>
+const KEY="mcdl-ui-reserve";
+const picks=[...document.querySelectorAll(".pick")];
+const saved=JSON.parse(localStorage.getItem(KEY)||"{}");
+picks.forEach(cb=>{const li=cb.closest("li");if(saved[li.dataset.cid]){cb.checked=true;li.classList.add("done");}});
+function refresh(){const by={};picks.forEach(cb=>{if(!cb.checked)return;const lv=cb.closest("details").dataset.level;by[lv]=(by[lv]||0)+1;});const levels=["L1","L2","L3","L4","L5","共享"];const names={L1:"L1 骨架",L2:"L2 直达页",L3:"L3 页签",L4:"L4 详情页",L5:"L5 弹窗","共享":"共享组件"};document.getElementById("sum").innerHTML=levels.map(l=>`<span>${names[l]}：已预留 <b>${by[l]||0}</b> / ${picks.filter(cb=>cb.closest("details").dataset.level===l).length}</span>`).join("")+`<span>总计：已预留 <b>${Object.values(by).reduce((a,b)=>a+b,0)}</b> / ${picks.length}</span>`;}
+picks.forEach(cb=>cb.addEventListener("change",()=>{const li=cb.closest("li");li.classList.toggle("done",cb.checked);const store={};picks.forEach(c=>{if(c.checked)store[c.closest("li").dataset.cid]=1;});localStorage.setItem(KEY,JSON.stringify(store));refresh();}));refresh();
+const q=document.getElementById("q"),lv=document.getElementById("lv");
+function filter(){const s=q.value.toLowerCase(),L=lv.value;document.querySelectorAll("details").forEach(d=>{d.style.display=(s||L)?"none":"";});if(!s&&!L)return;document.querySelectorAll("details").forEach(d=>{const own=d.querySelector(":scope > summary").textContent.toLowerCase();const ctl=[...d.querySelectorAll(":scope > ul.ctl > li")].some(li=>li.textContent.toLowerCase().includes(s));const okL=!L||d.dataset.level===L;if((s&&(own.includes(s)||ctl))&&okL){d.style.display="";let p=d.parentElement.closest("details");while(p){p.style.display="";p.open=true;p=p.parentElement.closest("details");}}});}
+q.addEventListener("input",filter);lv.addEventListener("change",filter);
+document.getElementById("openAll").onclick=()=>document.querySelectorAll("details").forEach(d=>d.open=true);
+document.getElementById("closeAll").onclick=()=>document.querySelectorAll("details").forEach(d=>d.open=false);
+document.getElementById("expandLevels").onclick=()=>{document.querySelectorAll("details").forEach(d=>d.open=false);const ls=["L1","L2","L3","L4","L5","共享"];let i=0;const step=()=>{if(i>=ls.length)return;document.querySelectorAll(`details[data-level="${ls[i]}"]`).forEach(d=>{d.open=true;let p=d.parentElement.closest("details");while(p){p.open=true;p=p.parentElement.closest("details");}});i++;setTimeout(step,120);};step();};
+document.getElementById("reset").onclick=()=>{picks.forEach(cb=>{cb.checked=false;cb.closest("li").classList.remove("done");});localStorage.removeItem(KEY);refresh();};
+document.getElementById("export").onclick=()=>{const sel=[...document.querySelectorAll("details")].map(d=>({lv:d.dataset.level,name:d.querySelector(":scope > summary .name").textContent,items:[...d.querySelectorAll(":scope > ul.ctl > li")].filter(li=>li.querySelector(".pick").checked).map(li=>li.querySelector(".t").textContent+" | "+li.querySelector(".kind").textContent+" | "+li.querySelector(".k").textContent)})).filter(x=>x.items.length);const out=document.getElementById("out");out.style.display="block";let text="";const names={L1:"L1 骨架",L2:"L2 直达页",L3:"L3 页签",L4:"L4 详情页",L5:"L5 弹窗","共享":"共享组件"};["L1","L2","L3","L4","L5","共享"].forEach(l=>{const g=sel.filter(x=>x.lv===l);if(!g.length)return;text+=`## ${names[l]}\n`;g.forEach(x=>{text+=`- ${x.name}\n`;x.items.forEach(t=>text+=`  - ${t}\n`);});text+="\n";});out.textContent=text||"（还没有勾选任何按钮）";navigator.clipboard&&navigator.clipboard.writeText(text);};
+</script></body></html>

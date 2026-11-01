@@ -1,0 +1,668 @@
+'use strict';
+
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs/promises');
+const mcdl = require('./mcdl-service');
+const javaRuntime = require('./java-runtime');
+const launcher = require('./launch');
+const accounts = require('./accounts');
+
+const IS_DEV = process.argv.includes('--dev');
+
+console.log(`[main] booting Electron app (dev=${IS_DEV})`);
+
+// 某些受限环境需要软件渲染才能启动窗口。
+// 默认使用 GPU；只有显式设置 MCDL_DISABLE_GPU=1 时才关闭硬件加速。
+if (process.env.MCDL_DISABLE_GPU === '1') {
+  app.disableHardwareAcceleration();
+}
+
+// 高分屏：不要强制 1x 设备像素比。
+// 让 Chromium 按 Windows 原生 DPI 渲染，避免先以 1x 绘制、再被系统放大造成模糊。
+// 如果某个特殊环境确实需要锁定比例，可临时设置：
+// app.commandLine.appendSwitch('force-device-scale-factor', '1.25');
+
+process.on('uncaughtException', (error) => {
+  console.error('[main] uncaughtException:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('[main] unhandledRejection:', error);
+});
+
+let mainWindow = null;
+let accountStore = null;
+
+function getAccountStore() {
+  if (!accountStore) {
+    accountStore = accounts.createAccountStore(app.getPath('userData'));
+  }
+  return accountStore;
+}
+
+function settingsFile() {
+  return path.join(app.getPath('userData'), 'launcher-settings.json');
+}
+
+const DEFAULT_SETTINGS = {
+  memoryMb: launcher.defaultMemoryMb(),
+  width: launcher.DEFAULT_WIDTH,
+  height: launcher.DEFAULT_HEIGHT,
+  jvmArgs: '',
+  javaPath: ''
+};
+
+async function readSettings() {
+  let raw = {};
+  try {
+    raw = JSON.parse(await fs.readFile(settingsFile(), 'utf8'));
+  } catch {
+    raw = {};
+  }
+
+  const normalized = launcher.normalizeSettings({ ...DEFAULT_SETTINGS, ...raw });
+  return {
+    memoryMb: normalized.memoryMb,
+    width: normalized.width,
+    height: normalized.height,
+    jvmArgs: normalized.jvmArgs,
+    javaPath: normalized.javaPath
+  };
+}
+
+async function writeSettings(patch) {
+  const current = await readSettings();
+  const merged = launcher.normalizeSettings({ ...current, ...patch });
+  const next = {
+    memoryMb: merged.memoryMb,
+    width: merged.width,
+    height: merged.height,
+    jvmArgs: merged.jvmArgs,
+    javaPath: merged.javaPath
+  };
+
+  const file = settingsFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+}
+
+/**
+ * 选 Java：设置里指定了就用指定的，否则按版本 JSON 要求挑一个。
+ * @param {{requiredMajor:number, versionId?:string}} options
+ */
+async function resolveJavaRuntime(options = {}) {
+  const requiredMajor = Number(options.requiredMajor) || 0;
+  const settings = await readSettings();
+
+  if (settings.javaPath) {
+    const info = await javaRuntime.probe(settings.javaPath);
+    if (info) {
+      if (requiredMajor && info.major < requiredMajor) {
+        console.warn(`[launch] 指定 Java ${info.major} 低于版本要求的 ${requiredMajor}`);
+      }
+      return info;
+    }
+    console.warn('[launch] 设置的 Java 路径不可用，回退到自动探测:', settings.javaPath);
+  }
+
+  const runtimes = await javaRuntime.getJavaRuntimes(mcdl);
+  const picked = javaRuntime.pickJava(runtimes, requiredMajor);
+  return picked || null;
+}
+
+function aliasFile() {
+  return path.join(app.getPath('userData'), 'instance-display-names.json');
+}
+
+async function readAliases() {
+  try {
+    const raw = await fs.readFile(aliasFile(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeAliases(aliases) {
+  const file = aliasFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(aliases, null, 2), 'utf8');
+}
+
+function scanCacheFile() {
+  return path.join(app.getPath('userData'), 'scanned-game-dirs.json');
+}
+
+async function readScanCache() {
+  try {
+    const raw = await fs.readFile(scanCacheFile(), 'utf8');
+    const parsed = JSON.parse(raw);
+    const dirs = Array.isArray(parsed) ? parsed : parsed && parsed.dirs;
+    return Array.isArray(dirs)
+      ? dirs.filter((dir) => typeof dir === 'string' && dir.trim()).map((dir) => path.resolve(dir))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeScanCache(dirs) {
+  const file = scanCacheFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({
+    dirs,
+    updatedAt: new Date().toISOString()
+  }, null, 2), 'utf8');
+}
+
+function uniqueDirs(dirs) {
+  const seen = new Set();
+  const result = [];
+  for (const dir of dirs) {
+    if (!dir) continue;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(resolved);
+  }
+  return result;
+}
+
+/**
+ * 默认只扫描 MCDL Launcher 自己的游戏目录；
+ * externalDirs 只会来自用户主动扫描后的缓存。
+ */
+async function buildInstanceSnapshot(ownDir, externalDirs = []) {
+  const aliases = await readAliases();
+  const ownKey = path.resolve(ownDir).toLowerCase();
+  const cleanExternalDirs = uniqueDirs(externalDirs)
+    .filter((dir) => path.resolve(dir).toLowerCase() !== ownKey);
+  const primary = await mcdl.scanInstances(ownDir, aliases, { primary: true });
+  const instances = primary.instances.slice();
+  let selectedId = primary.selectedId;
+
+  for (const dir of cleanExternalDirs) {
+    const snapshot = await mcdl.scanInstances(dir, aliases, { primary: false });
+    instances.push(...snapshot.instances);
+    if (!selectedId && snapshot.selectedId) selectedId = snapshot.selectedId;
+  }
+
+  return {
+    gameDir: primary.gameDir,
+    instances,
+    selectedId,
+    scanDirs: [primary.gameDir, ...cleanExternalDirs],
+    cachedDirs: cleanExternalDirs
+  };
+}
+
+function sendInstallOutput(win, bufferState) {
+  return (text) => {
+    bufferState.value += String(text);
+    const parts = bufferState.value.split(/\r\n|\n|\r/);
+    bufferState.value = parts.pop() || '';
+
+    for (const part of parts) {
+      const message = part.trim();
+      if (!message) continue;
+      if (!win.isDestroyed()) {
+        win.webContents.send('instances:install-progress', { message });
+      }
+    }
+  };
+}
+
+/**
+ * Only the app's own renderer may call these IPC handlers.
+ */
+function assertAppWindow(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error('Unauthorized IPC sender');
+  }
+  return mainWindow;
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('window:minimize', (event) => {
+    const win = assertAppWindow(event);
+    win.minimize();
+    return true;
+  });
+
+  ipcMain.handle('window:toggle-maximize', (event) => {
+    const win = assertAppWindow(event);
+    if (win.isMaximized()) {
+      win.unmaximize();
+    } else {
+      win.maximize();
+    }
+    return win.isMaximized();
+  });
+
+  ipcMain.handle('window:close', (event) => {
+    const win = assertAppWindow(event);
+    setImmediate(() => {
+      if (!win.isDestroyed()) win.close();
+    });
+    return true;
+  });
+
+  ipcMain.handle('window:is-maximized', (event) => {
+    return assertAppWindow(event).isMaximized();
+  });
+
+  ipcMain.handle('instances:list', async (event) => {
+    assertAppWindow(event);
+    try {
+      const ownDir = await mcdl.detectGameDir();
+      const cachedDirs = await readScanCache();
+      return await buildInstanceSnapshot(ownDir, cachedDirs);
+    } catch (error) {
+      console.error('[instance-data] failed to read instances:', error);
+      throw new Error(`无法读取实例数据: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('instances:scan-other', async (event) => {
+    assertAppWindow(event);
+    try {
+      const ownDir = await mcdl.detectGameDir();
+      const cachedDirs = await readScanCache();
+      const foundDirs = await mcdl.findOtherGameDirs();
+      const mergedDirs = uniqueDirs([...cachedDirs, ...foundDirs])
+        .filter((dir) => dir.toLowerCase() !== ownDir.toLowerCase());
+
+      let cachePersisted = true;
+      try {
+        await writeScanCache(mergedDirs);
+      } catch (error) {
+        cachePersisted = false;
+        console.warn('[instances] could not persist scan cache:', error);
+      }
+
+      const snapshot = await buildInstanceSnapshot(ownDir, mergedDirs);
+      snapshot.newlyScanned = foundDirs.length;
+      snapshot.scanCache = mergedDirs;
+      snapshot.cachePersisted = cachePersisted;
+      return snapshot;
+    } catch (error) {
+      console.error('[instances] scan other launchers failed:', error);
+      throw new Error(`扫描其他启动器实例失败: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('versions:list', async (event) => {
+    assertAppWindow(event);
+    try {
+      return await mcdl.listVersions();
+    } catch (error) {
+      console.error('[versions] failed to list versions:', error);
+      throw new Error(`无法读取版本列表: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('instances:create', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const version = String(payload.version || '').trim();
+    const loader = String(payload.loader || 'Vanilla');
+    const requestedName = String(payload.name || '').trim();
+
+    if (!version) throw new Error('缺少游戏版本');
+    if (loader !== 'Vanilla') {
+      throw new Error('当前 mcdl 后端仅支持原版安装，加载器安装尚未接入');
+    }
+
+    const gameDir = await mcdl.detectGameDir();
+    const aliases = await readAliases();
+    const cachedDirs = await readScanCache();
+    const bufferState = { value: '' };
+
+    if (!win.isDestroyed()) {
+      win.webContents.send('instances:install-progress', {
+        message: `准备安装 ${version} …`
+      });
+    }
+
+    try {
+      await mcdl.installVersion({
+        version,
+        gameDir,
+        onData: sendInstallOutput(win, bufferState)
+      });
+
+      const versionDir = path.join(gameDir, 'versions', version);
+      aliases[versionDir] = requestedName || aliases[versionDir] || `${version} · 原版`;
+      try {
+        await writeAliases(aliases);
+      } catch (error) {
+        console.warn('[instances] could not persist display name:', error);
+      }
+
+      const snapshot = await buildInstanceSnapshot(gameDir, cachedDirs);
+      snapshot.selectedId = version;
+
+      if (!win.isDestroyed()) {
+        win.webContents.send('instances:install-progress', {
+          message: `安装完成：${version}`
+        });
+      }
+
+      return snapshot;
+    } catch (error) {
+      console.error('[instances] mcdl install failed:', error);
+      if (error && error.stdout) {
+        console.error('[instances] mcdl stdout tail:\n' + String(error.stdout).split(/\r?\n/).slice(-30).join('\n'));
+      }
+      if (error && error.stderr) {
+        console.error('[instances] mcdl stderr tail:\n' + String(error.stderr).split(/\r?\n/).slice(-30).join('\n'));
+      }
+      if (!win.isDestroyed()) {
+        win.webContents.send('instances:install-progress', {
+          message: `安装失败：${error.message}`
+        });
+      }
+      throw error;
+    }
+  });
+
+  ipcMain.handle('shell:open-logs', async (event) => {
+    assertAppWindow(event);
+    const logDirectory = app.getPath('logs');
+    await fs.mkdir(logDirectory, { recursive: true });
+    const error = await shell.openPath(logDirectory);
+    if (error) throw new Error(error);
+    return true;
+  });
+
+  /**
+   * 真实启动：按版本 JSON 拼 java 命令并拉起游戏进程。
+   */
+  ipcMain.handle('launcher:launch', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const instanceId =
+      payload && typeof payload.instanceId === 'string' ? payload.instanceId : null;
+
+    const send = (data) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('launcher:launch-progress', { instanceId, at: Date.now(), ...data });
+      }
+    };
+
+    try {
+      const ownDir = await mcdl.detectGameDir();
+      const cachedDirs = await readScanCache();
+      const snapshot = await buildInstanceSnapshot(ownDir, cachedDirs);
+      const instance =
+        snapshot.instances.find((item) => item.id === instanceId) ||
+        snapshot.instances.find((item) => item.id === snapshot.selectedId);
+
+      if (!instance) throw new Error('没有可启动的实例，请先创建一个实例');
+
+      const versionId = path.basename(instance.path);
+      const gameDir = instance.gameDir || ownDir;
+
+      const store = getAccountStore();
+      let account = await store.getSelected();
+      if (!account) {
+        throw new Error('还没有选择账号，请先在「账户」页创建离线账号或登录微软账号');
+      }
+
+      if (account.type === 'microsoft') {
+        try {
+          const refreshed = await accounts.ensureFreshToken(account);
+          if (refreshed.accessToken !== account.accessToken) {
+            await store.save(refreshed);
+          }
+          account = refreshed;
+        } catch (error) {
+          throw new Error(`微软账号令牌已失效，请重新登录：${error.message}`);
+        }
+      }
+
+      const settings = await readSettings();
+
+      send({ phase: 'starting', instanceId, versionId, memoryMb: settings.memoryMb });
+
+      const result = await launcher.launchInstance({
+        gameDir,
+        instanceId: versionId,
+        account,
+        settings,
+        resolveJava: (options) => resolveJavaRuntime(options),
+        onEvent: (kind, data) => {
+          if (kind === 'output') {
+            send({ phase: 'output', stream: data.stream, text: data.text });
+            return;
+          }
+          send({ phase: kind, ...data });
+        }
+      });
+
+      await store.markUsed(account.id).catch(() => {});
+
+      return {
+        ok: true,
+        instanceId,
+        versionId: result.plan.versionId,
+        launchId: result.launchId,
+        pid: result.pid,
+        javaPath: result.plan.javaPath,
+        javaMajor: result.plan.javaMajor,
+        memoryMb: result.plan.memoryMb,
+        logFile: result.logFile,
+        warnings: result.plan.warnings
+      };
+    } catch (error) {
+      console.error('[launch] failed:', error);
+      send({ phase: 'error', message: error.message });
+      throw error;
+    }
+  });
+
+  ipcMain.handle('launcher:stop', async (event, launchId) => {
+    assertAppWindow(event);
+    return launcher.stopLaunch(String(launchId || ''));
+  });
+
+  ipcMain.handle('launcher:active', async (event) => {
+    assertAppWindow(event);
+    return launcher.listActiveLaunches();
+  });
+
+  // ---------------- 账户 ----------------
+
+  ipcMain.handle('accounts:list', async (event) => {
+    assertAppWindow(event);
+    const result = await getAccountStore().list();
+    return {
+      accounts: result.accounts,
+      selectedId: result.selectedId
+    };
+  });
+
+  ipcMain.handle('accounts:add-offline', async (event, payload = {}) => {
+    assertAppWindow(event);
+    await getAccountStore().addOffline(payload && payload.name);
+    return getAccountStore().list();
+  });
+
+  ipcMain.handle('accounts:add-microsoft', async (event) => {
+    const win = assertAppWindow(event);
+    try {
+      const code = await accounts.requestAuthorizationCode(win);
+      const details = await accounts.completeMicrosoftLogin(code);
+      await getAccountStore().addMicrosoft(details);
+      const list = await getAccountStore().list();
+      return list;
+    } catch (error) {
+      console.error('[accounts] microsoft login failed:', error);
+      throw new Error(`微软登录失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('accounts:select', async (event, id) => {
+    assertAppWindow(event);
+    await getAccountStore().select(String(id || ''));
+    return getAccountStore().list();
+  });
+
+  ipcMain.handle('accounts:remove', async (event, id) => {
+    assertAppWindow(event);
+    await getAccountStore().remove(String(id || ''));
+    return getAccountStore().list();
+  });
+
+  // ---------------- 设置 ----------------
+
+  ipcMain.handle('settings:get', async (event) => {
+    assertAppWindow(event);
+    const settings = await readSettings();
+    let javaRuntimes = [];
+    try {
+      javaRuntimes = await javaRuntime.getJavaRuntimes(mcdl);
+    } catch (error) {
+      console.warn('[settings] java scan failed:', error.message);
+    }
+    return {
+      settings,
+      javaRuntimes,
+      defaultMemoryMb: launcher.defaultMemoryMb()
+    };
+  });
+
+  ipcMain.handle('settings:save', async (event, patch = {}) => {
+    assertAppWindow(event);
+    return writeSettings(patch || {});
+  });
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 900,
+    minHeight: 600,
+    frame: false,
+    show: false,
+    title: 'MCDL Launcher',
+    autoHideMenuBar: true,
+    // 去掉 Windows 无边框窗口默认保留的厚边框/缩放区与外部阴影，
+    // 否则页面内容与窗口外沿之间会出现一圈深色空隙。
+    thickFrame: false,
+    hasShadow: false,
+    roundedCorners: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error('[main] preload failed:', preloadPath, error);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[main] renderer failed to load:', errorCode, errorDescription, validatedURL);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[main] renderer process gone:', details);
+  });
+
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
+    .catch((error) => {
+      console.error('[main] loadFile failed:', error);
+    });
+
+  mainWindow.once('ready-to-show', () => {
+    console.log('[main] window ready to show');
+    mainWindow.show();
+  });
+
+  mainWindow.on('maximize', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('window:maximized-changed', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('window:maximized-changed', false);
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
+
+  if (IS_DEV) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+}
+
+// 源码运行（未打包）时跳过单实例锁，避免开发期残留进程/旧窗口让新窗口直接退出。
+// 真正打包后的应用仍保留单实例行为。
+const gotSingleInstanceLock = !app.isPackaged ? true : app.requestSingleInstanceLock();
+console.log(`[main] single instance lock: ${gotSingleInstanceLock} (packaged=${app.isPackaged})`);
+
+if (!gotSingleInstanceLock) {
+  console.warn('[main] another instance is already running; focus it from the taskbar.');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(() => {
+    console.log('[main] app ready');
+
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.mcdl.launcher');
+    }
+
+    // 无边框窗口下移除 Electron 默认菜单栏
+    Menu.setApplicationMenu(null);
+
+    registerIpcHandlers();
+    createWindow();
+
+    console.log('[main] BrowserWindow created');
+    console.log(`[mcdl] jar: ${mcdl.MCDL_JAR}`);
+    console.log(`[mcdl] default game dir: ${mcdl.DEFAULT_GAME_DIR}`);
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+}

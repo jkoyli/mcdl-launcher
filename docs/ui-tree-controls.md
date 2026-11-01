@@ -1,0 +1,361 @@
+# MCDL Launcher 按钮/控件逐层清单
+
+> 共 284 项控件。结构：L1 骨架 → L2 侧边栏直达页 → L3 页签/详情 → L4 三级详情 → L5 弹窗/向导。
+> 每行格式：`文案 ｜ 类型 ｜ i18n key ｜ 动作 ｜ 文件:行`。`（运行时赋值）` 表示文案在构建后动态设置。
+
+- **[L1] MCDL Launcher 主窗口** （一级：窗口骨架） — 直接 0 项
+  - **[L1] 标题栏** （最小化 / 最大化 / 关闭 / 帮助） — 直接 6 项
+    - 帮助（打开日志文件夹） ｜ JFXButton ｜  ｜ 打开日志文件夹 ｜ decorator/MainWindowPane.java:182
+    - 最小化 ｜ JFXButton ｜  ｜ 最小化窗口 ｜ decorator/MainWindowPane.java:193
+    - 关闭 ｜ JFXButton ｜  ｜ 关闭窗口 ｜ decorator/MainWindowPane.java:200
+    - 返回 ｜ JFXButton ｜  ｜ 返回上一页 ｜ decorator/MainWindowPane.java:264
+    - 关闭当前页 ｜ JFXButton ｜  ｜ 关闭当前页面 ｜ decorator/MainWindowPane.java:276
+    - 刷新 ｜ JFXButton ｜  ｜ 刷新当前页面 ｜ decorator/MainWindowPane.java:315
+  - **[L1] 侧边栏** （5 个常驻导航项） — 直接 5 项
+    - 账户（显示当前账户名） ｜ AccountAdvancedListItem ｜  ｜ 跳转 账户页 getAccountListPage() ｜ main/RootPage.java:98
+    - 游戏（显示当前实例名） ｜ GameAdvancedListItem ｜  ｜ 跳转 实例设置 / 实例列表 ｜ main/RootPage.java:104
+    - 实例列表 ｜ AdvancedListItem ｜ instance.manage ｜ 动作 e -> Controllers.navigate(Controllers.getGameListPage())); ｜ main/RootPage.java:125
+    - 下载 ｜ AdvancedListItem ｜ download ｜ 动作 e -> Controllers.navigate(Controllers.getDownloadPage())); ｜ main/RootPage.java:132
+    - 设置 ｜ AdvancedListItem ｜ settings ｜ 跳转 设置页 getSettingsPage() ｜ main/RootPage.java:142
+    - **[L2] 账户** （页面） — 直接 4 项
+      - 微软账户 ｜ AdvancedListItem ｜ account.methods.microsoft ｜ 动作 e -> { ｜ account/AccountListPage.java:107
+      - 离线模式 ｜ AdvancedListItem ｜ account.methods.offline ｜ 动作 e -> { ｜ account/AccountListPage.java:119
+      - （运行时赋值） ｜ AdvancedListItem ｜  ｜ 动作 e -> { ｜ account/AccountListPage.java:133
+      - 添加认证服务器 ｜ AdvancedListItem ｜ account.injector.add ｜ 动作 e -> { ｜ account/AccountListPage.java:186
+      - **[L5] 微软登录** （弹窗） — 直接 3 项
+        - 登录 ｜ JFXButton ｜ account.login ｜  ｜ account/MicrosoftAccountLoginPane.java:88
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onCancel()); ｜ account/MicrosoftAccountLoginPane.java:95
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ account/MicrosoftAccountLoginPane.java:216
+      - **[L5] 添加离线账户** （弹窗） — 直接 6 项
+        - 登录 ｜ JFXButton ｜ account.login ｜ 动作 e -> onAccept()); ｜ account/CreateAccountPane.java:116
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onCancel()); ｜ account/CreateAccountPane.java:124
+        - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ account/CreateAccountPane.java:136
+        - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ account/CreateAccountPane.java:142
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> latch.countDown()); ｜ account/CreateAccountPane.java:574
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ account/CreateAccountPane.java:606
+      - **[L5] 正版登录对话框** （弹窗） — 直接 2 项
+        - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> onAccept()); ｜ account/ClassicAccountLoginDialog.java:70
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onCancel()); ｜ account/ClassicAccountLoginDialog.java:74
+      - **[L5] 添加认证服务器** （弹窗） — 直接 5 项
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onAddCancel()); ｜ account/AddAuthlibInjectorServerPane.java:61
+        - 下一步 > ｜ JFXButton ｜ wizard.next ｜ 动作 e -> onAddNext()); ｜ account/AddAuthlibInjectorServerPane.java:67
+        - < 上一步 ｜ JFXButton ｜ wizard.prev ｜ 动作 e -> onAddPrev()); ｜ account/AddAuthlibInjectorServerPane.java:138
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onAddCancel()); ｜ account/AddAuthlibInjectorServerPane.java:142
+        - 完成 ｜ JFXButton ｜ wizard.finish ｜ 动作 e -> onAddFinish()); ｜ account/AddAuthlibInjectorServerPane.java:146
+      - **[L5] 离线皮肤设置** （弹窗） — 直接 2 项
+        - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> { ｜ account/OfflineAccountSkinPane.java:226
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ account/OfflineAccountSkinPane.java:235
+    - **[L2] 游戏（当前实例）** （主页；无实例时跳实例列表） — 直接 2 项
+      - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ main/MainPage.java:140
+      - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ main/MainPage.java:177
+      - **[L3] 实例详情** （6 页签 + 4 侧栏项） — 直接 38 项
+        - 游戏设置 ｜ TabItem ｜ settings.game ｜ 页签容器 ｜ instances/GameInstancePage.java:83
+        - 自动安装 ｜ TabItem ｜ settings.tabs.installers ｜ 页签容器 ｜ instances/GameInstancePage.java:84
+        - 模组管理 ｜ TabItem ｜ mods.manage ｜ 页签容器 ｜ instances/GameInstancePage.java:85
+        - 资源包管理 ｜ TabItem ｜ resourcepack.manage ｜ 页签容器 ｜ instances/GameInstancePage.java:86
+        - 世界管理 ｜ TabItem ｜ world.manage ｜ 页签容器 ｜ instances/GameInstancePage.java:87
+        - 原理图管理 ｜ TabItem ｜ schematics.manage ｜ 页签容器 ｜ instances/GameInstancePage.java:88
+        - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ instances/GameInstancePage.java:89
+        - 游戏设置 ｜ 导航页签 ｜ settings.game ｜ 切换页签 ｜ instances/GameInstancePage.java:356
+        - 自动安装 ｜ 导航页签 ｜ settings.tabs.installers ｜ 切换页签 ｜ instances/GameInstancePage.java:357
+        - 模组管理 ｜ 导航页签 ｜ mods.manage ｜ 切换页签 ｜ instances/GameInstancePage.java:358
+        - 资源包管理 ｜ 导航页签 ｜ resourcepack.manage ｜ 切换页签 ｜ instances/GameInstancePage.java:359
+        - 世界管理 ｜ 导航页签 ｜ world.manage ｜ 切换页签 ｜ instances/GameInstancePage.java:360
+        - 原理图管理 ｜ 导航页签 ｜ schematics.manage ｜ 切换页签 ｜ instances/GameInstancePage.java:361
+        - 实例运行文件夹 ｜ IconedMenuItem ｜ folder.game ｜  ｜ instances/GameInstancePage.java:367
+        - 配置文件夹 ｜ IconedMenuItem ｜ folder.config ｜  ｜ instances/GameInstancePage.java:368
+        - 模组文件夹 ｜ IconedMenuItem ｜ folder.mod ｜  ｜ instances/GameInstancePage.java:370
+        - 资源包文件夹 ｜ IconedMenuItem ｜ folder.resourcepacks ｜  ｜ instances/GameInstancePage.java:371
+        - 世界文件夹 ｜ IconedMenuItem ｜ folder.saves ｜  ｜ instances/GameInstancePage.java:372
+        - 原理图文件夹 ｜ IconedMenuItem ｜ folder.schematics ｜  ｜ instances/GameInstancePage.java:373
+        - 光影包文件夹 ｜ IconedMenuItem ｜ folder.shaderpacks ｜  ｜ instances/GameInstancePage.java:374
+        - 截图文件夹 ｜ IconedMenuItem ｜ folder.screenshots ｜  ｜ instances/GameInstancePage.java:375
+        - 日志文件夹 ｜ IconedMenuItem ｜ folder.logs ｜  ｜ instances/GameInstancePage.java:377
+        - 崩溃报告文件夹 ｜ IconedMenuItem ｜ folder.crash-reports ｜  ｜ instances/GameInstancePage.java:378
+        - 测试游戏 ｜ IconedMenuItem ｜ instance.launch.test ｜  ｜ instances/GameInstancePage.java:384
+        - 生成启动脚本 ｜ IconedMenuItem ｜ instance.launch_script ｜  ｜ instances/GameInstancePage.java:385
+        - 重命名该实例 ｜ IconedMenuItem ｜ instance.manage.rename ｜  ｜ instances/GameInstancePage.java:387
+        - 复制游戏实例 ｜ IconedMenuItem ｜ instance.manage.duplicate ｜  ｜ instances/GameInstancePage.java:388
+        - 删除该实例 ｜ IconedMenuItem ｜ instance.manage.remove ｜  ｜ instances/GameInstancePage.java:389
+        - 导出整合包 ｜ IconedMenuItem ｜ modpack.export ｜  ｜ instances/GameInstancePage.java:390
+        - 截图管理 ｜ IconedMenuItem ｜ screenshots.manage ｜  ｜ instances/GameInstancePage.java:394
+        - 更新游戏资源文件 ｜ IconedMenuItem ｜ instance.manage.redownload_assets_index ｜  ｜ instances/GameInstancePage.java:396
+        - 删除所有游戏资源文件 ｜ IconedMenuItem ｜ instance.manage.remove_assets ｜  ｜ instances/GameInstancePage.java:397
+        - 删除所有库文件 ｜ IconedMenuItem ｜ instance.manage.remove_libraries ｜  ｜ instances/GameInstancePage.java:398
+        - 清理游戏文件夹 ｜ IconedMenuItem ｜ instance.manage.clean ｜  ｜ instances/GameInstancePage.java:399
+        - 更新整合包 ｜ 导航项 ｜ instance.update ｜  ｜ instances/GameInstancePage.java:403
+        - 测试游戏 ｜ 导航项 ｜ instance.launch.test ｜ 动作 e -> browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth( ｜ instances/GameInstancePage.java:406
+        - 浏览 ｜ 导航项 ｜ settings.game.exploration ｜ 动作 e -> browsePopup.show(browseMenuItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, browseMenuItem.getWidth( ｜ instances/GameInstancePage.java:407
+        - 管理 ｜ 导航项 ｜ settings.game.management ｜ 动作 e -> managementPopup.show(managementItem, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, managementItem.getWidth( ｜ instances/GameInstancePage.java:410
+        - **[L3] 游戏设置** （与「设置 → 游戏设置」同一页面类） — 直接 0 项
+        - **[L3] 自动安装**  — 直接 1 项
+          - 安装 ｜ 强调按钮 ｜ button.install ｜  ｜ download/AbstractInstallersPage.java:168
+        - **[L4] 模组**  — 直接 2 项
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/ModListPage.java:711
+          - （运行时赋值） ｜ IconedMenuItem ｜  ｜  ｜ instances/ModListPage.java:846
+        - **[L4] 资源包**  — 直接 1 项
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/ResourcePackListPage.java:672
+        - **[L4] 世界**  — 直接 0 项
+          - **[L4] 世界详情**  — 直接 5 项
+            - 允许命令(作弊) ｜ LineToggleButton ｜ world.info.allow_cheats ｜  ｜ instances/WorldInfoPage.java:216
+            - 生成建筑 ｜ LineToggleButton ｜ world.info.generate_features ｜  ｜ instances/WorldInfoPage.java:224
+            - 难度 ｜ LineSelectButton ｜ world.info.difficulty ｜  ｜ instances/WorldInfoPage.java:244
+            - 锁定难度 ｜ LineToggleButton ｜ world.info.difficulty_lock ｜  ｜ instances/WorldInfoPage.java:278
+            - 游戏模式 ｜ LineSelectButton ｜ world.info.player.game_type ｜  ｜ instances/WorldInfoPage.java:343
+          - **[L4] 世界管理** （3 页签） — 直接 19 项
+            - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ instances/WorldManagePage.java:72
+            - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ instances/WorldManagePage.java:73
+            - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ instances/WorldManagePage.java:74
+            - 世界信息 ｜ 导航页签 ｜ world.info ｜ 切换页签 ｜ instances/WorldManagePage.java:203
+            - 备份管理 ｜ 导航页签 ｜ world.backup ｜ 切换页签 ｜ instances/WorldManagePage.java:204
+            - 数据包管理 ｜ 导航页签 ｜ world.datapack ｜ 切换页签 ｜ instances/WorldManagePage.java:208
+            - 启动游戏 ｜ 导航项 ｜ instance.launch ｜  ｜ instances/WorldManagePage.java:220
+            - 种子地图 ｜ IconedMenuItem ｜ world.chunkbase.seed_map ｜  ｜ instances/WorldManagePage.java:228
+            - 要塞地图 ｜ IconedMenuItem ｜ world.chunkbase.stronghold ｜  ｜ instances/WorldManagePage.java:229
+            - 下界要塞地图 ｜ IconedMenuItem ｜ world.chunkbase.nether_fortress ｜  ｜ instances/WorldManagePage.java:230
+            - 末地城地图 ｜ IconedMenuItem ｜ world.chunkbase.end_city ｜  ｜ instances/WorldManagePage.java:235
+            - 世界地图 ｜ 导航项 ｜ world.chunkbase ｜ 动作 e ->
+                                    chunkBasePopup.show(chunkBaseMenuItem,
+                                            JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                            chunkBaseMenuItem.getWidth( ｜ instances/WorldManagePage.java:238
+            - 浏览 ｜ 导航项 ｜ settings.game.exploration ｜  ｜ instances/WorldManagePage.java:245
+            - 启动游戏 ｜ IconedMenuItem ｜ instance.launch ｜  ｜ instances/WorldManagePage.java:253
+            - 生成启动脚本 ｜ IconedMenuItem ｜ instance.launch_script ｜  ｜ instances/WorldManagePage.java:254
+            - 导出此世界 ｜ IconedMenuItem ｜ world.export ｜  ｜ instances/WorldManagePage.java:260
+            - 删除此世界 ｜ IconedMenuItem ｜ world.delete ｜  ｜ instances/WorldManagePage.java:261
+            - 复制此世界 ｜ IconedMenuItem ｜ world.duplicate ｜  ｜ instances/WorldManagePage.java:262
+            - 管理 ｜ 导航项 ｜ settings.game.management ｜ 动作 e ->
+                                managePopup.show(managePopupMenuItem,
+                                        JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT,
+                                        managePopupMenuItem.getWidth( ｜ instances/WorldManagePage.java:265
+        - **[L4] 投影**  — 直接 2 项
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/SchematicsPage.java:673
+          - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/SchematicsPage.java:884
+        - **[L4] 截图**  — 直接 3 项
+          - 设为启动器背景 ｜ JFXButton ｜ screenshots.set_as_bg ｜ 动作 e -> { ｜ instances/ScreenshotsPage.java:361
+          - 复制 ｜ JFXButton ｜ menu.copy ｜ 动作 e -> { ｜ instances/ScreenshotsPage.java:369
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/ScreenshotsPage.java:376
+        - **[L4] 内容更新**  — 直接 5 项
+          - 导出 ｜ 强调按钮 ｜ button.export ｜  ｜ instances/AddonUpdatesPage.java:139
+          - 更新 ｜ 强调按钮 ｜ addon.check_update.confirm ｜  ｜ instances/AddonUpdatesPage.java:142
+          - 取消 ｜ 强调按钮 ｜ button.cancel ｜  ｜ instances/AddonUpdatesPage.java:145
+          - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/AddonUpdatesPage.java:379
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/AddonUpdatesPage.java:462
+      - **[L5] 实例图标选择** （弹窗） — 直接 3 项
+        - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 event -> fireEvent(new DialogCloseEvent())); ｜ instances/GameInstanceIconDialog.java:61
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/GameInstanceIconDialog.java:94
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/GameInstanceIconDialog.java:104
+    - **[L2] 实例管理** （页面） — 直接 3 项
+      - 修改 ｜ IconedMenuItem ｜ button.edit ｜  ｜ instances/GameListPage.java:70
+      - 添加游戏文件夹 ｜ AdvancedListItem ｜ game_directory.new ｜ 动作 e -> Controllers.navigate(new GameDirectoryPage(null))); ｜ instances/GameListPage.java:84
+      - 全局游戏设置 ｜ 导航项 ｜ settings.type.global.manage ｜  ｜ instances/GameListPage.java:102
+      - **[L4] 游戏目录管理**  — 直接 2 项
+        - 若可能，游戏文件夹使用相对路径 ｜ LineToggleButton ｜ game_directory.use_relative_path ｜  ｜ directory/GameDirectoryPage.java:127
+        - 保存 ｜ 强调按钮 ｜ button.save ｜  ｜ directory/GameDirectoryPage.java:150
+      - **[L4] 实例右键菜单**  — 直接 1 项
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/GameListPopupMenu.java:153
+      - **[L5] 实例操作对话框** （重命名/复制/删除等） — 直接 2 项
+        - 删除 ｜ JFXButton ｜ button.delete ｜ 动作 e -> { ｜ instances/Instances.java:111
+        - 前往下载页面 ｜ JFXButton ｜ instance.empty.launch.goto_download ｜ 动作 e -> Controllers.navigate(Controllers.getDownloadPage())); ｜ instances/Instances.java:337
+    - **[L2] 下载** （页面） — 直接 9 项
+      - Minecraft ｜ TabItem ｜ install.installer.game ｜  ｜ download/DownloadPage.java:92
+      - 安装整合包 ｜ 强调按钮 ｜ install.modpack ｜  ｜ download/DownloadPage.java:103
+      - 游戏 ｜ 导航页签 ｜ game ｜ 切换页签 ｜ download/DownloadPage.java:129
+      - 整合包 ｜ 导航页签 ｜ modpack ｜ 切换页签 ｜ download/DownloadPage.java:130
+      - 模组 ｜ 导航页签 ｜ mods ｜ 切换页签 ｜ download/DownloadPage.java:132
+      - 资源包 ｜ 导航页签 ｜ resourcepack ｜ 切换页签 ｜ download/DownloadPage.java:133
+      - 光影 ｜ 导航页签 ｜ download.shader ｜ 切换页签 ｜ download/DownloadPage.java:134
+      - 世界 ｜ 导航页签 ｜ world ｜ 切换页签 ｜ download/DownloadPage.java:135
+      - （见对应导航页签） ｜ TabItem ｜  ｜ 页签容器 ｜ download/DownloadPage.java:143
+      - **[L3] 游戏版本**  — 直接 4 项
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ download/VersionsPage.java:177
+        - 刷新 ｜ 强调按钮 ｜ button.refresh ｜  ｜ download/VersionsPage.java:346
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ download/VersionsPage.java:410
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ download/VersionsPage.java:419
+        - **[L4] 安装向导 · 可选文件**  — 直接 3 项
+          - 安装 ｜ 强调按钮 ｜ button.install ｜  ｜ download/OptionalFilesPage.java:131
+          - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ download/OptionalFilesPage.java:187
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ download/OptionalFilesPage.java:289
+        - **[L4] 加载器版本选择**  — 直接 0 项
+        - **[L4] 可选安装器**  — 直接 0 项
+      - **[L3] 整合包**  — 直接 2 项
+        - 可选文件 ｜ 强调按钮 ｜ modpack.optional_files ｜  ｜ download/ModpackPage.java:85
+        - 安装 ｜ 强调按钮 ｜ button.install ｜  ｜ download/ModpackPage.java:90
+        - **[L4] 整合包类型选择**  — 直接 1 项
+          - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> action.run()); ｜ download/ModpackSelectionPage.java:74
+        - **[L4] 整合包来源**  — 直接 0 项
+        - **[L4] 本地整合包**  — 直接 0 项
+      - **[L3] 内容列表（模组/资源/光影/世界）** （同一页面类复用于 4 个页签） — 直接 2 项
+        - 搜索 ｜ 强调按钮 ｜ search ｜  ｜ instances/DownloadListPage.java:490
+        - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ instances/DownloadListPage.java:590
+        - **[L4] 内容下载页**  — 直接 5 项
+          - （运行时赋值） ｜ 可点击面板 ｜  ｜ 弹窗 AddonVersion ｜ instances/DownloadPage.java:481
+          - 安装整合包 ｜ JFXButton ｜ install.modpack ｜ 动作 e -> { ｜ instances/DownloadPage.java:539
+          - 下载到本地文件夹 ｜ JFXButton ｜ mods.save_as ｜ 动作 e -> { ｜ instances/DownloadPage.java:549
+          - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/DownloadPage.java:558
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ instances/DownloadPage.java:678
+    - **[L2] 设置** （页面） — 直接 12 项
+      - 全局游戏设置 ｜ TabItem ｜ settings.type.global.manage ｜ 页签容器 ｜ main/LauncherSettingsPage.java:42
+      - Java 管理 ｜ TabItem ｜ java.management ｜ 页签容器 ｜ main/LauncherSettingsPage.java:43
+      - 通用 ｜ TabItem ｜ settings.launcher.general ｜ 页签容器 ｜ main/LauncherSettingsPage.java:44
+      - 外观 ｜ TabItem ｜ settings.launcher.appearance ｜ 页签容器 ｜ main/LauncherSettingsPage.java:45
+      - 下载 ｜ TabItem ｜ download ｜ 页签容器 ｜ main/LauncherSettingsPage.java:46
+      - 关于 ｜ TabItem ｜ about ｜ 页签容器 ｜ main/LauncherSettingsPage.java:47
+      - 全局游戏设置 ｜ 导航页签 ｜ settings.type.global.manage ｜ 切换页签 ｜ main/LauncherSettingsPage.java:60
+      - Java 管理 ｜ 导航页签 ｜ java.management ｜ 切换页签 ｜ main/LauncherSettingsPage.java:61
+      - 通用 ｜ 导航页签 ｜ settings.launcher.general ｜ 切换页签 ｜ main/LauncherSettingsPage.java:63
+      - 外观 ｜ 导航页签 ｜ settings.launcher.appearance ｜ 切换页签 ｜ main/LauncherSettingsPage.java:64
+      - 下载 ｜ 导航页签 ｜ download ｜ 切换页签 ｜ main/LauncherSettingsPage.java:65
+      - 关于 ｜ 导航页签 ｜ about ｜ 切换页签 ｜ main/LauncherSettingsPage.java:67
+      - **[L3] 游戏设置** （全局/实例共用） — 直接 5 项
+        - 预设 ｜ LineSelectButton ｜ settings.type.global.preset ｜  ｜ game/GameSettingsPage.java:187
+        - 默认版本隔离策略 ｜ LineSelectButton ｜ settings.game.default_isolation ｜  ｜ game/GameSettingsPage.java:334
+        - 版本隔离 ｜ LineToggleButton ｜ settings.game.isolation ｜  ｜ game/GameSettingsPage.java:351
+        - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ game/GameSettingsPage.java:1348
+        - （运行时赋值） ｜ LineSelectButton ｜  ｜  ｜ game/GameSettingsPage.java:2620
+      - **[L3] Java 管理**  — 直接 1 项
+        - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ main/JavaManagementPage.java:266
+        - **[L5] 安装 Java**  — 直接 1 项
+          - 安装 ｜ 强调按钮 ｜ button.install ｜  ｜ main/JavaInstallPage.java:136
+        - **[L5] 恢复 Java**  — 直接 0 项
+        - **[L5] Java 下载提示**  — 直接 2 项
+          - 下载 ｜ JFXButton ｜ download ｜ 动作 e -> onDownload()); ｜ main/JavaDownloadDialog.java:225
+          - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ main/JavaDownloadDialog.java:230
+      - **[L3] 通用设置**  — 直接 3 项
+        - 语言 ｜ LineSelectButton ｜ settings.launcher.language ｜  ｜ main/SettingsPage.java:67
+        - 不启用愚人节功能 ｜ LineToggleButton ｜ settings.launcher.disable_april_fools ｜  ｜ main/SettingsPage.java:94
+        - 打开日志文件夹 ｜ JFXButton ｜ settings.launcher.launcher_log.reveal ｜ 动作 e -> openLogFolder()); ｜ main/SettingsPage.java:108
+      - **[L3] 个性化**  — 直接 11 项
+        - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ main/PersonalizationPage.java:97
+        - 主题 ｜ LineButton·导航 ｜ theme_pack.theme ｜ 动作 event -> ｜ main/PersonalizationPage.java:398
+        - 导出当前主题 ｜ LineButton ｜ theme_pack.export ｜ 动作 event -> exportCurrentThemePack()); ｜ main/PersonalizationPage.java:407
+        - 主题模式 ｜ LineSelectButton ｜ settings.launcher.brightness ｜  ｜ main/PersonalizationPage.java:420
+        - 色彩模式 ｜ LineSelectButton ｜ settings.launcher.theme_color_style ｜  ｜ main/PersonalizationPage.java:605
+        - 缓存网络图片 ｜ LineToggleButton ｜ launcher.background.network.cache ｜  ｜ main/PersonalizationPage.java:852
+        - 背景加载方式 ｜ LineSelectButton ｜ launcher.background.load_policy ｜  ｜ main/PersonalizationPage.java:897
+        - 标题栏透明 ｜ LineToggleButton ｜ settings.launcher.title_transparent ｜  ｜ main/PersonalizationPage.java:1064
+        - 窗口透明 ｜ LineToggleButton ｜ settings.launcher.window_transparent ｜  ｜ main/PersonalizationPage.java:1128
+        - 关闭动画 ｜ LineToggleButton ｜ settings.launcher.turn_off_animations ｜  ｜ main/PersonalizationPage.java:1155
+        - 抗锯齿 ｜ LineSelectButton ｜ settings.launcher.font.anti_aliasing ｜  ｜ main/PersonalizationPage.java:1254
+        - **[L4] 主题包管理**  — 直接 3 项
+          - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ main/ThemePackManagementPage.java:456
+          - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 event -> fireEvent(new DialogCloseEvent())); ｜ main/ThemePackManagementPage.java:477
+          - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ main/ThemePackManagementPage.java:669
+      - **[L3] 下载设置**  — 直接 3 项
+        - 版本列表源 ｜ LineSelectButton ｜ settings.launcher.version_list_source ｜  ｜ main/DownloadSettingsPage.java:70
+        - 下载源 ｜ LineSelectButton ｜ settings.launcher.download_source ｜  ｜ main/DownloadSettingsPage.java:77
+        - 附加内容默认下载源 ｜ LineSelectButton ｜ settings.launcher.default_addon_source ｜  ｜ main/DownloadSettingsPage.java:84
+      - **[L3] 关于**  — 直接 4 项
+        - （运行时赋值） ｜ LineButton·外部链接 ｜  ｜  ｜ main/AboutPage.java:52
+        - 用户协议 ｜ LineButton·外部链接 ｜ about.claim ｜  ｜ main/AboutPage.java:159
+        - 开源 ｜ LineButton·外部链接 ｜ about.open_source ｜  ｜ main/AboutPage.java:164
+        - （运行时赋值） ｜ LineButton ｜  ｜ 动作 event -> FXUtils.openLink(link)); ｜ main/AboutPage.java:205
+      - **[L4] NBT 编辑器** （从世界等入口打开） — 直接 2 项
+        - 保存 ｜ 强调按钮 ｜ button.save ｜  ｜ nbt/NBTEditorPage.java:65
+        - 取消 ｜ 强调按钮 ｜ button.cancel ｜  ｜ nbt/NBTEditorPage.java:75
+  - **[L4] 导出整合包向导** （向导） — 直接 0 项
+    - **[L4] 类型选择**  — 直接 1 项
+      - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ export/ModpackTypeSelectionPage.java:48
+    - **[L4] 信息填写**  — 直接 6 项
+      - 认证服务器 ｜ LineSelectButton ｜ account.injector.server ｜  ｜ export/ModpackInfoPage.java:293
+      - 强制升级整合包至最新版本 (需要自建服务器) ｜ LineToggleButton ｜ modpack.wizard.step.initialization.force_update ｜  ｜ export/ModpackInfoPage.java:308
+      - 包含启动器 ｜ LineToggleButton ｜ modpack.wizard.step.initialization.include_launcher ｜  ｜ export/ModpackInfoPage.java:316
+      - 不匹配远程文件 ｜ LineToggleButton ｜ modpack.wizard.step.initialization.no_create_remote_files ｜  ｜ export/ModpackInfoPage.java:325
+      - 不匹配 CurseForge 远程资源 ｜ LineToggleButton ｜ modpack.wizard.step.initialization.skip_curseforge_remote_files ｜  ｜ export/ModpackInfoPage.java:333
+      - 下一步 > ｜ 强调按钮 ｜ wizard.next ｜  ｜ export/ModpackInfoPage.java:346
+    - **[L4] 文件选择**  — 直接 1 项
+      - 下一步 > ｜ 强调按钮 ｜ wizard.next ｜  ｜ export/ModpackFileSelectionPage.java:83
+  - **[L5] 全局弹窗** （任意页面可弹出） — 直接 0 项
+    - **[L5] 日志窗口**  — 直接 5 项
+      - （运行时赋值） ｜ ToggleButton ｜  ｜  ｜ LogWindow.java:288
+      - 导出 ｜ JFXButton ｜ button.export ｜ 动作 e -> getSkinnable().onExportLogs()); ｜ LogWindow.java:400
+      - 结束游戏进程 ｜ JFXButton ｜ logwindow.terminate_game ｜ 动作 e -> getSkinnable().onTerminateGame()); ｜ LogWindow.java:403
+      - 导出游戏运行栈 ｜ JFXButton ｜ logwindow.export_dump ｜ 动作 e -> getSkinnable().onExportDump(exportDumpPane)); ｜ LogWindow.java:408
+      - 清除 ｜ JFXButton ｜ button.clear ｜ 动作 e -> getSkinnable().onClear()); ｜ LogWindow.java:417
+    - **[L5] 崩溃窗口**  — 直接 1 项
+      - 打开日志文件夹 ｜ Button ｜ settings.launcher.launcher_log.reveal ｜ 动作 event -> { ｜ CrashWindow.java:39
+    - **[L5] 游戏崩溃窗口**  — 直接 3 项
+      - 导出游戏崩溃信息 ｜ 强调按钮 ｜ logwindow.export_game_crash_logs ｜  ｜ GameCrashWindow.java:419
+      - 日志 ｜ 强调按钮 ｜ logwindow.title ｜  ｜ GameCrashWindow.java:446
+      - 帮助 ｜ 强调按钮 ｜ help ｜  ｜ GameCrashWindow.java:449
+    - **[L5] 游戏设置预设**  — 直接 1 项
+      - 新建预设 ｜ LineButton ｜ settings.type.global.preset.create ｜ 动作 event -> createPreset()); ｜ game/PresetManagementPane.java:65
+    - **[L5] 安装项**  — 直接 1 项
+      - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ InstallerItem.java:333
+  - **[共享] 共享组件 / 框架** （对话框按钮等，被各页复用） — 直接 70 项
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/IconedMenuItem.java:17
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/IconedMenuItem.java:19
+    - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> onCancel()); ｜ construct/DialogPane.java:20
+    - （运行时赋值） ｜ LineButton ｜  ｜ 动作 event -> FXUtils.openLink(url)); ｜ construct/LineButton.java:20
+    - （运行时赋值） ｜ LineButton ｜  ｜ 动作 event -> FXUtils.openLink(url)); ｜ construct/LineButton.java:26
+    - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> onAccept()); ｜ construct/DialogPane.java:28
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/FontComboBox.java:42
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ account/AccountListItemSkin.java:43
+    - （运行时赋值） ｜ AccountAdvancedListItem ｜  ｜ 动作 e -> { ｜ account/AccountListPopupMenu.java:45
+    - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> { ｜ construct/InputDialogPane.java:49
+    - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ construct/LineInheritableToggleButton.java:50
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ directory/GameDirectoryListItemSkin.java:52
+    - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ construct/InputDialogPane.java:53
+    - （运行时赋值） ｜ AdvancedListItem ｜  ｜ 动作 e -> onAction.run()); ｜ construct/AdvancedListBox.java:57
+    - 导出 ｜ 强调按钮 ｜ button.export ｜  ｜ instances/WorldExportPageSkin.java:60
+    - （运行时赋值） ｜ 导航项 ｜  ｜  ｜ construct/AdvancedListBox.java:66
+    - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> { ｜ construct/TaskExecutorDialogPane.java:66
+    - （运行时赋值） ｜ 导航项 ｜  ｜  ｜ construct/AdvancedListBox.java:67
+    - （运行时赋值） ｜ 导航项 ｜  ｜  ｜ construct/AdvancedListBox.java:70
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ construct/MenuUpDownButton.java:71
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> onClick.run()); ｜ ToolbarListPageSkin.java:71
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> onClick.run()); ｜ ToolbarListPageSkin.java:80
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ account/AccountListItemSkin.java:81
+    - （动态/程序设置） ｜ 导航页签 ｜  ｜ 切换页签 ｜ construct/AdvancedListBox.java:85
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/MDListCell.java:87
+    - 选择文件 ｜ IconedMenuItem ｜ selector.choose_file ｜  ｜ construct/FileSelector.java:90
+    - 选择文件夹 ｜ IconedMenuItem ｜ selector.choose_directory ｜  ｜ construct/FileSelector.java:91
+    - （动态/程序设置） ｜ 导航页签 ｜  ｜ 切换页签 ｜ construct/AdvancedListBox.java:95
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/LineSelectButton.java:103
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> action.run()); ｜ construct/MessageDialogPane.java:148
+    - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> ok.run()); ｜ construct/MessageDialogPane.java:158
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ HTMLRenderer.java:167
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> cancel.run()); ｜ construct/MessageDialogPane.java:173
+    - 是 ｜ JFXButton ｜ button.yes ｜ 动作 e -> yes.run()); ｜ construct/MessageDialogPane.java:185
+    - 测试游戏 ｜ IconedMenuItem ｜ instance.launch.test ｜  ｜ instances/GameListCell.java:186
+    - 生成启动脚本 ｜ IconedMenuItem ｜ instance.launch_script ｜  ｜ instances/GameListCell.java:187
+    - 重命名该实例 ｜ IconedMenuItem ｜ instance.manage.rename ｜  ｜ instances/GameListCell.java:189
+    - 复制游戏实例 ｜ IconedMenuItem ｜ instance.manage.duplicate ｜  ｜ instances/GameListCell.java:190
+    - 删除该实例 ｜ IconedMenuItem ｜ instance.manage.remove ｜  ｜ instances/GameListCell.java:191
+    - 导出整合包 ｜ IconedMenuItem ｜ modpack.export ｜  ｜ instances/GameListCell.java:192
+    - 实例运行文件夹 ｜ IconedMenuItem ｜ folder.game ｜  ｜ instances/GameListCell.java:194
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ construct/SpinnerPane.java:203
+    - （运行时赋值） ｜ 可点击面板 ｜  ｜  ｜ HTMLRenderer.java:246
+    - 同意 ｜ JFXButton ｜ launcher.agreement.accept ｜ 动作 e -> { ｜ Controllers.java:347
+    - 拒绝 ｜ JFXButton ｜ launcher.agreement.decline ｜ 动作 e -> javafx.application.Platform.exit()); ｜ Controllers.java:354
+    - 进入世界 ｜ IconedMenuItem ｜ instance.launch_and_enter_world ｜  ｜ instances/WorldListPage.java:371
+    - 生成启动脚本 ｜ IconedMenuItem ｜ instance.launch_script ｜  ｜ instances/WorldListPage.java:376
+    - 管理此世界 ｜ IconedMenuItem ｜ world.manage.button ｜  ｜ instances/WorldListPage.java:381
+    - 种子地图 ｜ IconedMenuItem ｜ world.chunkbase.seed_map ｜  ｜ instances/WorldListPage.java:386
+    - 要塞地图 ｜ IconedMenuItem ｜ world.chunkbase.stronghold ｜  ｜ instances/WorldListPage.java:387
+    - 下界要塞地图 ｜ IconedMenuItem ｜ world.chunkbase.nether_fortress ｜  ｜ instances/WorldListPage.java:388
+    - 末地城地图 ｜ IconedMenuItem ｜ world.chunkbase.end_city ｜  ｜ instances/WorldListPage.java:392
+    - 导出此世界 ｜ IconedMenuItem ｜ world.export ｜  ｜ instances/WorldListPage.java:396
+    - 删除此世界 ｜ IconedMenuItem ｜ world.delete ｜  ｜ instances/WorldListPage.java:399
+    - 复制此世界 ｜ IconedMenuItem ｜ world.duplicate ｜  ｜ instances/WorldListPage.java:402
+    - 世界文件夹 ｜ IconedMenuItem ｜ folder.world ｜  ｜ instances/WorldListPage.java:414
+    - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> ok.run()); ｜ Controllers.java:493
+    - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ FXUtils.java:1013
+    - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ FXUtils.java:1020
+    - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ FXUtils.java:1026
+    - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ FXUtils.java:1033
+    - 撤销 ｜ IconedMenuItem ｜ menu.undo ｜  ｜ FXUtils.java:1456
+    - 重做 ｜ IconedMenuItem ｜ menu.redo ｜  ｜ FXUtils.java:1457
+    - 剪切 ｜ IconedMenuItem ｜ menu.cut ｜  ｜ FXUtils.java:1458
+    - 复制 ｜ IconedMenuItem ｜ menu.copy ｜  ｜ FXUtils.java:1459
+    - 粘贴 ｜ IconedMenuItem ｜ menu.paste ｜  ｜ FXUtils.java:1460
+    - 删除 ｜ IconedMenuItem ｜ menu.deleteselection ｜  ｜ FXUtils.java:1461
+    - 全选 ｜ IconedMenuItem ｜ menu.selectall ｜  ｜ FXUtils.java:1462
+    - 取消 ｜ JFXButton ｜ button.cancel ｜ 动作 e -> fireEvent(new DialogCloseEvent())); ｜ FXUtils.java:1572
+    - 确定 ｜ JFXButton ｜ button.ok ｜ 动作 e -> { ｜ FXUtils.java:1576
+
+## 说明
+
+- 勾选预留请在 `docs/ui-tree-controls.html` 里操作（勾选状态保存在浏览器本地，可导出）。
+- 动态生成列表行（实例/模组/世界/截图等）及其行内按钮不在清单内。
+- `共享组件 / 框架` 下是对话框、输入框等复用控件，各页面都会用到。
