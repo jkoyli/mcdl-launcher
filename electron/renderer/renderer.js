@@ -243,11 +243,15 @@
   }
 
   function describeLaunchError(error) {
-    var raw = error && error.message ? String(error.message) : String(error || '启动失败');
+    var raw = error && error.message ? String(error.message) : String(error || '操作失败');
     // Electron 会给 IPC 错误加上 "Error invoking remote method '...': " 前缀。
     raw = raw.replace(/^Error invoking remote method '[^']+':\s*/, '');
     raw = raw.replace(/^Error:\s*/, '');
-    return raw.split(/\r?\n/).filter(Boolean).pop() || '启动失败';
+
+    var lines = raw.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    if (lines.length === 0) return '操作失败';
+    // 两行的情况是「原因 + 处理建议」，一起展示。
+    return lines.length === 1 ? lines[0] : lines[0] + ' ' + lines[1];
   }
 
   cta.addEventListener('pointerleave', resetRing);

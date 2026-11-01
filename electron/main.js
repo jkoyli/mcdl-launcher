@@ -163,9 +163,35 @@ async function writeSettings(patch) {
   };
 
   const file = settingsFile();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(next, null, 2), 'utf8');
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(next, null, 2), 'utf8');
+  } catch (error) {
+    throw new Error(
+      `无法写入设置文件（${error.code || 'ERROR'}）：${file}\n` +
+      '请确认该目录可写，并关闭其他正在运行的启动器实例后重试'
+    );
+  }
+
   return next;
+}
+
+/**
+ * 启动自检：数据目录不可写时明确记一条日志，避免之后只看到零散的 EPERM。
+ */
+async function checkUserDataWritable() {
+  const dir = app.getPath('userData');
+  const probe = path.join(dir, '.write-probe');
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(probe, String(Date.now()), 'utf8');
+    await fs.unlink(probe);
+    console.log(`[data] userData 可写: ${dir}`);
+    return true;
+  } catch (error) {
+    console.error(`[data] userData 不可写: ${dir} -> ${error.code || ''} ${error.message}`);
+    return false;
+  }
 }
 
 /**
@@ -721,9 +747,35 @@ function createWindow() {
   }
 }
 
-// 源码运行（未打包）时跳过单实例锁，避免开发期残留进程/旧窗口让新窗口直接退出。
-// 真正打包后的应用仍保留单实例行为。
-const gotSingleInstanceLock = !app.isPackaged ? true : app.requestSingleInstanceLock();
+// 单实例：多个实例会共享同一份 userData（账号 / 设置 / Chromium profile），
+// 互相抢文件句柄时会表现为 EPERM 之类的写入失败，因此默认强制单实例。
+// 调试时可以用 --multi-instance 显式放开。
+function userDataWritableSync() {
+  const dir = app.getPath('userData');
+  const probe = path.join(dir, '.write-probe');
+  try {
+    fsSync.mkdirSync(dir, { recursive: true });
+    fsSync.writeFileSync(probe, '1', 'utf8');
+    fsSync.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const allowMultipleInstances = process.argv.includes('--multi-instance');
+let gotSingleInstanceLock = allowMultipleInstances ? true : app.requestSingleInstanceLock();
+
+// 数据目录不可写时单实例锁本身也建不起来，此时不能让它把启动挡掉。
+if (!gotSingleInstanceLock && !allowMultipleInstances) {
+  if (userDataWritableSync()) {
+    console.warn('[main] 已有另一个实例在运行');
+  } else {
+    console.warn('[main] 无法创建单实例锁（数据目录不可写），继续启动；多实例同时运行可能互相冲突');
+    gotSingleInstanceLock = true;
+  }
+}
+
 console.log(`[main] single instance lock: ${gotSingleInstanceLock} (packaged=${app.isPackaged})`);
 
 if (!gotSingleInstanceLock) {
@@ -753,6 +805,8 @@ if (!gotSingleInstanceLock) {
     console.log('[main] BrowserWindow created');
     console.log(`[mcdl] jar: ${mcdl.MCDL_JAR}`);
     console.log(`[mcdl] default game dir: ${mcdl.DEFAULT_GAME_DIR}`);
+
+    checkUserDataWritable().catch(() => {});
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

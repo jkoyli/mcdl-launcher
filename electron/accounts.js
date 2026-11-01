@@ -357,8 +357,16 @@ function createAccountStore(storeDir) {
   }
 
   async function persist() {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify(state, null, 2), 'utf8');
+    try {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, JSON.stringify(state, null, 2), 'utf8');
+    } catch (error) {
+      // 常见原因：目录被禁用/只读、另一个启动器实例正占用同一份 profile、安全软件拦截。
+      throw new Error(
+        `无法写入账号文件（${error.code || 'ERROR'}）：${file}\n` +
+        '请确认该目录可写，并关闭其他正在运行的启动器实例后重试'
+      );
+    }
   }
 
   /** 对外暴露时去掉令牌，避免渲染进程拿到敏感数据。 */
