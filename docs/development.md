@@ -300,11 +300,15 @@ MCDL_USER_DATA（环境变量，最高优先）
 | --- | --- | --- |
 | 游戏设置 | `settings.game` | 实例级内存 / Java / 窗口宽高 / 额外 JVM 参数；留空 = 继承全局，占位符显示全局值 |
 | 自动安装 | `settings.tabs.installers` | Forge / NeoForge / Fabric / Quilt / LiteLoader / OptiFine 列表，「安装」全部禁用（mcdl 只装原版） |
-| 模组管理 | `mods.manage` | 列表、导入、刷新、打开文件夹、启用/禁用（改 `.disabled` 后缀）、删除 |
-| 资源包 | `resourcepack.manage` | 列表、导入、刷新、打开文件夹、删除 |
-| 世界 | `world.manage` | 列表（文件夹 / 修改时间）、刷新、打开文件夹、删除 |
-| 原理图 | `schematics.manage` | 列表、导入（schematic / schem / nbt / litematic）、刷新、删除 |
+| 模组管理 | `mods.manage` | 搜索、分页（每页 80 + 显示更多）、全选 / 多选、批量启用 / 批量禁用 / 批量删除、定位文件（资源管理器选中）、导入、刷新、打开文件夹；「检查更新」为禁用占位 |
+| 资源包 | `resourcepack.manage` | 搜索、分页、多选、批量删除、定位文件、导入、刷新、打开文件夹（启用状态需改 `options.txt`，未接入） |
+| 世界 | `world.manage` | 搜索、分页、多选、批量删除、定位文件、刷新、打开文件夹 |
+| 原理图 | `schematics.manage` | 搜索、分页、多选、批量删除、定位文件、导入（schematic / schem / nbt / litematic）、刷新 |
 
+内容页签的工具栏统一由 `renderContentPanel()` 生成：搜索框（按名字过滤）、`全选`（作用于当前过滤结果的全部条目）、
+`批量启用 / 批量禁用`（仅模组）、`批量删除`、`定位文件`（有选中时 `shell.showItemInFolder` 定位到文件，否则打开目录）、
+`打开文件夹`、`检查更新`（虚线禁用占位）、`导入`（世界页签不提供）、`刷新`。
+列表默认渲染 80 行，`显示更多` 每次追加 80；计数显示 `共 N` / `匹配 M / 共 N`，有选中时追加 `已选 K`。
 页面底部是 10 个文件夹快捷入口：实例运行目录、`config`、`mods`、`resourcepacks`、`saves`、
 `schematics`、`shaderpacks`、`screenshots`、`logs`、`crash-reports`。
 详情页打开时右侧控制台自动收起（`body[data-panel="detail"]`），避免压住表单。
@@ -394,6 +398,8 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 - 下载中心面板与新闻区：目前为占位（下载入口与「前往下载页面」已标为待接入并禁用）。
 - 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
 - 导出整合包（`modpack.export`）：实例菜单里已放出入口但禁用，需要整理 `mods/config/saves` 的打包逻辑。
+- 模组「检查更新」：按钮已占位并禁用，需要模组来源（Modrinth / CurseForge）与版本比对。
+- 资源包启用 / 禁用：要读写 `options.txt` 的 `resourcePacks`，未做。
 - 世界详情（`world.info.*`：作弊 / 结构 / 难度 / 模式）：需要解析 `level.dat`，暂未做。
 - 内容更新（`instance.update`）与清理项（`instance.manage.remove_assets` / `clean` 等）：未做。
 - Java 扫描首次约 15 秒（`mcdl --list-java` + 逐个探测）；已有 24 小时磁盘缓存，可再做后台预热。

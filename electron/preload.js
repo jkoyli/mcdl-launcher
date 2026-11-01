@@ -89,6 +89,12 @@ const launcherAPI = {
 
   openInstanceContentFolder: (payload) => ipcRenderer.invoke('instances:content-folder', payload),
 
+  setInstanceContentMany: (payload) => ipcRenderer.invoke('instances:content-set-many', payload),
+
+  deleteInstanceContentMany: (payload) => ipcRenderer.invoke('instances:content-delete-many', payload),
+
+  revealInstanceContent: (payload) => ipcRenderer.invoke('instances:content-reveal', payload),
+
   pickGameDir: () => ipcRenderer.invoke('gamedirs:pick'),
 
   /**

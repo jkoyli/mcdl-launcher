@@ -3806,6 +3806,12 @@
   }
 
   /* 内容列表（模组 / 资源包 / 世界 / 原理图） */
+  .content-panel {
+    display: grid;
+    gap: 8px;
+    align-content: start;
+  }
+
   .content-toolbar {
     display: flex;
     align-items: center;
@@ -3813,18 +3819,176 @@
     gap: 8px;
   }
 
+  /* 搜索框 */
+  .content-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 220px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 10px;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 3px;
+    background: rgba(8, 13, 20, .34);
+    transition: border-color 150ms linear, box-shadow 180ms ease;
+  }
+
+  .content-search:focus-within {
+    border-color: rgba(159, 208, 255, .5);
+    box-shadow: 0 0 0 1px rgba(159, 208, 255, .1), 0 0 20px rgba(94, 142, 207, .12);
+  }
+
+  .content-search svg {
+    flex: 0 0 auto;
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: rgba(199, 212, 230, .45);
+    stroke-width: 1.4;
+    stroke-linecap: round;
+  }
+
+  .content-search input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #eaf3ff;
+    font-family: inherit;
+    font-size: 9.5px;
+    letter-spacing: .03em;
+    outline: none;
+  }
+
+  .content-search input::placeholder {
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .content-search input::-webkit-search-cancel-button {
+    filter: invert(.6);
+  }
+
   .content-count {
     margin-left: auto;
+    flex: 0 0 auto;
     font-size: 7.5px;
-    letter-spacing: .14em;
+    letter-spacing: .12em;
     text-transform: uppercase;
     color: rgba(159, 208, 255, .42);
+  }
+
+  .content-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .content-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 4px;
+    font-size: 8.5px;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .55);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .content-select-all input,
+  .content-row__check {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 1px solid rgba(159, 208, 255, .34);
+    border-radius: 2px;
+    background: rgba(8, 13, 20, .5);
+    cursor: pointer;
+    transition: border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .content-select-all input:checked,
+  .content-row__check:checked {
+    border-color: rgba(159, 208, 255, .7);
+    background: rgba(127, 168, 224, .85);
+  }
+
+  .content-select-all input:checked::after,
+  .content-row__check:checked::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 1px;
+    width: 4px;
+    height: 7px;
+    border: solid #0b1119;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+
+  .content-select-all input:indeterminate::after,
+  .content-row__check:indeterminate::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 5px;
+    width: 7px;
+    height: 1.5px;
+    background: #0b1119;
+  }
+
+  .content-toolbar .content-refresh {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    font-size: 8px;
+  }
+
+  .content-row__check {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .dialog-btn.is-pending {
+    border-style: dashed;
+    border-color: rgba(159, 208, 255, .18);
+    color: rgba(199, 212, 230, .35);
+  }
+
+  .content-more {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .content-more__label {
+    font-size: 8px;
+    letter-spacing: .06em;
+    color: rgba(199, 212, 230, .38);
   }
 
   .content-list {
     display: grid;
     gap: 6px;
     align-content: start;
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 2px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+  }
+
+  /* 工具栏按钮在窄面板里尽量排成一行 */
+  .content-actions .dialog-btn {
+    padding: 7px 10px;
+    font-size: 8px;
+    letter-spacing: .1em;
   }
 
   .content-row {
@@ -4962,46 +5126,22 @@
           <p class="detail-note">内置下载器 mcdl 目前只处理原版文件；下面的加载器安装入口保持禁用，避免假安装。</p>
         </div>
 
-        <!-- 页签：模组 / 资源包 / 世界 / 原理图 -->
+        <!-- 页签：模组 / 资源包 / 世界 / 原理图（统一由 renderContentPanel 渲染） -->
         <div class="detail-panel" data-detail-panel="mods" hidden>
-          <div class="content-toolbar">
-            <button class="dialog-btn" type="button" data-content-import="mods">导入模组</button>
-            <button class="dialog-btn" type="button" data-content-refresh="mods">刷新</button>
-            <button class="dialog-btn" type="button" data-content-folder="mods">打开文件夹</button>
-            <span class="content-count" id="contentCountMods">0</span>
-          </div>
-          <div class="content-list" id="contentListMods" role="list"></div>
+          <div class="content-panel" data-content-panel="mods" data-content-kind="mods"></div>
         </div>
 
         <div class="detail-panel" data-detail-panel="resourcepacks" hidden>
-          <div class="content-toolbar">
-            <button class="dialog-btn" type="button" data-content-import="resourcepacks">导入资源包</button>
-            <button class="dialog-btn" type="button" data-content-refresh="resourcepacks">刷新</button>
-            <button class="dialog-btn" type="button" data-content-folder="resourcepacks">打开文件夹</button>
-            <span class="content-count" id="contentCountResourcepacks">0</span>
-          </div>
-          <div class="content-list" id="contentListResourcepacks" role="list"></div>
+          <div class="content-panel" data-content-panel="resourcepacks" data-content-kind="resourcepacks"></div>
         </div>
 
         <div class="detail-panel" data-detail-panel="worlds" hidden>
-          <div class="content-toolbar">
-            <button class="dialog-btn" type="button" data-content-refresh="saves">刷新</button>
-            <button class="dialog-btn" type="button" data-content-folder="saves">打开文件夹</button>
-            <span class="content-count" id="contentCountSaves">0</span>
-          </div>
-          <div class="content-list" id="contentListSaves" role="list"></div>
+          <div class="content-panel" data-content-panel="saves" data-content-kind="saves"></div>
         </div>
 
         <div class="detail-panel" data-detail-panel="schematics" hidden>
-          <div class="content-toolbar">
-            <button class="dialog-btn" type="button" data-content-import="schematics">导入原理图</button>
-            <button class="dialog-btn" type="button" data-content-refresh="schematics">刷新</button>
-            <button class="dialog-btn" type="button" data-content-folder="schematics">打开文件夹</button>
-            <span class="content-count" id="contentCountSchematics">0</span>
-          </div>
-          <div class="content-list" id="contentListSchematics" role="list"></div>
+          <div class="content-panel" data-content-panel="schematics" data-content-kind="schematics"></div>
         </div>
-
         <p class="detail-status" id="detailContentStatus" role="status" aria-live="polite"></p>
       </div>
 

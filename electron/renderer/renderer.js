@@ -3369,13 +3369,6 @@
   var detailTab = 'game';
   var iconTargetId = null;
 
-  var CONTENT_KINDS = {
-    mods: { list: 'contentListMods', count: 'contentCountMods', label: '模组' },
-    resourcepacks: { list: 'contentListResourcepacks', count: 'contentCountResourcepacks', label: '资源包' },
-    saves: { list: 'contentListSaves', count: 'contentCountSaves', label: '世界' },
-    schematics: { list: 'contentListSchematics', count: 'contentCountSchematics', label: '原理图' }
-  };
-
   var TAB_CONTENT_KIND = {
     mods: 'mods',
     resourcepacks: 'resourcepacks',
@@ -3750,110 +3743,396 @@
     return String(iso).slice(0, 10);
   }
 
-  function contentListElement(kind) {
-    var cfg = CONTENT_KINDS[kind];
-    return cfg ? document.getElementById(cfg.list) : null;
-  }
+  var CONTENT_PAGE_SIZE = 80;
 
-  function loadInstanceContent(kind) {
-    var api = window.launcherAPI;
-    var instance = detailInstance();
-    var list = contentListElement(kind);
+  var CONTENT_META = {
+    mods: { label: '模组', importLabel: '导入模组', canToggle: true, canImport: true, canCheckUpdate: true },
+    resourcepacks: { label: '资源包', importLabel: '导入资源包', canToggle: false, canImport: true },
+    saves: { label: '世界', canToggle: false, canImport: false },
+    schematics: { label: '原理图', importLabel: '导入原理图', canToggle: false, canImport: true }
+  };
 
-    if (!api || !instance || !list) return;
+  var contentState = {};
 
-    list.innerHTML = '';
-    var empty = document.createElement('div');
-    empty.className = 'content-empty';
-    empty.textContent = '正在读取…';
-    list.appendChild(empty);
-
-    api.listInstanceContent({ instanceId: instance.id, kind: kind })
-      .then(function (data) {
-        renderContentRows(kind, data && data.entries ? data.entries : []);
-      })
-      .catch(function (error) {
-        setDetailStatus(describeLaunchError(error), 'error');
-        renderContentRows(kind, []);
-      });
-  }
-
-  function renderContentRows(kind, entries) {
-    var cfg = CONTENT_KINDS[kind];
-    var list = contentListElement(kind);
-    if (!cfg || !list) return;
-
-    var count = document.getElementById(cfg.count);
-    if (count) count.textContent = String(entries.length);
-
-    list.innerHTML = '';
-
-    if (entries.length === 0) {
-      var empty = document.createElement('div');
-      empty.className = 'content-empty';
-      empty.textContent = '还没有' + cfg.label + '。用上面的按钮导入，或直接放到游戏目录里刷新。';
-      list.appendChild(empty);
-      return;
+  function contentStateOf(kind) {
+    if (!contentState[kind]) {
+      contentState[kind] = { entries: [], query: '', selected: {}, visible: CONTENT_PAGE_SIZE, loaded: false };
     }
+    return contentState[kind];
+  }
 
-    entries.forEach(function (entry) {
-      var row = document.createElement('div');
-      row.className = 'content-row' + (entry.enabled === false ? ' is-disabled' : '');
+  function contentPanelOf(kind) {
+    return document.querySelector('[data-content-panel="' + kind + '"]');
+  }
 
-      var main = document.createElement('div');
-      main.className = 'content-row__main';
+  function contentMeta(kind) {
+    return CONTENT_META[kind] || { label: '条目' };
+  }
 
-      var name = document.createElement('span');
-      name.className = 'content-row__name';
-      name.textContent = entry.name;
-      name.title = entry.path;
-
-      var meta = document.createElement('span');
-      meta.className = 'content-row__meta';
-      meta.textContent = [
-        entry.isDirectory ? '文件夹' : formatSize(entry.size),
-        formatDate(entry.modifiedAt),
-        entry.enabled === false ? '已禁用' : ''
-      ].filter(Boolean).join(' · ');
-
-      main.appendChild(name);
-      main.appendChild(meta);
-
-      var actions = document.createElement('div');
-      actions.className = 'content-row__actions';
-
-      if (kind === 'mods') {
-        var toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = 'dialog-btn';
-        toggle.textContent = entry.enabled === false ? '启用' : '禁用';
-        toggle.setAttribute('data-content-toggle', entry.path);
-        toggle.setAttribute('data-content-kind', kind);
-        toggle.setAttribute('data-content-enabled', entry.enabled === false ? 'false' : 'true');
-        actions.appendChild(toggle);
-      }
-
-      var remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'dialog-btn';
-      remove.textContent = '删除';
-      remove.setAttribute('data-content-delete', entry.path);
-      remove.setAttribute('data-content-kind', kind);
-      remove.setAttribute('data-content-name', entry.name);
-      actions.appendChild(remove);
-
-      row.appendChild(main);
-      row.appendChild(actions);
-      list.appendChild(row);
+  function filteredEntries(kind) {
+    var state = contentStateOf(kind);
+    var query = state.query.trim().toLowerCase();
+    if (!query) return state.entries;
+    return state.entries.filter(function (entry) {
+      return String(entry.name).toLowerCase().indexOf(query) >= 0;
     });
   }
 
-  // 内容列表的按钮委托
+  function selectedPaths(kind) {
+    var state = contentStateOf(kind);
+    return Object.keys(state.selected).filter(function (path) { return state.selected[path]; });
+  }
+
+  function clearSelection(kind) {
+    contentStateOf(kind).selected = {};
+  }
+
+  /** 工具栏只建一次，之后只刷新列表与计数。 */
+  function ensureContentPanel(kind) {
+    var panel = contentPanelOf(kind);
+    if (!panel || panel.getAttribute('data-ready') === '1') return panel;
+
+    var meta = contentMeta(kind);
+    var parts = [];
+
+    parts.push('<div class="content-toolbar">');
+    parts.push('  <label class="content-search">');
+    parts.push('    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg>');
+    parts.push('    <input type="search" data-content-search placeholder="搜索' + meta.label + '…" autocomplete="off">');
+    parts.push('  </label>');
+    parts.push('  <button class="dialog-btn content-refresh" type="button" data-content-refresh="' + kind + '">刷新</button>');
+    parts.push('  <span class="content-count" data-content-count>0</span>');
+    parts.push('</div>');
+
+    parts.push('<div class="content-actions">');
+    parts.push('  <label class="content-select-all"><input type="checkbox" data-content-select-all><span>全选</span></label>');
+    if (meta.canToggle) {
+      parts.push('  <button class="dialog-btn" type="button" data-content-bulk="enable">批量启用</button>');
+      parts.push('  <button class="dialog-btn" type="button" data-content-bulk="disable">批量禁用</button>');
+    }
+    parts.push('  <button class="dialog-btn" type="button" data-content-bulk="delete">批量删除</button>');
+    parts.push('  <button class="dialog-btn" type="button" data-content-reveal="1">定位文件</button>');
+    parts.push('  <button class="dialog-btn" type="button" data-content-folder="' + kind + '">打开文件夹</button>');
+    if (meta.canCheckUpdate) {
+      parts.push('  <button class="dialog-btn is-pending" type="button" data-content-check-update="1" disabled title="检查更新待接入">检查更新</button>');
+    }
+    if (meta.canImport) {
+      parts.push('  <button class="dialog-btn" type="button" data-content-import="' + kind + '">' + (meta.importLabel || '导入') + '</button>');
+    }
+    parts.push('</div>');
+
+    parts.push('<div class="content-list" data-content-list></div>');
+
+    parts.push('<div class="content-more" hidden>');
+    parts.push('  <button class="dialog-btn" type="button" data-content-more="1">显示更多</button>');
+    parts.push('  <span class="content-more__label" data-content-more-label></span>');
+    parts.push('</div>');
+
+    panel.innerHTML = parts.join('\n');
+    panel.setAttribute('data-ready', '1');
+    return panel;
+  }
+
+  function buildContentRow(kind, entry) {
+    var meta = contentMeta(kind);
+    var state = contentStateOf(kind);
+
+    var row = document.createElement('div');
+    row.className = 'content-row' + (entry.enabled === false ? ' is-disabled' : '');
+    row.setAttribute('data-content-row', entry.path);
+
+    var check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'content-row__check';
+    check.checked = Boolean(state.selected[entry.path]);
+    check.setAttribute('data-row-select', entry.path);
+    check.setAttribute('aria-label', '选择 ' + entry.name);
+
+    var main = document.createElement('div');
+    main.className = 'content-row__main';
+
+    var name = document.createElement('span');
+    name.className = 'content-row__name';
+    name.textContent = entry.name;
+    name.title = entry.path;
+
+    var metaLine = document.createElement('span');
+    metaLine.className = 'content-row__meta';
+    metaLine.textContent = [
+      entry.isDirectory ? '文件夹' : formatSize(entry.size),
+      formatDate(entry.modifiedAt),
+      meta.canToggle && entry.enabled === false ? '已禁用' : ''
+    ].filter(Boolean).join(' · ');
+
+    main.appendChild(name);
+    main.appendChild(metaLine);
+
+    var actions = document.createElement('div');
+    actions.className = 'content-row__actions';
+
+    if (meta.canToggle) {
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'dialog-btn';
+      toggle.textContent = entry.enabled === false ? '启用' : '禁用';
+      toggle.setAttribute('data-row-toggle', entry.path);
+      toggle.setAttribute('data-row-enabled', entry.enabled === false ? 'false' : 'true');
+      actions.appendChild(toggle);
+    }
+
+    var reveal = document.createElement('button');
+    reveal.type = 'button';
+    reveal.className = 'dialog-btn';
+    reveal.textContent = '定位';
+    reveal.setAttribute('data-row-reveal', entry.path);
+    actions.appendChild(reveal);
+
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'dialog-btn';
+    remove.textContent = '删除';
+    remove.setAttribute('data-row-delete', entry.path);
+    remove.setAttribute('data-row-name', entry.name);
+    actions.appendChild(remove);
+
+    row.appendChild(check);
+    row.appendChild(main);
+    row.appendChild(actions);
+    return row;
+  }
+
+  function renderContentPanel(kind) {
+    var panel = ensureContentPanel(kind);
+    if (!panel) return;
+
+    var state = contentStateOf(kind);
+    var meta = contentMeta(kind);
+    var entries = filteredEntries(kind);
+
+    var list = panel.querySelector('[data-content-list]');
+    var count = panel.querySelector('[data-content-count]');
+    var more = panel.querySelector('.content-more');
+    var moreLabel = panel.querySelector('[data-content-more-label]');
+    var selectAll = panel.querySelector('[data-content-select-all]');
+
+    if (count) {
+      var picked = selectedPaths(kind).length;
+      var base = state.query
+        ? '匹配 ' + entries.length + ' / 共 ' + state.entries.length
+        : '共 ' + state.entries.length;
+      count.textContent = picked > 0 ? base + ' · 已选 ' + picked : base;
+    }
+
+    if (list) {
+      list.innerHTML = '';
+
+      if (entries.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'content-empty';
+        empty.textContent = !state.loaded
+          ? '正在读取…'
+          : state.query
+            ? '没有匹配「' + state.query + '」的' + meta.label
+            : '还没有' + meta.label + '，用上面的按钮导入或刷新';
+        list.appendChild(empty);
+      } else {
+        var visible = entries.slice(0, state.visible);
+        visible.forEach(function (entry) {
+          list.appendChild(buildContentRow(kind, entry));
+        });
+      }
+    }
+
+    if (more) {
+      more.hidden = entries.length <= state.visible;
+      if (moreLabel) {
+        moreLabel.textContent = entries.length > state.visible
+          ? '另有 ' + (entries.length - state.visible) + ' 个未显示'
+          : '';
+      }
+    }
+
+    if (selectAll) {
+      // 「全选」作用于当前过滤结果的全部条目，不只是已显示的这一页。
+      var selectedCount = entries.filter(function (entry) { return state.selected[entry.path]; }).length;
+      selectAll.checked = entries.length > 0 && selectedCount === entries.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < entries.length;
+    }
+  }
+
+  function loadInstanceContent(kind, options) {
+    options = options || {};
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.listInstanceContent !== 'function') return;
+
+    var state = contentStateOf(kind);
+    if (!options.keepSelection) clearSelection(kind);
+    state.loaded = false;
+    renderContentPanel(kind);
+
+    api.listInstanceContent({ instanceId: instance.id, kind: kind })
+      .then(function (data) {
+        if (detailInstanceId !== instance.id) return;
+        state.entries = data && Array.isArray(data.entries) ? data.entries : [];
+        state.loaded = true;
+        if (state.visible < CONTENT_PAGE_SIZE) state.visible = CONTENT_PAGE_SIZE;
+        renderContentPanel(kind);
+      })
+      .catch(function (error) {
+        state.loaded = true;
+        setDetailStatus(describeLaunchError(error), 'error');
+        renderContentPanel(kind);
+      });
+  }
+
+  // ---------------- 内容面板：事件 ----------------
+
+  function contentKindOf(node) {
+    var panel = node && node.closest ? node.closest('[data-content-panel]') : null;
+    return panel ? panel.getAttribute('data-content-panel') : '';
+  }
+
+  function withContentApi(kind, run) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance) return;
+    run(api, instance, kind);
+  }
+
+  function bulkSetEnabled(kind, enabled) {
+    var paths = selectedPaths(kind);
+    if (paths.length === 0) {
+      setDetailStatus('请先勾选要操作的' + contentMeta(kind).label, 'error');
+      return;
+    }
+
+    withContentApi(kind, function (api, instance) {
+      setDetailStatus((enabled ? '正在批量启用 ' : '正在批量禁用 ') + paths.length + ' 个…');
+      api.setInstanceContentMany({ instanceId: instance.id, kind: kind, paths: paths, enabled: enabled })
+        .then(function (result) {
+          var failed = (result && result.failed) || [];
+          setDetailStatus(
+            (enabled ? '已启用 ' : '已禁用 ') + ((result && result.changed) || 0) + ' 个' +
+            (failed.length ? ' · ' + failed.length + ' 个失败' : ''),
+            failed.length ? 'error' : 'ok'
+          );
+          loadInstanceContent(kind, { keepSelection: false });
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  function bulkDelete(kind) {
+    var paths = selectedPaths(kind);
+    if (paths.length === 0) {
+      setDetailStatus('请先勾选要删除的' + contentMeta(kind).label, 'error');
+      return;
+    }
+
+    askConfirm('确定删除选中的 ' + paths.length + ' 个' + contentMeta(kind).label + '吗？文件会从游戏目录里移除，无法撤销。', function () {
+      withContentApi(kind, function (api, instance) {
+        setDetailStatus('正在删除 ' + paths.length + ' 个…');
+        api.deleteInstanceContentMany({ instanceId: instance.id, kind: kind, paths: paths })
+          .then(function (result) {
+            var failed = (result && result.failed) || [];
+            setDetailStatus(
+              '已删除 ' + ((result && result.changed) || 0) + ' 个' + (failed.length ? ' · ' + failed.length + ' 个失败' : ''),
+              failed.length ? 'error' : 'ok'
+            );
+            clearSelection(kind);
+            loadInstanceContent(kind);
+          })
+          .catch(function (error) {
+            setDetailStatus(describeLaunchError(error), 'error');
+          });
+      });
+    }, '删除');
+  }
+
+  function revealContent(kind, targetPath) {
+    withContentApi(kind, function (api, instance) {
+      var path = targetPath || selectedPaths(kind)[0] || '';
+      api.revealInstanceContent({ instanceId: instance.id, kind: kind, path: path })
+        .then(function () {
+          setDetailStatus(path ? '已在资源管理器中定位' : '已打开文件夹', 'ok');
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  function importContent(kind) {
+    withContentApi(kind, function (api, instance) {
+      setDetailStatus('正在选择文件…');
+      api.importInstanceContent({ instanceId: instance.id, kind: kind })
+        .then(function (data) {
+          if (!data) {
+            setDetailStatus('');
+            return;
+          }
+          setDetailStatus('已导入', 'ok');
+          loadInstanceContent(kind);
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  function openContentFolder(kind) {
+    withContentApi(kind, function (api, instance) {
+      api.openInstanceContentFolder({ instanceId: instance.id, kind: kind })
+        .then(function () { setDetailStatus('已打开文件夹', 'ok'); })
+        .catch(function (error) { setDetailStatus(describeLaunchError(error), 'error'); });
+    });
+  }
+
+  function toggleContent(kind, targetPath, enabled) {
+    withContentApi(kind, function (api, instance) {
+      api.toggleInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath, enabled: enabled })
+        .then(function () {
+          setDetailStatus(enabled ? '已启用' : '已禁用', 'ok');
+          loadInstanceContent(kind, { keepSelection: true });
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  function removeContent(kind, targetPath) {
+    withContentApi(kind, function (api, instance) {
+      api.deleteInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath })
+        .then(function () {
+          setDetailStatus('已删除', 'ok');
+          loadInstanceContent(kind, { keepSelection: true });
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
   var detailBody = document.querySelector('.detail-body');
   if (detailBody) {
     detailBody.addEventListener('click', function (event) {
       var target = event.target;
       if (!target || !target.closest) return;
+
+      var kind = contentKindOf(target);
+      if (!kind) return;
+
+      var bulk = target.closest('[data-content-bulk]');
+      if (bulk) {
+        var mode = bulk.getAttribute('data-content-bulk');
+        if (mode === 'delete') bulkDelete(kind);
+        else bulkSetEnabled(kind, mode === 'enable');
+        return;
+      }
 
       var importBtn = target.closest('[data-content-import]');
       if (importBtn) {
@@ -3873,92 +4152,86 @@
         return;
       }
 
-      var toggleBtn = target.closest('[data-content-toggle]');
-      if (toggleBtn) {
-        var enabled = toggleBtn.getAttribute('data-content-enabled') === 'true';
-        toggleContent(
-          toggleBtn.getAttribute('data-content-kind'),
-          toggleBtn.getAttribute('data-content-toggle'),
-          !enabled
-        );
+      var revealBtn = target.closest('[data-content-reveal]');
+      if (revealBtn) {
+        revealContent(kind, '');
         return;
       }
 
-      var deleteBtn = target.closest('[data-content-delete]');
-      if (deleteBtn) {
-        var kind = deleteBtn.getAttribute('data-content-kind');
-        var path = deleteBtn.getAttribute('data-content-delete');
-        var name = deleteBtn.getAttribute('data-content-name');
+      var moreBtn = target.closest('[data-content-more]');
+      if (moreBtn) {
+        contentStateOf(kind).visible += CONTENT_PAGE_SIZE;
+        renderContentPanel(kind);
+        return;
+      }
+
+      var rowReveal = target.closest('[data-row-reveal]');
+      if (rowReveal) {
+        revealContent(kind, rowReveal.getAttribute('data-row-reveal'));
+        return;
+      }
+
+      var rowToggle = target.closest('[data-row-toggle]');
+      if (rowToggle) {
+        toggleContent(kind, rowToggle.getAttribute('data-row-toggle'),
+          rowToggle.getAttribute('data-row-enabled') !== 'true');
+        return;
+      }
+
+      var rowDelete = target.closest('[data-row-delete]');
+      if (rowDelete) {
+        var path = rowDelete.getAttribute('data-row-delete');
+        var name = rowDelete.getAttribute('data-row-name');
         askConfirm('确定删除「' + name + '」吗？文件会从游戏目录里移除，无法撤销。', function () {
           removeContent(kind, path);
         }, '删除');
       }
     });
-  }
 
-  function importContent(kind) {
-    var api = window.launcherAPI;
-    var instance = detailInstance();
-    if (!api || !instance || typeof api.importInstanceContent !== 'function') return;
+    detailBody.addEventListener('change', function (event) {
+      var target = event.target;
+      if (!target || !target.matches) return;
 
-    setDetailStatus('正在选择文件…');
+      var kind = contentKindOf(target);
+      if (!kind) return;
 
-    api.importInstanceContent({ instanceId: instance.id, kind: kind })
-      .then(function (data) {
-        if (!data) {
-          setDetailStatus('');
-          return;
-        }
-        renderContentRows(kind, data.entries || []);
-        setDetailStatus('已导入', 'ok');
-      })
-      .catch(function (error) {
-        setDetailStatus(describeLaunchError(error), 'error');
-      });
-  }
+      var state = contentStateOf(kind);
 
-  function openContentFolder(kind) {
-    var api = window.launcherAPI;
-    var instance = detailInstance();
-    if (!api || !instance || typeof api.openInstanceContentFolder !== 'function') return;
+      if (target.matches('[data-content-select-all]')) {
+        var entries = filteredEntries(kind);
+        entries.forEach(function (entry) {
+          if (target.checked) state.selected[entry.path] = true;
+          else delete state.selected[entry.path];
+        });
+        renderContentPanel(kind);
+        return;
+      }
 
-    api.openInstanceContentFolder({ instanceId: instance.id, kind: kind })
-      .then(function () {
-        setDetailStatus('已打开文件夹', 'ok');
-      })
-      .catch(function (error) {
-        setDetailStatus(describeLaunchError(error), 'error');
-      });
-  }
+      if (target.matches('[data-row-select]')) {
+        var rowPath = target.getAttribute('data-row-select');
+        if (target.checked) state.selected[rowPath] = true;
+        else delete state.selected[rowPath];
+        renderContentPanel(kind);
+      }
+    });
 
-  function toggleContent(kind, targetPath, enabled) {
-    var api = window.launcherAPI;
-    var instance = detailInstance();
-    if (!api || !instance || typeof api.toggleInstanceContent !== 'function') return;
+    var searchTimer = null;
+    detailBody.addEventListener('input', function (event) {
+      var target = event.target;
+      if (!target || !target.matches || !target.matches('[data-content-search]')) return;
 
-    api.toggleInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath, enabled: enabled })
-      .then(function () {
-        loadInstanceContent(kind);
-        setDetailStatus(enabled ? '已启用' : '已禁用', 'ok');
-      })
-      .catch(function (error) {
-        setDetailStatus(describeLaunchError(error), 'error');
-      });
-  }
+      var kind = contentKindOf(target);
+      if (!kind) return;
 
-  function removeContent(kind, targetPath) {
-    var api = window.launcherAPI;
-    var instance = detailInstance();
-    if (!api || !instance || typeof api.deleteInstanceContent !== 'function') return;
-
-    api.deleteInstanceContent({ instanceId: instance.id, kind: kind, path: targetPath })
-      .then(function (data) {
-        renderContentRows(kind, data && data.entries ? data.entries : []);
-        setDetailStatus('已删除', 'ok');
-      })
-      .catch(function (error) {
-        setDetailStatus(describeLaunchError(error), 'error');
-      });
+      var value = target.value;
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(function () {
+        var state = contentStateOf(kind);
+        state.query = value;
+        state.visible = CONTENT_PAGE_SIZE;
+        renderContentPanel(kind);
+      }, 120);
+    });
   }
 
   // ---------------- 页签 / 文件夹入口绑定 ----------------

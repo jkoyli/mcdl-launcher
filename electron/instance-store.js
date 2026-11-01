@@ -26,7 +26,7 @@ const CONTENT_DIRS = {
   config: 'config'
 };
 
-const MAX_ENTRIES = 300;
+const MAX_ENTRIES = 2000;
 const MAX_ICON_BYTES = 4 * 1024 * 1024;
 
 function keyOf(versionDir) {

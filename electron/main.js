@@ -1091,6 +1091,72 @@ function registerIpcHandlers() {
     return getInstanceStore().listContent(instance.gameDir, String(payload.kind || 'mods'));
   });
 
+  /** 批量启用 / 禁用（模组），失败项会记在 failed 里，不整体回滚。 */
+  ipcMain.handle('instances:content-set-many', async (event, payload = {}) => {
+    assertAppWindow(event);
+    await requireInstance(payload);
+
+    const enabled = Boolean(payload && payload.enabled);
+    const paths = Array.isArray(payload && payload.paths) ? payload.paths : [];
+    const failed = [];
+
+    for (const item of paths) {
+      try {
+        await getInstanceStore().setModEnabled(String(item), enabled);
+      } catch (error) {
+        failed.push({ path: String(item), message: error.message });
+      }
+    }
+
+    return { changed: paths.length - failed.length, failed };
+  });
+
+  /** 批量删除：每个路径都走一次越界校验。 */
+  ipcMain.handle('instances:content-delete-many', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+
+    const kind = String((payload && payload.kind) || 'mods');
+    const paths = Array.isArray(payload && payload.paths) ? payload.paths : [];
+    const failed = [];
+
+    for (const item of paths) {
+      try {
+        await getInstanceStore().deleteContent({ gameDir: instance.gameDir, kind, target: String(item) });
+      } catch (error) {
+        failed.push({ path: String(item), message: error.message });
+      }
+    }
+
+    const list = await getInstanceStore().listContent(instance.gameDir, kind);
+    return { ...list, changed: paths.length - failed.length, failed };
+  });
+
+  /** 在资源管理器里定位到某个文件（没有目标就打开目录）。 */
+  ipcMain.handle('instances:content-reveal', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+
+    const target = String((payload && payload.path) || '');
+    const gameDir = path.resolve(instance.gameDir);
+
+    if (target) {
+      const resolved = path.resolve(target);
+      const inside = path.relative(gameDir, resolved);
+      if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
+        throw new Error('只能定位游戏目录内的文件');
+      }
+      shell.showItemInFolder(resolved);
+      return true;
+    }
+
+    const kind = String((payload && payload.kind) || 'mods');
+    const folder = await getInstanceStore().folderFor(instance.gameDir, kind);
+    const error = await shell.openPath(folder);
+    if (error) throw new Error(error);
+    return true;
+  });
+
   ipcMain.handle('instances:content-import', async (event, payload = {}) => {
     const win = assertAppWindow(event);
     const instance = await requireInstance(payload);
