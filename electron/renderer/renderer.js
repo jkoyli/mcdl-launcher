@@ -1772,6 +1772,7 @@
   var offlineSkinClear = document.getElementById('offlineSkinClear');
   var offlineSkinModel = document.getElementById('offlineSkinModel');
   var offlineSkinModelWrap = document.getElementById('offlineSkinModelWrap');
+  var offlineSkinNote = document.getElementById('offlineSkinNote');
   var pendingSkin = null;
 
   function renderOfflineSkin() {
@@ -1796,6 +1797,8 @@
     // 模型只有选了皮肤才有意义，没选时整块收起来，避免出现一个灰掉的空下拉。
     if (offlineSkinModelWrap) offlineSkinModelWrap.hidden = !hasSkin;
     if (offlineSkinModel) offlineSkinModel.disabled = !hasSkin;
+    // 选中皮肤后明确告知：只存本机，游戏内还需要皮肤服务。
+    if (offlineSkinNote) offlineSkinNote.hidden = !hasSkin;
   }
 
   function clearOfflineSkin(focusPick) {
