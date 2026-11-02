@@ -136,7 +136,8 @@ function normalizeSource(value) {
 /** 「完全没有 Java」的统一错误：渲染层能拿到 code，也有一句能照着做的中文提示。 */
 function javaMissingError() {
   const error = new Error(
-    '本机没有可用的 Java：可以点「设置 → Java 管理 → 安装 Java」下载，或手动选择 JDK。'
+    '本机没有可用的 Java 17 及以上版本（mcdl.jar 由 JDK 17 编译）：'
+    + '可以点「设置 → Java 管理 → 安装 Java」下载，或手动选择一个 JDK 17+。'
   );
   error.code = 'ENOJAVA';
   return error;
@@ -323,6 +324,11 @@ async function runMcdl(args, options = {}) {
         error.stdout = stdout;
         error.stderr = stderr;
         error.exitCode = code;
+        error.javaBin = javaBin;
+        error.jar = jar;
+        // 把实际用的 java 打进日志：mcdl.jar 需要 Java 17+，如果挑到 Java 8，
+        // 栈里只会是 checkAndLoadMain 的 ClassNotFound，看不出根因。
+        console.error(`[mcdl] 调用失败：java=${javaBin} exit=${code}`);
         reject(error);
       }
     });

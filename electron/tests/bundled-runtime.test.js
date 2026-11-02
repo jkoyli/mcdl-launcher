@@ -170,6 +170,58 @@ test('findJavaForTools：显式候选里有 java 时直接返回它', async (t) 
   assert.equal(await javaRuntime.findJavaForTools({ candidates: [fake] }), path.resolve(fake));
 });
 
+// 回归：mcdl.jar 由 JDK 17 编译，用 Java 8 去跑会在 checkAndLoadMain 处
+// 报「主类加载失败」，界面上只看到「无法读取版本列表」。
+test('findJavaForTools：缓存里 Java 8 排在前面时不能被选中', async (t) => {
+  const root = await tempDir(t);
+  const j8 = path.join(root, 'jre8', 'bin', javaRuntime.JAVA_EXE);
+  const j17 = path.join(root, 'jdk17', 'bin', javaRuntime.JAVA_EXE);
+  await writeFileWithDirs(j8, '');
+  await writeFileWithDirs(j17, '');
+
+  const picked = await javaRuntime.findJavaForTools({
+    cache: [
+      { path: j8, major: 8 },
+      { path: j17, major: 17 }
+    ]
+  });
+  assert.equal(picked, path.resolve(j17));
+});
+
+test('findJavaForTools：多个合格版本时取主版本最高的', async (t) => {
+  const root = await tempDir(t);
+  const j17 = path.join(root, 'a', 'bin', javaRuntime.JAVA_EXE);
+  const j21 = path.join(root, 'b', 'bin', javaRuntime.JAVA_EXE);
+  await writeFileWithDirs(j17, '');
+  await writeFileWithDirs(j21, '');
+
+  const picked = await javaRuntime.findJavaForTools({
+    cache: [
+      { path: j17, major: 17 },
+      { path: j21, major: 21 }
+    ]
+  });
+  assert.equal(picked, path.resolve(j21));
+});
+
+test('findJavaForTools：minMajor 可上调（21 时不选中 17）', async (t) => {
+  const root = await tempDir(t);
+  const j17 = path.join(root, 'a', 'bin', javaRuntime.JAVA_EXE);
+  const j21 = path.join(root, 'b', 'bin', javaRuntime.JAVA_EXE);
+  await writeFileWithDirs(j17, '');
+  await writeFileWithDirs(j21, '');
+
+  const picked = await javaRuntime.findJavaForTools({
+    cache: [
+      { path: j17, major: 17 },
+      { path: j21, major: 21 }
+    ],
+    minMajor: 21
+  });
+  assert.equal(picked, path.resolve(j21));
+  assert.equal(javaRuntime.TOOLS_MIN_JAVA_MAJOR, 17);
+});
+
 test('参数化配置不会把 electron 拉进进程（纯 node 可加载）', async (t) => {
   withoutJarEnv(t);
   const resources = await tempDir(t);

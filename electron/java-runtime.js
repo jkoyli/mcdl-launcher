@@ -260,14 +260,35 @@ function dedupe(paths) {
 }
 
 /**
+ * 跑「工具类」Java 程序（当前只有 mcdl.jar）所需的最低主版本。
+ *
+ * mcdl.jar 用 JDK 17 编译（class file 61）。拿 Java 8 去跑会在
+ * `LauncherHelper.checkAndLoadMain` 加载主类时失败、退出码 1，
+ * 而界面上只剩一句「无法读取版本列表」。所以这条链必须按 ≥17 过滤，
+ * 不能像「启动游戏」那样按版本 JSON 的要求挑（游戏本身可能就是要 Java 8）。
+ */
+const TOOLS_MIN_JAVA_MAJOR = 17;
+
+/** 探测某个 java 的主版本；探测不出来返回 0。 */
+async function javaMajorOf(javaPath) {
+  const info = await probe(javaPath).catch(() => null);
+  return info && info.major ? info.major : 0;
+}
+
+/**
  * 给"只需要一个能跑 JVM 的子进程"的调用方（mcdl-service）找一个 java。
  *
- * 优先级：MCDL_JAVA → 内置 JRE → 已扫描 / 登记的 JDK → JAVA_HOME → 常见安装目录 → PATH。
- * 不执行任何程序，只检查文件存在（mcdl 自己只需要一个 JVM，不需要 8/17/21 的精确匹配）。
+ * 与 `pickJava`（按游戏版本要求挑）不同，这里的约束是「版本够新」：
+ * 优先级 MCDL_JAVA（显式指定，信任用户）→ 内置 JRE → 缓存里 ≥17 的运行时
+ * （取最高主版本）→ JAVA_HOME → 目录扫描 → PATH。
  *
- * `candidates` 是给测试 / 特殊调用方的显式注入：给了就只在这些路径里找。
+ * 注意：缓存（java-runtimes.json）里是**扫描顺序**，老机器上往往是
+ * 8 → 17 → 21，直接取 `[0]` 会拿到 Java 8 —— 这正是 mcdl 起不来的原因。
  *
- * @param {{resourcesPath?:string, devRoot?:string, candidates?:string[]}} [options]
+ * `candidates` 是给测试 / 特殊调用方的显式注入：给了就只在这些路径里找
+ * （不再按版本过滤，调用方自己负责）。
+ *
+ * @param {{resourcesPath?:string, devRoot?:string, candidates?:string[], minMajor?:number}} [options]
  * @returns {Promise<string|null>}
  */
 async function findJavaForTools(options = {}) {
@@ -278,21 +299,44 @@ async function findJavaForTools(options = {}) {
     return null;
   }
 
-  const bundled = bundledJava(options);
-  const preferred = dedupe([
-    ...configuredCandidates(),
-    ...(bundled ? [bundled] : []),
-    ...(Array.isArray(cache) ? cache.map((item) => item && item.path) : []),
-    ...javaHomeCandidates()
-  ]);
+  const minMajor = Number(options.minMajor) || TOOLS_MIN_JAVA_MAJOR;
+  // 测试 / 特殊调用方可以注入一份缓存，避免读盘或避开本机真实 Java。
+  const cached = Array.isArray(options.cache) ? options.cache : cache;
 
-  for (const candidate of preferred) {
+  // 1) 显式配置：用户说用哪个就用哪个（只要求文件存在）。
+  for (const candidate of dedupe(configuredCandidates())) {
     if (await isFile(candidate)) return candidate;
   }
 
-  // 最后才做目录扫描 / 走 PATH：这两步最慢，也最不可控。
-  for (const candidate of dedupe([...(await scannedCandidates()), ...pathCandidates()])) {
-    if (await isFile(candidate)) return candidate;
+  // 2) 内置 JRE（`npm run fetch:jre` 装的是 JRE 21），天然满足要求。
+  const bundled = bundledJava(options);
+  if (bundled && await isFile(bundled)) return bundled;
+
+  // 3) 缓存里主版本 ≥ minMajor 的：取最高的那个（不同 JDK 都可能存在多个）。
+  if (Array.isArray(cached) && cached.length > 0) {
+    const known = cached
+      .filter((item) => item && item.path && Number(item.major) >= minMajor)
+      .sort((a, b) => Number(b.major) - Number(a.major));
+    for (const item of known) {
+      if (await isFile(item.path)) return item.path;
+    }
+  }
+
+  // 4) JAVA_HOME：能探测出版本就按版本判断，探测不出就信它。
+  for (const candidate of dedupe(javaHomeCandidates())) {
+    if (!(await isFile(candidate))) continue;
+    const major = await javaMajorOf(candidate);
+    if (!major || major >= minMajor) return candidate;
+  }
+
+  // 5) 最后才做目录扫描 / 走 PATH：这两步最慢，也最不可控，逐个探测版本。
+  for (const candidate of dedupe(await scannedCandidates().catch(() => []))) {
+    if (!(await isFile(candidate))) continue;
+    if ((await javaMajorOf(candidate)) >= minMajor) return candidate;
+  }
+  for (const candidate of dedupe(pathCandidates())) {
+    if (!(await isFile(candidate))) continue;
+    if ((await javaMajorOf(candidate)) >= minMajor) return candidate;
   }
 
   return null;
@@ -731,6 +775,7 @@ module.exports = {
   getJavaRuntimes,
   bundledJava,
   findJavaForTools,
+  javaMajorOf,
   pickJava,
   normalizeJavaRequirement,
   probe,
@@ -744,5 +789,6 @@ module.exports = {
   assertUsableJava,
   assertTrustedJava,
   resetJavaAuthorizations,
-  JAVA_EXE
+  JAVA_EXE,
+  TOOLS_MIN_JAVA_MAJOR
 };
