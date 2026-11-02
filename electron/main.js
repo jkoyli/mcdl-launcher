@@ -7,6 +7,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const mcdl = require('./mcdl-service');
+const modrinth = require('./modrinth');
+const worlds = require('./worlds');
 const javaRuntime = require('./java-runtime');
 const launcher = require('./launch');
 const accounts = require('./accounts');
@@ -342,6 +344,38 @@ const DEFAULT_SETTINGS = {
   javaPath: ''
 };
 
+const DEFAULT_EXTRA_SETTINGS = {
+  gameIsolation: 'auto',       // auto | isolated | global
+  disableAprilFools: false,
+  language: 'zh-CN',
+  versionListSource: 'auto',   // auto | official | bmclapi
+  downloadSource: 'auto',
+  addonSource: 'modrinth',     // modrinth（curseforge 需要 API Key）
+  disableAnimations: false
+};
+
+const ISOLATION_MODES = new Set(['auto', 'isolated', 'global']);
+const ADDON_SOURCES = new Set(['modrinth']);
+
+function normalizeExtraSettings(raw) {
+  const source = (value, fallback) => {
+    const key = String(value || '').trim().toLowerCase();
+    return ['auto', 'official', 'bmclapi'].includes(key) ? key : fallback;
+  };
+  const isolation = String(raw.gameIsolation || '').trim();
+  const addon = String(raw.addonSource || '').trim().toLowerCase();
+
+  return {
+    gameIsolation: ISOLATION_MODES.has(isolation) ? isolation : 'auto',
+    disableAprilFools: Boolean(raw.disableAprilFools),
+    language: 'zh-CN',
+    versionListSource: source(raw.versionListSource, 'auto'),
+    downloadSource: source(raw.downloadSource, 'auto'),
+    addonSource: ADDON_SOURCES.has(addon) ? addon : 'modrinth',
+    disableAnimations: Boolean(raw.disableAnimations)
+  };
+}
+
 async function readSettings() {
   let raw = {};
   try {
@@ -356,7 +390,8 @@ async function readSettings() {
     width: normalized.width,
     height: normalized.height,
     jvmArgs: normalized.jvmArgs,
-    javaPath: normalized.javaPath
+    javaPath: normalized.javaPath,
+    ...normalizeExtraSettings({ ...DEFAULT_EXTRA_SETTINGS, ...raw })
   };
 }
 
@@ -368,7 +403,8 @@ async function writeSettings(patch) {
     width: merged.width,
     height: merged.height,
     jvmArgs: merged.jvmArgs,
-    javaPath: merged.javaPath
+    javaPath: merged.javaPath,
+    ...normalizeExtraSettings({ ...current, ...patch })
   };
 
   const file = settingsFile();
@@ -382,7 +418,17 @@ async function writeSettings(patch) {
     );
   }
 
+  applySettingsSideEffects(next);
   return next;
+}
+
+/** 把设置里影响其他模块的项同步过去（内容目录隔离策略）。 */
+function applySettingsSideEffects(settings) {
+  try {
+    getInstanceStore().setIsolationMode(settings && settings.gameIsolation);
+  } catch (error) {
+    console.warn('[settings] could not apply isolation mode:', error.message);
+  }
 }
 
 /**
@@ -924,7 +970,8 @@ function registerIpcHandlers() {
   ipcMain.handle('versions:list', async (event) => {
     assertAppWindow(event);
     try {
-      return await mcdl.listVersions();
+      const settings = await readSettings();
+      return await mcdl.listVersions({ source: settings.versionListSource });
     } catch (error) {
       console.error('[versions] failed to list versions:', error);
       throw new Error(`无法读取版本列表: ${error.message}`);
@@ -936,7 +983,8 @@ function registerIpcHandlers() {
     const loader = String(payload.loader || '').trim();
     const mcVersion = String(payload.mcVersion || payload.version || '').trim();
     try {
-      return await mcdl.listLoaders({ loader, mcVersion });
+      const settings = await readSettings();
+      return await mcdl.listLoaders({ loader, mcVersion, source: settings.downloadSource });
     } catch (error) {
       console.error('[loaders] failed to list loader versions:', error);
       throw new Error(`无法读取加载器版本: ${error.message}`);
@@ -979,10 +1027,13 @@ function registerIpcHandlers() {
     }
 
     try {
+      const settings = await readSettings();
       if (vanilla) {
         await mcdl.installVersion({
           version,
           gameDir,
+          source: settings.downloadSource,
+          assets: payload.assets !== false,
           onData: sendInstallOutput(win, bufferState)
         });
 
@@ -1013,6 +1064,7 @@ function registerIpcHandlers() {
         mcVersion: version,
         name: requestedName,
         gameDir,
+        source: settings.downloadSource,
         onData: sendInstallOutput(win, bufferState)
       });
 
@@ -1052,6 +1104,389 @@ function registerIpcHandlers() {
       }
       throw error;
     }
+  });
+
+  // ---------------- 下载中心：版本目录 / 整合包 ----------------
+
+  function sendDownloadOutput(win, bufferState) {
+    return (text) => {
+      bufferState.value += String(text);
+      const parts = bufferState.value.split(/\r\n|\n|\r/);
+      bufferState.value = parts.pop() || '';
+      for (const part of parts) {
+        const message = part.trim();
+        if (!message) continue;
+        if (!win.isDestroyed()) {
+          win.webContents.send('downloads:progress', { message });
+        }
+      }
+    };
+  }
+
+  ipcMain.handle('downloads:versions', async (event, payload = {}) => {
+    assertAppWindow(event);
+    try {
+      const settings = await readSettings();
+      return await mcdl.versionCatalog({
+        force: Boolean(payload.force),
+        source: settings.versionListSource
+      });
+    } catch (error) {
+      console.error('[downloads] failed to list versions:', error);
+      throw new Error(`无法读取版本列表: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('downloads:pick-pack', async (event) => {
+    const win = assertAppWindow(event);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择整合包',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Minecraft 整合包', extensions: ['zip', 'mrpack'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+
+    try {
+      return await mcdl.inspectModpack(result.filePaths[0]);
+    } catch (error) {
+      throw new Error(`无法读取整合包: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('downloads:inspect-pack', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const file = String(payload.file || '').trim();
+    if (!file) throw new Error('缺少整合包文件');
+    try {
+      return await mcdl.inspectModpack(file);
+    } catch (error) {
+      throw new Error(`无法读取整合包: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('downloads:install-pack', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const file = String(payload.file || '').trim();
+    const requestedName = String(payload.name || '').trim();
+    if (!file) throw new Error('缺少整合包文件');
+
+    const gameDir = await mcdl.detectGameDir();
+    const bufferState = { value: '' };
+    const send = (message) => {
+      if (!win.isDestroyed()) win.webContents.send('downloads:progress', { message });
+    };
+
+    send('准备安装整合包…');
+
+    try {
+      const result = await mcdl.installModpack({
+        file,
+        name: requestedName,
+        gameDir,
+        onData: sendDownloadOutput(win, bufferState)
+      });
+
+      const aliases = await readAliases();
+      aliases[path.resolve(result.instanceDir)] = requestedName || result.instanceId;
+      try {
+        await writeAliases(aliases);
+      } catch (error) {
+        console.warn('[downloads] could not persist display name:', error);
+      }
+
+      const cachedDirs = await readScanCache();
+      const snapshot = await buildInstanceSnapshot(gameDir, cachedDirs);
+      snapshot.selectedId = result.instanceId;
+
+      send(`安装完成：${result.instanceId}`);
+      return { ...result, snapshot };
+    } catch (error) {
+      console.error('[downloads] modpack install failed:', error);
+      if (error && error.stdout) {
+        console.error('[downloads] mcdl stdout tail:\n' + String(error.stdout).split(/\r?\n/).slice(-30).join('\n'));
+      }
+      send(`安装失败：${error.message}`);
+      throw error;
+    }
+  });
+
+  // ---------------- 世界（存档）管理 ----------------
+
+  function backupsRoot() {
+    return path.join(app.getPath('userData'), 'world-backups');
+  }
+
+  async function savesRootOf(payload) {
+    const instance = await requireInstance(payload);
+    const root = await getInstanceStore().folderFor(instance, 'saves');
+    return { instance, root };
+  }
+
+  ipcMain.handle('worlds:list', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    try {
+      return await worlds.listWorlds(root);
+    } catch (error) {
+      throw new Error(`读取世界列表失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('worlds:info', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    try {
+      return await worlds.readWorld(root, String(payload.folder || ''));
+    } catch (error) {
+      throw new Error(`读取世界信息失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('worlds:save-info', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    try {
+      return await worlds.saveWorld(root, String(payload.folder || ''), payload.patch || {});
+    } catch (error) {
+      throw new Error(`写入 level.dat 失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('worlds:delete', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    await worlds.deleteWorld(root, String(payload.folder || ''));
+    return worlds.listWorlds(root);
+  });
+
+  ipcMain.handle('worlds:duplicate', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const result = await worlds.duplicateWorld(root, String(payload.folder || ''));
+    return { ...result, list: await worlds.listWorlds(root) };
+  });
+
+  ipcMain.handle('worlds:export', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const folder = String(payload.folder || '');
+
+    const picked = await dialog.showSaveDialog(win, {
+      title: '导出世界',
+      defaultPath: `${folder}.zip`,
+      filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }]
+    });
+    if (picked.canceled || !picked.filePath) return null;
+
+    try {
+      return await worlds.exportWorld(root, folder, picked.filePath);
+    } catch (error) {
+      throw new Error(`导出世界失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('worlds:open-folder', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const dir = worlds.worldDir(root, String(payload.folder || ''));
+    return { path: await openFolderPath(dir) };
+  });
+
+  ipcMain.handle('worlds:backups', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    return worlds.listBackups(backupsRoot(), root);
+  });
+
+  ipcMain.handle('worlds:backup-create', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const backup = await worlds.createBackup(backupsRoot(), root, String(payload.folder || ''));
+    const list = await worlds.listBackups(backupsRoot(), root);
+    return { backup, ...list };
+  });
+
+  ipcMain.handle('worlds:backup-restore', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const result = await worlds.restoreBackup(backupsRoot(), root, String(payload.file || ''));
+    return { ...result, list: await worlds.listWorlds(root) };
+  });
+
+  ipcMain.handle('worlds:backup-delete', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    await worlds.deleteBackup(backupsRoot(), String(payload.file || ''));
+    return worlds.listBackups(backupsRoot(), root);
+  });
+
+  ipcMain.handle('worlds:open-backup-folder', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const dir = worlds.backupDirOf(backupsRoot(), root);
+    await fs.mkdir(dir, { recursive: true });
+    return { path: await openFolderPath(dir) };
+  });
+
+  ipcMain.handle('worlds:datapacks', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    return worlds.listDatapacks(root, String(payload.folder || ''));
+  });
+
+  ipcMain.handle('worlds:import-datapack', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    const folder = String(payload.folder || '');
+
+    const picked = await dialog.showOpenDialog(win, {
+      title: '导入数据包',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '数据包 / 压缩包', extensions: ['zip', 'jar'] }]
+    });
+    if (picked.canceled || !picked.filePaths.length) return null;
+
+    const imported = [];
+    for (const file of picked.filePaths) {
+      const result = await worlds.importDatapack(root, folder, file);
+      imported.push(result.path);
+    }
+    return { imported, ...(await worlds.listDatapacks(root, folder)) };
+  });
+
+  ipcMain.handle('worlds:delete-datapack', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const { root } = await savesRootOf(payload);
+    await worlds.deleteDatapack(root, String(payload.folder || ''), String(payload.name || ''));
+    return worlds.listDatapacks(root, String(payload.folder || ''));
+  });
+
+  // ---------------- 下载中心：Modrinth 内容（模组 / 资源包 / 光影） ----------------
+
+  // 界面的内容类型 → instance-store 的内容目录 key
+  const ADDON_KINDS = {
+    mods: 'mods',
+    resourcepack: 'resourcepacks',
+    shader: 'shaderpacks'
+  };
+
+  function addonKindOf(payload) {
+    const kind = String((payload && payload.kind) || 'mods');
+    if (!ADDON_KINDS[kind]) throw new Error(`不支持的内容类型：${kind}`);
+    return kind;
+  }
+
+  function loaderKeyForInstance(instance) {
+    const label = String((instance && instance.modLoader) || '').toLowerCase();
+    if (label === 'fabric') return 'fabric';
+    if (label === 'quilt') return 'quilt';
+    if (label === 'forge') return 'forge';
+    if (label === 'neoforge') return 'neoforge';
+    return '';
+  }
+
+  ipcMain.handle('downloads:addon-search', async (event, payload = {}) => {
+    assertAppWindow(event);
+    try {
+      return await modrinth.searchProjects({
+        kind: addonKindOf(payload),
+        query: payload.query,
+        gameVersion: payload.gameVersion,
+        loader: payload.loader,
+        sort: payload.sort,
+        limit: payload.limit,
+        offset: payload.offset
+      });
+    } catch (error) {
+      console.error('[addons] search failed:', error);
+      throw new Error(`搜索失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('downloads:addon-versions', async (event, payload = {}) => {
+    assertAppWindow(event);
+    addonKindOf(payload);
+    try {
+      return await modrinth.listVersions({
+        projectId: String(payload.projectId || ''),
+        gameVersion: payload.gameVersion,
+        loader: payload.loader
+      });
+    } catch (error) {
+      console.error('[addons] list versions failed:', error);
+      throw new Error(`读取版本失败：${error.message}`);
+    }
+  });
+
+  ipcMain.handle('downloads:install-addon', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const kind = addonKindOf(payload);
+    const instance = await requireInstance(payload);
+
+    const versionId = String(payload.versionId || '').trim();
+    if (!versionId) throw new Error('缺少要安装的版本');
+
+    const send = (progress) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('downloads:addon-progress', progress);
+      }
+    };
+
+    try {
+      const version = await modrinth.getVersion(versionId);
+      const folder = await getInstanceStore().folderFor(instance, ADDON_KINDS[kind]);
+      const result = await modrinth.downloadVersion({
+        version,
+        targetDir: folder,
+        installDependencies: Boolean(payload.installDependencies) && kind === 'mods',
+        gameVersion: instance.versionName || '',
+        loader: loaderKeyForInstance(instance),
+        onProgress: send
+      });
+
+      return {
+        root: folder,
+        installed: result.installed,
+        failed: result.failed,
+        instanceId: instance.id,
+        instanceName: instance.displayName || instance.versionName || instance.id
+      };
+    } catch (error) {
+      console.error('[addons] install failed:', error);
+      if (!win.isDestroyed()) {
+        win.webContents.send('downloads:addon-progress', { message: `安装失败：${error.message}` });
+      }
+      throw error;
+    }
+  });
+
+  ipcMain.handle('downloads:save-addon', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    addonKindOf(payload);
+
+    const versionId = String(payload.versionId || '').trim();
+    if (!versionId) throw new Error('缺少要下载的版本');
+
+    const picked = await dialog.showOpenDialog(win, {
+      title: '下载到文件夹',
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (picked.canceled || !picked.filePaths || !picked.filePaths.length) return null;
+
+    const version = await modrinth.getVersion(versionId);
+    const result = await modrinth.downloadVersion({
+      version,
+      targetDir: picked.filePaths[0],
+      installDependencies: false,
+      onProgress: (progress) => {
+        if (!win.isDestroyed()) win.webContents.send('downloads:addon-progress', progress);
+      }
+    });
+
+    return { folder: picked.filePaths[0], ...result };
   });
 
   // ---------------- 实例：重命名 / 复制 / 删除 / 打开目录 / 启动脚本 ----------------
@@ -1747,6 +2182,27 @@ function registerIpcHandlers() {
     return writeSettings(patch || {});
   });
 
+  /** 启动时只读偏好，不触发 Java 扫描。 */
+  ipcMain.handle('settings:preferences', async (event) => {
+    assertAppWindow(event);
+    return readSettings();
+  });
+
+  /** 关于页：版本、运行时与数据目录。 */
+  ipcMain.handle('app:info', async (event) => {
+    assertAppWindow(event);
+    return {
+      version: app.getVersion(),
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node,
+      platform: `${process.platform} ${process.arch}`,
+      userData: app.getPath('userData'),
+      gameDir: mcdl.DEFAULT_GAME_DIR,
+      repo: 'https://github.com/jkoyli/mcdl-launcher'
+    };
+  });
+
   /**
    * 渲染模式：渲染进程据此启用软件渲染下的降级样式（去掉每帧重算的 blur）。
    */
@@ -1903,6 +2359,10 @@ if (!gotSingleInstanceLock) {
 
     registerIpcHandlers();
     createWindow();
+
+    readSettings()
+      .then((settings) => applySettingsSideEffects(settings))
+      .catch((error) => console.warn('[settings] could not load on startup:', error.message));
 
     console.log('[main] BrowserWindow created');
     console.log(`[mcdl] jar: ${mcdl.MCDL_JAR}`);

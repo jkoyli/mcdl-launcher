@@ -84,6 +84,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
 
   let settingsCache = null;
   let iconsCache = null;
+  // 「默认版本隔离策略」：auto（按目录判断，历史行为）/ isolated / global
+  let isolationMode = 'auto';
 
   async function loadSettings() {
     if (!settingsCache) settingsCache = await readJson(settingsFile, {});
@@ -107,7 +109,8 @@ function createInstanceStore({ storeDir, launcherHome }) {
    *   versions/<id>/mods   版本隔离（HMCL、PCL 装整合包时用）
    *   .minecraft/mods      全局目录（原版默认）
    *
-   * 规则：版本目录里已经有这个子目录就用它；否则游戏目录里有就用游戏目录；
+   * 规则：设置里的「默认版本隔离策略」优先（isolated / global）；auto 时
+   * 版本目录里已经有这个子目录就用它，否则游戏目录里有就用游戏目录；
    * 都没有时，外部实例（别的启动器）按隔离目录新建，自己的实例按全局目录新建。
    */
   async function contentRootFor(instance, kind) {
@@ -127,6 +130,9 @@ function createInstanceStore({ storeDir, launcherHome }) {
       }
     };
 
+    if (isolationMode === 'isolated' && versionRoot) return versionRoot;
+    if (isolationMode === 'global' && gameRoot) return gameRoot;
+
     if (await isDir(versionRoot)) return versionRoot;
     if (await isDir(gameRoot)) return gameRoot;
     if (!versionRoot) return gameRoot;
@@ -136,6 +142,18 @@ function createInstanceStore({ storeDir, launcherHome }) {
   }
 
   return {
+    // ---------------- 全局偏好 ----------------
+
+    /** 默认版本隔离策略：auto / isolated / global。 */
+    setIsolationMode(mode) {
+      isolationMode = ['auto', 'isolated', 'global'].includes(mode) ? mode : 'auto';
+      return isolationMode;
+    },
+
+    getIsolationMode() {
+      return isolationMode;
+    },
+
     // ---------------- 实例级设置 ----------------
 
     async getSettings(versionDir) {

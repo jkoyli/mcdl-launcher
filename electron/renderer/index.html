@@ -3043,6 +3043,198 @@
   }
 
   /* ---------------------------------------------------------
+     设置页六页签：[L3] 游戏设置 / Java 管理 / 通用 / 外观 / 下载 / 关于
+     --------------------------------------------------------- */
+  .settings-body--tabs {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: stretch;
+    justify-self: end;
+    width: min(100%, 760px);
+    max-height: 72vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    padding-left: clamp(20px, 2.4vw, 36px);
+    border-left: 1px solid rgba(255, 255, 255, .09);
+    min-height: 0;
+  }
+
+  .settings-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+  }
+
+  .settings-tab {
+    padding: 7px 13px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(199, 212, 230, .52);
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 140ms linear, background-color 140ms linear, border-color 140ms linear;
+  }
+
+  .settings-tab:hover,
+  .settings-tab:focus-visible {
+    color: #eaf3ff;
+    outline: none;
+  }
+
+  .settings-tab.is-active {
+    border-color: rgba(159, 208, 255, .34);
+    background: rgba(159, 208, 255, .1);
+    color: #f4faff;
+  }
+
+  .settings-panes {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+  }
+
+  .settings-pane[hidden] {
+    display: none;
+  }
+
+  .settings-pane {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+
+  .settings-block {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .015);
+  }
+
+  .settings-block__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .46);
+  }
+
+  .settings-block__head span:last-child {
+    font-weight: 400;
+    letter-spacing: .06em;
+    text-transform: none;
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .create-form--settings {
+    grid-column: auto;
+    grid-row: auto;
+    align-self: start;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+    padding-left: 0;
+    border-left: 0;
+    max-width: 100%;
+  }
+
+  .settings-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 9px;
+    line-height: 1.6;
+    letter-spacing: .03em;
+    color: rgba(214, 227, 243, .68);
+    cursor: pointer;
+  }
+
+  .settings-check input {
+    margin-top: 2px;
+    accent-color: #8fc6ff;
+  }
+
+  .settings-note {
+    margin: 0;
+    font-size: 8px;
+    line-height: 1.7;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .34);
+    overflow-wrap: anywhere;
+  }
+
+  .settings-todo {
+    display: grid;
+    gap: 5px;
+    padding: 10px 12px;
+    border: 1px dashed rgba(159, 208, 255, .16);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .012);
+  }
+
+  .settings-todo strong {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .58);
+  }
+
+  .settings-todo span {
+    font-size: 8px;
+    line-height: 1.7;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .settings-about__version {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: -.02em;
+    color: #f2f7ff;
+  }
+
+  .settings-about__meta {
+    margin: 0;
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 8px;
+    line-height: 1.9;
+    letter-spacing: .02em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+  }
+
+  /* 设置里「关闭动画」：停掉过渡与动画（含极光层/3D 方块） */
+  body.no-motion *,
+  body.no-motion *::before,
+  body.no-motion *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* ---------------------------------------------------------
      账户页：三个登录入口做成并列卡片（account.methods.* / injector.add）
      --------------------------------------------------------- */
   .account-actions {
@@ -4755,6 +4947,1030 @@
     background-color: rgba(18, 26, 40, .58);
   }
 
+  /* ---------------------------------------------------------
+     世界列表 / 世界管理（对照 [L4] WorldManagePage 与 [L4] 世界详情）
+     --------------------------------------------------------- */
+  .world-panel {
+    min-height: 0;
+    display: grid;
+  }
+
+  .world-view {
+    display: grid;
+    gap: 10px;
+    min-height: 0;
+    align-content: start;
+  }
+
+  .world-view[hidden] {
+    display: none;
+  }
+
+  .world-list {
+    max-height: 44vh;
+  }
+
+  .world-row {
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 150ms linear, background-color 150ms linear;
+  }
+
+  .world-row:hover {
+    border-color: rgba(159, 208, 255, .34);
+    background: rgba(159, 208, 255, .05);
+  }
+
+  .world-row__icon {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 3px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, .05);
+    font-size: 8px;
+    letter-spacing: .06em;
+    color: rgba(159, 208, 255, .5);
+  }
+
+  .world-row__icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .world-row__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .world-manage-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .world-manage-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: #f2f8ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .world-tabs {
+    margin-top: 2px;
+  }
+
+  .world-tab-panel {
+    display: grid;
+    gap: 10px;
+  }
+
+  .world-tab-panel[hidden] {
+    display: none;
+  }
+
+  .world-info-grid {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .015);
+  }
+
+  .world-info__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 28px;
+    font-size: 9px;
+    letter-spacing: .03em;
+    color: rgba(214, 227, 243, .72);
+  }
+
+  .world-info__select {
+    width: 148px;
+  }
+
+  .world-switch {
+    position: relative;
+    width: 36px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .06);
+    cursor: pointer;
+    transition: background-color 160ms linear, border-color 160ms linear;
+  }
+
+  .world-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(226, 238, 251, .65);
+    transition: transform 180ms cubic-bezier(.22, .8, .3, 1), background-color 160ms linear;
+  }
+
+  .world-switch[aria-checked="true"] {
+    border-color: rgba(159, 208, 255, .55);
+    background: rgba(159, 208, 255, .26);
+  }
+
+  .world-switch[aria-checked="true"]::after {
+    transform: translateX(18px);
+    background: #eaf6ff;
+  }
+
+  .world-switch:focus-visible {
+    outline: 1px solid rgba(159, 208, 255, .6);
+    outline-offset: 2px;
+  }
+
+  .world-switch:disabled {
+    opacity: .4;
+    cursor: default;
+  }
+
+  .world-note {
+    margin: 0;
+    font-size: 8px;
+    line-height: 1.7;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .36);
+  }
+
+  .world-actions {
+    flex-wrap: wrap;
+  }
+
+  .dialog-btn.is-danger {
+    border-color: rgba(255, 138, 114, .3);
+    color: rgba(255, 178, 168, .86);
+  }
+
+  .dialog-btn.is-danger:hover,
+  .dialog-btn.is-danger:focus-visible {
+    background: rgba(255, 138, 114, .12);
+    border-color: rgba(255, 138, 114, .5);
+    color: #ffc2bb;
+  }
+
+  /* ---------------------------------------------------------
+     L2 下载中心（对照清单 [L2] 下载）：6 页签 + 版本卡片 / 整合包 / 内容占位
+     --------------------------------------------------------- */
+  .stage-download {
+    grid-template-columns: minmax(0, .6fr) minmax(500px, 1.4fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .main-stage.is-download .stage-hero,
+  .main-stage.is-download .stage-news {
+    opacity: 0;
+    transform: translateY(-10px);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 180ms ease,
+      transform 200ms ease,
+      visibility 0s linear 200ms;
+  }
+
+  .main-stage.is-download .stage-download {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+    transition:
+      opacity 420ms 80ms ease,
+      transform 420ms 80ms cubic-bezier(.22, .8, .3, 1),
+      visibility 0s;
+  }
+
+  .download-body {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: stretch;
+    justify-self: end;
+    width: min(100%, 780px);
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    padding-left: clamp(20px, 2.4vw, 36px);
+    border-left: 1px solid rgba(255, 255, 255, .09);
+  }
+
+  .download-tabs {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+  }
+
+  .download-tab {
+    padding: 7px 13px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(199, 212, 230, .52);
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      color 140ms linear,
+      background-color 140ms linear,
+      border-color 140ms linear;
+  }
+
+  .download-tab:hover,
+  .download-tab:focus-visible {
+    color: #eaf3ff;
+    outline: none;
+  }
+
+  .download-tab.is-active {
+    border-color: rgba(159, 208, 255, .34);
+    background: rgba(159, 208, 255, .1);
+    color: #f4faff;
+  }
+
+  .download-panes {
+    min-height: 0;
+    display: grid;
+  }
+
+  .download-pane {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .download-pane[hidden] {
+    display: none;
+  }
+
+  .download-pane--content {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .download-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .download-search {
+    flex: 1 1 190px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, .03);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 9px;
+    letter-spacing: .04em;
+    transition: border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .download-search::placeholder {
+    color: rgba(199, 212, 230, .28);
+  }
+
+  .download-search:hover {
+    border-color: rgba(159, 208, 255, .26);
+  }
+
+  .download-search:focus,
+  .download-search:focus-visible {
+    outline: none;
+    border-color: rgba(159, 208, 255, .48);
+    background: rgba(159, 208, 255, .06);
+  }
+
+  .download-select-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .download-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 8px 26px 8px 10px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 3px;
+    background: rgba(255, 255, 255, .03);
+    color: rgba(226, 238, 251, .8);
+    font-family: inherit;
+    font-size: 8.5px;
+    letter-spacing: .08em;
+    cursor: pointer;
+  }
+
+  .download-select:focus,
+  .download-select:focus-visible {
+    outline: none;
+    border-color: rgba(159, 208, 255, .48);
+  }
+
+  .download-select option {
+    background: #0d1220;
+    color: var(--ink);
+  }
+
+  .download-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid rgba(159, 208, 255, .22);
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(226, 238, 251, .8);
+    font-family: inherit;
+    font-size: 8.5px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      border-color 150ms linear,
+      background-color 150ms linear,
+      color 150ms linear,
+      box-shadow 180ms ease;
+  }
+
+  .download-action:hover:not(:disabled),
+  .download-action:focus-visible:not(:disabled) {
+    color: #f7fbff;
+    border-color: rgba(159, 208, 255, .52);
+    background: rgba(159, 208, 255, .07);
+    outline: none;
+  }
+
+  .download-action:disabled {
+    opacity: .4;
+    cursor: default;
+  }
+
+  .download-action.is-busy {
+    opacity: .6;
+    pointer-events: none;
+  }
+
+  .download-latest {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .latest-card {
+    display: grid;
+    gap: 3px;
+    padding: 9px 11px;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 5px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .008)),
+      rgba(11, 17, 28, .34);
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      transform 200ms cubic-bezier(.22, .8, .3, 1),
+      border-color 170ms linear,
+      box-shadow 200ms ease;
+  }
+
+  .latest-card:hover,
+  .latest-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(159, 208, 255, .44);
+    box-shadow: 0 8px 26px rgba(40, 80, 140, .18);
+    outline: none;
+  }
+
+  .latest-card__kicker {
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .66);
+  }
+
+  .latest-card__id {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: .01em;
+    color: #f2f8ff;
+  }
+
+  .latest-card__note {
+    font-size: 7.5px;
+    line-height: 1.4;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .38);
+  }
+
+  .download-grid {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 7px;
+    align-content: start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+  }
+
+  .version-card {
+    display: grid;
+    gap: 4px;
+    padding: 8px 10px;
+    border: 1px solid rgba(159, 208, 255, .12);
+    border-radius: 5px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
+      rgba(9, 15, 24, .28);
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      transform 190ms cubic-bezier(.22, .8, .3, 1),
+      border-color 170ms linear,
+      box-shadow 190ms ease;
+  }
+
+  .version-card:hover,
+  .version-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(159, 208, 255, .42);
+    box-shadow: 0 8px 22px rgba(40, 80, 140, .16);
+    outline: none;
+  }
+
+  .version-card__id {
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: .02em;
+    color: #edf5ff;
+    overflow-wrap: anywhere;
+  }
+
+  .version-card__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 7.5px;
+    line-height: 1.3;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .version-card__badge {
+    padding: 2px 5px;
+    border-radius: 2px;
+    background: rgba(159, 208, 255, .1);
+    color: rgba(159, 208, 255, .76);
+    font-size: 6.5px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .version-card.is-installed {
+    border-color: rgba(176, 232, 203, .3);
+  }
+
+  .version-card.is-installed .version-card__badge {
+    background: rgba(176, 232, 203, .12);
+    color: rgba(176, 232, 203, .8);
+  }
+
+  .download-empty {
+    display: grid;
+    gap: 6px;
+    padding: 18px 16px;
+    border: 1px dashed rgba(159, 208, 255, .16);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, .015);
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .download-empty strong {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: rgba(226, 238, 251, .66);
+  }
+
+  .download-empty span {
+    font-size: 8.5px;
+    line-height: 1.7;
+    letter-spacing: .04em;
+  }
+
+  .download-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .download-status {
+    margin: 0;
+    font-size: 8px;
+    line-height: 1.6;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
+  }
+
+  .download-status.is-error {
+    color: rgba(255, 154, 142, .82);
+  }
+
+  .download-status.is-ok {
+    color: rgba(176, 232, 203, .78);
+  }
+
+  .download-count {
+    font-size: 7.5px;
+    letter-spacing: .1em;
+    color: rgba(199, 212, 230, .3);
+    white-space: nowrap;
+  }
+
+  /* 整合包来源：本地文件可用，Modrinth / CurseForge 待接入 */
+  .download-source {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .download-source__card {
+    display: grid;
+    gap: 4px;
+    padding: 10px 11px;
+    border: 1px solid rgba(159, 208, 255, .13);
+    border-radius: 5px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
+      rgba(9, 15, 24, .28);
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      border-color 160ms linear,
+      background-color 160ms linear,
+      transform 190ms cubic-bezier(.22, .8, .3, 1);
+  }
+
+  .download-source__card:hover:not(:disabled),
+  .download-source__card:focus-visible:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: rgba(159, 208, 255, .4);
+    outline: none;
+  }
+
+  .download-source__card.is-active {
+    border-color: rgba(159, 208, 255, .44);
+    background:
+      linear-gradient(180deg, rgba(159, 208, 255, .1), rgba(159, 208, 255, .02)),
+      rgba(9, 15, 24, .3);
+  }
+
+  .download-source__card:disabled {
+    opacity: .42;
+    cursor: default;
+  }
+
+  .download-source__name {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    color: #eaf3ff;
+  }
+
+  .download-source__note {
+    font-size: 7.5px;
+    line-height: 1.4;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .download-pack {
+    min-height: 0;
+    display: grid;
+    gap: 10px;
+    align-content: start;
+    padding: 12px 13px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .015);
+  }
+
+  .download-pack__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .download-pack__file {
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 9px;
+    letter-spacing: .02em;
+    color: rgba(226, 238, 251, .8);
+    overflow-wrap: anywhere;
+  }
+
+  .download-pack__meta {
+    font-size: 8px;
+    line-height: 1.65;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
+  }
+
+  .download-pack__name {
+    max-width: 360px;
+  }
+
+  .download-pack__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* 内容列表：Modrinth 搜索结果 */
+  .download-pane--content {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+
+  .download-pane--content .download-toolbar {
+    gap: 6px;
+  }
+
+  .download-pane--content .download-search {
+    flex: 1 1 150px;
+    min-width: 130px;
+  }
+
+  .download-pane--content .download-select {
+    padding: 7px 20px 7px 8px;
+  }
+
+  .download-pane--content .download-action {
+    padding: 7px 10px;
+  }
+
+  .addon-target {
+    margin: 0;
+    font-size: 8px;
+    line-height: 1.5;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .38);
+    overflow-wrap: anywhere;
+  }
+
+  .addon-target strong {
+    color: rgba(226, 238, 251, .76);
+    font-weight: 600;
+  }
+
+  .addon-grid {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+    gap: 7px;
+    align-content: start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+  }
+
+  .addon-card {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    padding: 8px 9px;
+    border: 1px solid rgba(159, 208, 255, .12);
+    border-radius: 5px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
+      rgba(9, 15, 24, .28);
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      transform 190ms cubic-bezier(.22, .8, .3, 1),
+      border-color 170ms linear,
+      box-shadow 190ms ease;
+  }
+
+  .addon-card:hover,
+  .addon-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(159, 208, 255, .42);
+    box-shadow: 0 8px 22px rgba(40, 80, 140, .16);
+    outline: none;
+  }
+
+  .addon-card__icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 4px;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, .05);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: rgba(159, 208, 255, .55);
+  }
+
+  .addon-card__icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .addon-card__body {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .addon-card__title {
+    font-size: 9.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: #eaf3ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .addon-card__meta {
+    font-size: 7px;
+    line-height: 1.4;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .addon-card__desc {
+    font-size: 7.5px;
+    line-height: 1.45;
+    letter-spacing: .02em;
+    color: rgba(199, 212, 230, .46);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .addon-card__tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .addon-card__tag {
+    padding: 1px 4px;
+    border-radius: 2px;
+    background: rgba(159, 208, 255, .08);
+    font-size: 6.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .6);
+  }
+
+  /* 内容下载页（对照 [L4] 内容下载页 / AddonVersion） */
+  .addon-detail__desc {
+    max-height: 120px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .addon-versions {
+    max-height: 230px;
+    overflow-y: auto;
+    display: grid;
+    gap: 4px;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+  }
+
+  .addon-version {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    padding: 7px 9px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms linear, background-color 140ms linear;
+  }
+
+  .addon-version:hover,
+  .addon-version:focus-visible {
+    border-color: rgba(159, 208, 255, .32);
+    outline: none;
+  }
+
+  .addon-version.is-active {
+    border-color: rgba(159, 208, 255, .5);
+    background: rgba(159, 208, 255, .09);
+  }
+
+  .addon-version__main {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .addon-version__name {
+    font-size: 9px;
+    line-height: 1.4;
+    font-weight: 600;
+    color: #eaf3ff;
+    overflow-wrap: anywhere;
+  }
+
+  .addon-version__meta {
+    font-size: 7px;
+    line-height: 1.4;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .42);
+    overflow-wrap: anywhere;
+  }
+
+  .addon-version__side {
+    display: grid;
+    gap: 2px;
+    justify-items: end;
+    font-size: 7px;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .34);
+    white-space: nowrap;
+  }
+
+  .addon-version__type {
+    padding: 1px 4px;
+    border-radius: 2px;
+    background: rgba(159, 208, 255, .08);
+    color: rgba(159, 208, 255, .62);
+    font-size: 6.5px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+
+  /* 安装弹窗（对照 [L4] 安装向导 · 可选文件） */
+  .install-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(159, 208, 255, .16);
+    border-radius: 5px;
+    background: rgba(159, 208, 255, .045);
+  }
+
+  .install-summary__version {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    color: #f2f8ff;
+    overflow-wrap: anywhere;
+  }
+
+  .install-summary__meta {
+    font-size: 8px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(159, 208, 255, .66);
+    white-space: nowrap;
+  }
+
+  .install-fields {
+    display: grid;
+    gap: 10px;
+  }
+
+  .install-fields .dialog-field {
+    max-width: 360px;
+  }
+
+  .dialog-label {
+    font-size: 8px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .46);
+  }
+
+  .install-options {
+    margin: 0;
+    padding: 10px 12px;
+    display: grid;
+    gap: 7px;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 5px;
+  }
+
+  .install-options legend {
+    padding: 0 6px;
+    font-size: 8px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .46);
+  }
+
+  .install-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    letter-spacing: .03em;
+    color: rgba(214, 227, 243, .68);
+    cursor: pointer;
+  }
+
+  .install-option input {
+    accent-color: #8fc6ff;
+  }
+
+  .pack-file-list {
+    max-height: 220px;
+    overflow-y: auto;
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .18);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 8px;
+    line-height: 1.65;
+    letter-spacing: .01em;
+    color: rgba(199, 212, 230, .52);
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+  }
+
+
   @keyframes install-sweep {
     from { left: -40%; }
     to { left: 100%; }
@@ -4876,7 +6092,7 @@
         <rect x="13.5" y="13.5" width="6.5" height="6.5" rx=".5"/>
       </svg>
     </button>
-    <button class="rail-btn" type="button" data-nav="downloads" data-label="下载中心 · 待接入" aria-label="下载中心（待接入）" title="下载中心待接入" disabled>
+    <button class="rail-btn" id="downloadRailBtn" type="button" data-nav="download" data-label="下载中心" aria-label="下载中心" aria-controls="stageDownload">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 4v10"/>
         <path d="M8 10.5 12 14.5l4-4"/>
@@ -5169,7 +6385,124 @@
         </div>
 
         <div class="detail-panel" data-detail-panel="worlds" hidden>
-          <div class="content-panel" data-content-panel="saves" data-content-kind="saves"></div>
+          <div class="world-panel" id="worldPanel">
+            <!-- [L4] 世界列表 -->
+            <div class="world-view" data-world-view="list">
+              <div class="content-toolbar">
+                <label class="content-search">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg>
+                  <input type="search" id="worldSearch" placeholder="搜索世界…" autocomplete="off">
+                </label>
+                <button class="dialog-btn content-refresh" id="worldRefresh" type="button">刷新</button>
+                <span class="content-count" id="worldCount">0</span>
+              </div>
+
+              <div class="content-actions">
+                <button class="dialog-btn" id="worldOpenFolder" type="button" data-control-key="folder.saves">打开世界文件夹</button>
+                <button class="dialog-btn" id="worldChunkbase" type="button" disabled title="先选一个世界">Chunkbase 地图</button>
+              </div>
+
+              <div class="content-root" id="worldRoot" title=""></div>
+              <div class="content-list world-list" id="worldList"></div>
+              <p class="detail-status" id="worldStatus" role="status" aria-live="polite"></p>
+            </div>
+
+            <!-- [L4] 世界管理（3 页签） -->
+            <div class="world-view" data-world-view="manage" hidden>
+              <div class="world-manage-head">
+                <button class="create-back" id="worldManageBack" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/><path d="M8 12h9"/></svg>
+                  <span>世界列表</span>
+                </button>
+                <span class="world-manage-name" id="worldManageName">—</span>
+              </div>
+
+              <div class="detail-tabs world-tabs" role="tablist" aria-label="世界管理">
+                <button class="detail-tab" type="button" role="tab" aria-selected="true" data-world-tab="info" data-control-key="world.info">世界信息</button>
+                <button class="detail-tab" type="button" role="tab" aria-selected="false" data-world-tab="backup" data-control-key="world.backup">备份管理</button>
+                <button class="detail-tab" type="button" role="tab" aria-selected="false" data-world-tab="datapack" data-control-key="world.datapack">数据包管理</button>
+              </div>
+
+              <div class="world-tab-panel" data-world-panel="info">
+                <div class="world-info-grid">
+                  <div class="world-info__row">
+                    <span class="world-info__label">允许命令(作弊)</span>
+                    <button class="world-switch" id="worldCheats" type="button" role="switch" aria-checked="false" data-control-key="world.info.allow_cheats"></button>
+                  </div>
+
+                  <div class="world-info__row">
+                    <span class="world-info__label">生成建筑</span>
+                    <button class="world-switch" id="worldFeatures" type="button" role="switch" aria-checked="true" data-control-key="world.info.generate_features"></button>
+                  </div>
+
+                  <label class="world-info__row" for="worldDifficulty">
+                    <span class="world-info__label">难度</span>
+                    <span class="create-control-wrap world-info__select">
+                      <select class="create-control" id="worldDifficulty" data-control-key="world.info.difficulty">
+                        <option value="0">和平</option>
+                        <option value="1">简单</option>
+                        <option value="2" selected>普通</option>
+                        <option value="3">困难</option>
+                      </select>
+                      <span class="create-select-arrow" aria-hidden="true"></span>
+                    </span>
+                  </label>
+
+                  <div class="world-info__row">
+                    <span class="world-info__label">锁定难度</span>
+                    <button class="world-switch" id="worldLock" type="button" role="switch" aria-checked="false" data-control-key="world.info.difficulty_lock"></button>
+                  </div>
+
+                  <label class="world-info__row" for="worldGameMode">
+                    <span class="world-info__label">游戏模式</span>
+                    <span class="create-control-wrap world-info__select">
+                      <select class="create-control" id="worldGameMode" data-control-key="world.info.player.game_type">
+                        <option value="0">生存</option>
+                        <option value="1">创造</option>
+                        <option value="2">冒险</option>
+                        <option value="3">旁观</option>
+                      </select>
+                      <span class="create-select-arrow" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                </div>
+
+                <div class="content-actions world-actions">
+                  <button class="dialog-btn" id="worldLaunch" type="button">启动游戏</button>
+                  <button class="dialog-btn" id="worldScript" type="button">生成启动脚本</button>
+                  <button class="dialog-btn" id="worldExport" type="button">导出此世界</button>
+                  <button class="dialog-btn" id="worldDuplicate" type="button">复制此世界</button>
+                  <button class="dialog-btn is-danger" id="worldDelete" type="button">删除此世界</button>
+                  <button class="dialog-btn" id="worldManageFolder" type="button">世界文件夹</button>
+                  <button class="dialog-btn" id="worldManageChunkbase" type="button">Chunkbase 地图</button>
+                </div>
+
+                <p class="world-note" id="worldInfoNote">改动会直接写入 level.dat，覆盖前会保留一份 level.dat_old。</p>
+              </div>
+
+              <div class="world-tab-panel" data-world-panel="backup" hidden>
+                <div class="content-actions">
+                  <button class="dialog-btn" id="worldBackupCreate" type="button">创建备份</button>
+                  <button class="dialog-btn" id="worldBackupFolder" type="button">打开备份文件夹</button>
+                  <button class="dialog-btn" id="worldBackupRefresh" type="button">刷新</button>
+                </div>
+                <div class="content-list" id="worldBackupList"></div>
+                <p class="world-note">备份是保存到启动器数据目录的 zip，恢复时会解压成「世界名 (恢复 时间)」，不覆盖原世界。</p>
+              </div>
+
+              <div class="world-tab-panel" data-world-panel="datapack" hidden>
+                <div class="content-actions">
+                  <button class="dialog-btn" id="worldDatapackImport" type="button">导入数据包</button>
+                  <button class="dialog-btn" id="worldDatapackFolder" type="button">打开文件夹</button>
+                  <button class="dialog-btn" id="worldDatapackRefresh" type="button">刷新</button>
+                </div>
+                <div class="content-list" id="worldDatapackList"></div>
+                <p class="world-note">数据包放在世界目录的 datapacks 下；启用 / 禁用由 level.dat 的 DataPacks 列表控制，本页只做导入与删除。</p>
+              </div>
+
+              <p class="detail-status" id="worldManageStatus" role="status" aria-live="polite"></p>
+            </div>
+          </div>
         </div>
 
         <div class="detail-panel" data-detail-panel="schematics" hidden>
@@ -5333,7 +6666,222 @@
       </div>
     </section>
 
-    <!-- 二级页面：设置 -->
+    <!-- 二级页面：下载中心（对照清单 [L2] 下载 → [L3] 游戏版本 / 整合包 / 内容列表） -->
+    <section class="stage-create stage-download" id="stageDownload" aria-hidden="true" inert>
+      <div class="create-head">
+        <button class="create-back" id="downloadBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 5 8 12l7 7"/>
+            <path d="M8 12h9"/>
+          </svg>
+          <span>返回</span>
+        </button>
+        <span class="create-index">Downloads / 05</span>
+      </div>
+
+      <div class="create-intro">
+        <p class="create-kicker">Download centre</p>
+        <h2 class="create-title">下载中心</h2>
+        <p class="create-desc">版本与加载器由内置 mcdl 安装到默认游戏目录；整合包支持本地 .zip / .mrpack，模组 / 资源包 / 光影 走 Modrinth。世界暂无在线源。</p>
+      </div>
+
+      <div class="download-body">
+        <div class="download-tabs" role="tablist" aria-label="下载类别">
+          <button class="download-tab is-active" type="button" role="tab" aria-selected="true" data-download-tab="game">游戏</button>
+          <button class="download-tab" type="button" role="tab" aria-selected="false" data-download-tab="modpack">整合包</button>
+          <button class="download-tab" type="button" role="tab" aria-selected="false" data-download-tab="mods">模组</button>
+          <button class="download-tab" type="button" role="tab" aria-selected="false" data-download-tab="resourcepack">资源包</button>
+          <button class="download-tab" type="button" role="tab" aria-selected="false" data-download-tab="shader">光影</button>
+          <button class="download-tab" type="button" role="tab" aria-selected="false" data-download-tab="world">世界</button>
+        </div>
+
+        <div class="download-panes">
+          <!-- [L3] 游戏版本 -->
+          <div class="download-pane is-active" data-download-pane="game" role="tabpanel">
+            <div class="download-toolbar">
+              <input class="download-search" id="downloadSearch" type="search" placeholder="搜索版本，例如 1.20.1 / 1.21" autocomplete="off" aria-label="搜索版本">
+              <span class="download-select-wrap">
+                <select class="download-select" id="downloadType" aria-label="版本类型">
+                  <option value="release" selected>正式版</option>
+                  <option value="snapshot">快照</option>
+                  <option value="old">远古版</option>
+                  <option value="all">全部</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <button class="download-action" id="downloadRefresh" type="button">
+                <span>刷新</span>
+                <span aria-hidden="true">↻</span>
+              </button>
+            </div>
+
+            <div class="download-latest" id="downloadLatest" hidden></div>
+
+            <div class="download-grid" id="downloadVersions" role="list" aria-label="版本列表"></div>
+
+            <div class="download-status-row">
+              <p class="download-status" id="downloadStatus" role="status" aria-live="polite">进入下载中心时读取版本列表…</p>
+              <span class="download-count" id="downloadCount"></span>
+            </div>
+          </div>
+
+          <!-- [L3] 整合包 -->
+          <div class="download-pane" data-download-pane="modpack" role="tabpanel" hidden>
+            <div class="download-source" id="packSources" role="group" aria-label="整合包来源">
+              <button class="download-source__card is-active" type="button" data-pack-source="local" aria-pressed="true">
+                <span class="download-source__name">本地整合包</span>
+                <span class="download-source__note">.zip / .mrpack，含 Modrinth 格式</span>
+              </button>
+              <button class="download-source__card" type="button" data-pack-source="modrinth" aria-pressed="false" disabled>
+                <span class="download-source__name">Modrinth</span>
+                <span class="download-source__note">在线浏览 · 待接入</span>
+              </button>
+              <button class="download-source__card" type="button" data-pack-source="curseforge" aria-pressed="false" disabled>
+                <span class="download-source__name">CurseForge</span>
+                <span class="download-source__note">需要 API Key · 待接入</span>
+              </button>
+            </div>
+
+            <div class="download-pack">
+              <div class="download-pack__head">
+                <span class="download-pack__file" id="packFile">尚未选择整合包</span>
+                <button class="download-action" id="packPick" type="button">
+                  <span>选择文件</span>
+                  <span aria-hidden="true">＋</span>
+                </button>
+              </div>
+              <p class="download-pack__meta" id="packMeta">选择 .zip / .mrpack 后这里显示包内条目、mod 数量与解压后的实例名。</p>
+              <label class="create-field download-pack__name" for="packName">
+                <span class="create-label">Instance name / 实例名称</span>
+                <input class="create-control" id="packName" type="text" maxlength="48" placeholder="留空则使用整合包里的名字" autocomplete="off">
+              </label>
+              <div class="download-pack__actions">
+                <button class="download-action" id="packOptional" type="button" disabled>
+                  <span>可选文件</span>
+                  <span aria-hidden="true">☰</span>
+                </button>
+                <button class="create-submit" id="packInstall" type="button" disabled>
+                  <span>安装</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+              <p class="download-status" id="packStatus" role="status" aria-live="polite">等待选择整合包</p>
+            </div>
+          </div>
+
+          <!-- [L3] 内容列表：模组 / 资源包 / 光影（Modrinth）；世界暂无在线源 -->
+          <div class="download-pane download-pane--content" data-download-pane="mods" role="tabpanel" hidden>
+            <div class="download-toolbar">
+              <input class="download-search" id="addonSearchMods" type="search" placeholder="搜索模组，例如 sodium / jei" autocomplete="off" aria-label="搜索模组">
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonVersionMods" aria-label="游戏版本"></select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonLoaderMods" aria-label="加载器">
+                  <option value="">全部加载器</option>
+                  <option value="fabric">Fabric</option>
+                  <option value="quilt">Quilt</option>
+                  <option value="forge">Forge</option>
+                  <option value="neoforge">NeoForge</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonSortMods" aria-label="排序">
+                  <option value="relevance" selected>相关度</option>
+                  <option value="downloads">下载量</option>
+                  <option value="newest">最新发布</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <button class="download-action" type="button" data-addon-search="mods">
+                <span>搜索</span>
+                <span aria-hidden="true">⌕</span>
+              </button>
+            </div>
+            <p class="addon-target" id="addonTargetMods">安装到：—</p>
+            <div class="addon-grid" id="addonGridMods" role="list" aria-label="模组搜索结果"></div>
+            <div class="download-status-row">
+              <p class="download-status" id="addonStatusMods" role="status" aria-live="polite">留空搜索可浏览热门模组</p>
+              <span class="download-count" id="addonCountMods"></span>
+            </div>
+          </div>
+
+          <div class="download-pane download-pane--content" data-download-pane="resourcepack" role="tabpanel" hidden>
+            <div class="download-toolbar">
+              <input class="download-search" id="addonSearchResourcepack" type="search" placeholder="搜索资源包，例如 faithful" autocomplete="off" aria-label="搜索资源包">
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonVersionResourcepack" aria-label="游戏版本"></select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonSortResourcepack" aria-label="排序">
+                  <option value="relevance" selected>相关度</option>
+                  <option value="downloads">下载量</option>
+                  <option value="newest">最新发布</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <button class="download-action" type="button" data-addon-search="resourcepack">
+                <span>搜索</span>
+                <span aria-hidden="true">⌕</span>
+              </button>
+            </div>
+            <p class="addon-target" id="addonTargetResourcepack">安装到：—</p>
+            <div class="addon-grid" id="addonGridResourcepack" role="list" aria-label="资源包搜索结果"></div>
+            <div class="download-status-row">
+              <p class="download-status" id="addonStatusResourcepack" role="status" aria-live="polite">留空搜索可浏览热门资源包</p>
+              <span class="download-count" id="addonCountResourcepack"></span>
+            </div>
+          </div>
+
+          <div class="download-pane download-pane--content" data-download-pane="shader" role="tabpanel" hidden>
+            <div class="download-toolbar">
+              <input class="download-search" id="addonSearchShader" type="search" placeholder="搜索光影，例如 complementary" autocomplete="off" aria-label="搜索光影">
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonVersionShader" aria-label="游戏版本"></select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <span class="download-select-wrap">
+                <select class="download-select" id="addonSortShader" aria-label="排序">
+                  <option value="relevance" selected>相关度</option>
+                  <option value="downloads">下载量</option>
+                  <option value="newest">最新发布</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+              <button class="download-action" type="button" data-addon-search="shader">
+                <span>搜索</span>
+                <span aria-hidden="true">⌕</span>
+              </button>
+            </div>
+            <p class="addon-target" id="addonTargetShader">安装到：—</p>
+            <div class="addon-grid" id="addonGridShader" role="list" aria-label="光影搜索结果"></div>
+            <div class="download-status-row">
+              <p class="download-status" id="addonStatusShader" role="status" aria-live="polite">留空搜索可浏览热门光影</p>
+              <span class="download-count" id="addonCountShader"></span>
+            </div>
+          </div>
+
+          <div class="download-pane download-pane--content" data-download-pane="world" role="tabpanel" hidden>
+            <div class="download-toolbar">
+              <input class="download-search" id="addonSearchWorld" type="search" placeholder="搜索世界…" autocomplete="off" aria-label="搜索世界">
+              <button class="download-action" type="button" data-addon-search="world" disabled>
+                <span>搜索</span>
+                <span aria-hidden="true">⌕</span>
+              </button>
+            </div>
+            <div class="download-empty" data-addon-empty="world">
+              <strong>世界还没有在线下载源</strong>
+              <span>Modrinth 没有世界分类，CurseForge 的世界托管需要 API Key。现在可以在实例详情的「世界管理」里导入本地存档压缩包。</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 二级页面：设置（对照 [L2] 设置：6 个页签） -->
     <section class="stage-create stage-settings" id="stageSettings" aria-hidden="true" inert>
       <div class="create-head">
         <button class="create-back" id="settingsBack" type="button">
@@ -5348,49 +6896,212 @@
 
       <div class="create-intro">
         <p class="create-kicker">Settings</p>
-        <h2 class="create-title">游戏设置</h2>
-        <p class="create-desc">这些参数会在每次启动时拼进 java 命令。内存和 Java 版本需要与实例要求的版本匹配。</p>
+        <h2 class="create-title">设置</h2>
+        <p class="create-desc">全局游戏参数、Java、下载源与通用选项；单实例的覆盖在实例详情里改。</p>
       </div>
 
-      <form class="create-form" id="settingsForm" novalidate>
-        <label class="create-field" for="settingsMemory">
-          <span class="create-label">Memory / 最大内存 (MB)</span>
-          <input class="create-control" id="settingsMemory" type="number" min="512" max="32768" step="256" inputmode="numeric">
-        </label>
-
-        <label class="create-field" for="settingsJava">
-          <span class="create-label">Java / 运行时</span>
-          <span class="create-control-wrap">
-            <select class="create-control settings-java" id="settingsJava">
-              <option value="">自动选择（按版本要求）</option>
-            </select>
-            <span class="create-select-arrow" aria-hidden="true"></span>
-          </span>
-        </label>
-
-        <label class="create-field" for="settingsWidth">
-          <span class="create-label">Window width / 窗口宽</span>
-          <input class="create-control" id="settingsWidth" type="number" min="320" max="7680" step="1" inputmode="numeric">
-        </label>
-
-        <label class="create-field" for="settingsHeight">
-          <span class="create-label">Window height / 窗口高</span>
-          <input class="create-control" id="settingsHeight" type="number" min="320" max="7680" step="1" inputmode="numeric">
-        </label>
-
-        <label class="create-field settings-field--wide" for="settingsJvmArgs">
-          <span class="create-label">Extra JVM args / 额外 JVM 参数</span>
-          <input class="create-control" id="settingsJvmArgs" type="text" placeholder="例如：-XX:+UseG1GC -XX:MaxGCPauseMillis=50" autocomplete="off">
-        </label>
-
-        <div class="settings-actions">
-          <button class="create-submit" id="settingsSubmit" type="submit">
-            <span>保存设置</span>
-            <span aria-hidden="true">↗</span>
-          </button>
-          <span class="settings-status" id="settingsStatus" role="status" aria-live="polite">读取中…</span>
+      <div class="settings-body settings-body--tabs">
+        <div class="settings-tabs" role="tablist" aria-label="设置分类">
+          <button class="settings-tab is-active" type="button" role="tab" aria-selected="true" data-settings-tab="game">游戏设置</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-settings-tab="java">Java 管理</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-settings-tab="general">通用</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-settings-tab="appearance">外观</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-settings-tab="download">下载</button>
+          <button class="settings-tab" type="button" role="tab" aria-selected="false" data-settings-tab="about">关于</button>
         </div>
-      </form>
+
+        <div class="settings-panes">
+          <!-- [L3] 游戏设置 -->
+          <div class="settings-pane is-active" data-settings-pane="game" role="tabpanel">
+            <form class="create-form create-form--settings" id="settingsForm" novalidate>
+              <label class="create-field" for="settingsMemory">
+                <span class="create-label">Memory / 最大内存 (MB)</span>
+                <input class="create-control" id="settingsMemory" type="number" min="512" max="32768" step="256" inputmode="numeric">
+              </label>
+
+              <label class="create-field" for="settingsWidth">
+                <span class="create-label">Window width / 窗口宽</span>
+                <input class="create-control" id="settingsWidth" type="number" min="320" max="7680" step="1" inputmode="numeric">
+              </label>
+
+              <label class="create-field" for="settingsHeight">
+                <span class="create-label">Window height / 窗口高</span>
+                <input class="create-control" id="settingsHeight" type="number" min="320" max="7680" step="1" inputmode="numeric">
+              </label>
+
+              <label class="create-field" for="settingsIsolation">
+                <span class="create-label">Default isolation / 默认版本隔离策略</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsIsolation">
+                    <option value="auto" selected>自动（按目录判断）</option>
+                    <option value="isolated">总是版本隔离（versions/&lt;id&gt;）</option>
+                    <option value="global">从不隔离（共用游戏目录）</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <label class="create-field settings-field--wide" for="settingsJvmArgs">
+                <span class="create-label">Extra JVM args / 额外 JVM 参数</span>
+                <input class="create-control" id="settingsJvmArgs" type="text" placeholder="例如：-XX:+UseG1GC -XX:MaxGCPauseMillis=50" autocomplete="off">
+              </label>
+
+              <div class="settings-actions">
+                <button class="create-submit" id="settingsSubmit" type="submit">
+                  <span>保存设置</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+                <span class="settings-status" id="settingsStatus" role="status" aria-live="polite">读取中…</span>
+              </div>
+            </form>
+          </div>
+
+          <!-- [L3] Java 管理 -->
+          <div class="settings-pane" data-settings-pane="java" role="tabpanel" hidden>
+            <div class="settings-block">
+              <div class="settings-block__head">
+                <span>Java 运行时</span>
+                <span id="settingsJavaCount">—</span>
+              </div>
+
+              <label class="create-field" for="settingsJava">
+                <span class="create-label">Java / 运行时（自动 = 按版本要求挑选）</span>
+                <span class="create-control-wrap">
+                  <select class="create-control settings-java" id="settingsJava">
+                    <option value="">自动选择（按版本要求）</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <div class="settings-actions">
+                <button class="download-action" id="settingsJavaScan" type="button">
+                  <span>重新扫描</span>
+                  <span aria-hidden="true">↻</span>
+                </button>
+                <button class="download-action" id="settingsJavaInstall" type="button" disabled title="自动安装 Java 还没接入">安装 Java</button>
+                <span class="settings-status" id="settingsJavaStatus">—</span>
+              </div>
+
+              <p class="settings-note">自动下载 / 恢复 Java 还没接入；先在下方选一个已有运行时，或把 Java 装到 PATH 后点「重新扫描」。</p>
+            </div>
+          </div>
+
+          <!-- [L3] 通用设置 -->
+          <div class="settings-pane" data-settings-pane="general" role="tabpanel" hidden>
+            <div class="settings-block">
+              <label class="create-field" for="settingsLanguage">
+                <span class="create-label">Language / 语言</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsLanguage">
+                    <option value="zh-CN" selected>简体中文</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <label class="settings-check" for="settingsAprilFools">
+                <input type="checkbox" id="settingsAprilFools">
+                <span>不启用愚人节功能</span>
+              </label>
+
+              <div class="settings-actions">
+                <button class="download-action" id="settingsOpenLogs" type="button">
+                  <span>打开日志文件夹</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+                <span class="settings-status" id="settingsGeneralStatus">—</span>
+              </div>
+
+              <p class="settings-note">目前只提供简体中文；语言切换需要补齐各页面的文案表。</p>
+            </div>
+          </div>
+
+          <!-- [L3] 个性化（外观） -->
+          <div class="settings-pane" data-settings-pane="appearance" role="tabpanel" hidden>
+            <div class="settings-block">
+              <label class="settings-check" for="settingsDisableAnimations">
+                <input type="checkbox" id="settingsDisableAnimations">
+                <span>关闭动画（停掉过渡与极光层动画，界面更省电）</span>
+              </label>
+
+              <div class="settings-todo">
+                <strong>还没接入</strong>
+                <span>主题 / 导出主题 / 主题模式 / 色彩模式 / 缓存网络图片 / 背景加载方式 / 标题栏透明 / 窗口透明 / 抗锯齿 / 主题包管理</span>
+              </div>
+
+              <p class="settings-note">这些项依赖主题包与背景图片系统，当前只有深色一套外观。</p>
+            </div>
+          </div>
+
+          <!-- [L3] 下载设置 -->
+          <div class="settings-pane" data-settings-pane="download" role="tabpanel" hidden>
+            <div class="settings-block">
+              <label class="create-field" for="settingsVersionSource">
+                <span class="create-label">Version list source / 版本列表源</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsVersionSource">
+                    <option value="auto" selected>自动（测速）</option>
+                    <option value="official">官方 Mojang</option>
+                    <option value="bmclapi">BMCLAPI 镜像</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <label class="create-field" for="settingsDownloadSource">
+                <span class="create-label">Download source / 下载源</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsDownloadSource">
+                    <option value="auto" selected>自动（测速）</option>
+                    <option value="official">官方 Mojang</option>
+                    <option value="bmclapi">BMCLAPI 镜像</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <label class="create-field" for="settingsAddonSource">
+                <span class="create-label">Default addon source / 附加内容默认下载源</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsAddonSource">
+                    <option value="modrinth" selected>Modrinth</option>
+                    <option value="curseforge" disabled>CurseForge · 需要 API Key</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
+              <div class="settings-actions">
+                <span class="settings-status" id="settingsDownloadStatus">修改后立即生效</span>
+              </div>
+
+              <p class="settings-note">版本列表源与下载源会作为 `--source` 传给 mcdl；附加内容下载源目前只有 Modrinth 可用。</p>
+            </div>
+          </div>
+
+          <!-- [L3] 关于 -->
+          <div class="settings-pane" data-settings-pane="about" role="tabpanel" hidden>
+            <div class="settings-block settings-about">
+              <p class="settings-about__version" id="settingsAboutVersion">MCDL Launcher</p>
+              <p class="settings-about__meta" id="settingsAboutMeta">正在读取版本信息…</p>
+
+              <div class="settings-actions">
+                <button class="download-action" id="settingsOpenRepo" type="button">
+                  <span>项目主页</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+                <button class="download-action" id="settingsOpenLicense" type="button">
+                  <span>开源许可</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+
+              <p class="settings-note">MCDL Launcher 使用 Electron 重写界面，内置 MIT 许可的 mcdl 下载器；界面控件清单来自早期 HMCL 定制分支。</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 
@@ -5653,7 +7364,7 @@
       </div>
       <div class="dialog-foot">
         <div class="dialog-foot__left">
-          <button class="dialog-btn" id="instanceGotoDownload" type="button" disabled title="下载页面待接入">前往下载页面</button>
+          <button class="dialog-btn" id="instanceGotoDownload" type="button">前往下载页面</button>
         </div>
         <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
         <button class="dialog-btn dialog-btn--primary" id="instanceDelete" type="button">删除</button>
@@ -5682,6 +7393,110 @@
           <button class="dialog-btn" id="iconReset" type="button">恢复默认</button>
         </div>
         <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+      </div>
+    </section>
+
+    <!-- L4 内容下载页（对照清单 instances/DownloadPage 的 AddonVersion 弹窗） -->
+    <section class="dialog dialog--wide" id="dlgAddon" role="dialog" aria-modal="true" aria-labelledby="dlgAddonTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgAddonTitle">内容下载</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text" id="dlgAddonMeta">—</p>
+        <p class="dialog-text addon-detail__desc" id="dlgAddonDesc"></p>
+        <p class="addon-target" id="dlgAddonTarget">安装到：—</p>
+        <div class="addon-versions" id="addonVersionList" role="list" aria-label="可用版本"></div>
+        <label class="install-option">
+          <input type="checkbox" id="addonInstallDeps" checked>
+          <span>同时安装必需前置（<span id="addonDepCount">0</span> 个）</span>
+        </label>
+        <p class="dialog-status" id="dlgAddonStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn" id="addonSaveAs" type="button">下载到本地文件夹</button>
+        </div>
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="addonConfirm" type="button">确定</button>
+      </div>
+    </section>
+
+    <!-- L4 安装向导 · 可选文件（对照清单 download/OptionalFilesPage） -->
+    <section class="dialog dialog--wide" id="dlgInstall" role="dialog" aria-modal="true" aria-labelledby="dlgInstallTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgInstallTitle">安装 · 可选文件</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="install-summary">
+          <span class="install-summary__version" id="installVersion">—</span>
+          <span class="install-summary__meta" id="installMeta">原版</span>
+        </div>
+
+        <div class="dialog-actions install-fields">
+          <label class="dialog-field" for="installLoader">
+            <span class="dialog-label">Loader / 加载器</span>
+            <span class="create-control-wrap">
+              <select class="create-control" id="installLoader">
+                <option value="Vanilla" selected>Vanilla · 原版</option>
+                <option value="Fabric">Fabric · 1.14 起</option>
+                <option value="Quilt">Quilt · 1.18 起</option>
+                <option value="Forge">Forge · 1.7.10 起</option>
+                <option value="NeoForge">NeoForge · 1.20.1 起</option>
+              </select>
+              <span class="create-select-arrow" aria-hidden="true"></span>
+            </span>
+          </label>
+
+          <label class="dialog-field" id="installLoaderVersionField" for="installLoaderVersion" hidden>
+            <span class="dialog-label">Loader version / 加载器版本</span>
+            <span class="create-control-wrap">
+              <select class="create-control" id="installLoaderVersion">
+                <option value="">最新稳定版</option>
+              </select>
+              <span class="create-select-arrow" aria-hidden="true"></span>
+            </span>
+          </label>
+
+          <label class="dialog-field" for="installName">
+            <span class="dialog-label">Instance name / 实例名称</span>
+            <input class="create-control" id="installName" type="text" maxlength="48" placeholder="留空自动生成，例如 1.21.4 · 原版" autocomplete="off">
+          </label>
+        </div>
+
+        <fieldset class="install-options">
+          <legend>可选文件</legend>
+          <label class="install-option">
+            <input type="checkbox" id="installAssets" checked>
+            <span>同时下载游戏资源文件（assets），取消后只装版本与库</span>
+          </label>
+          <label class="install-option">
+            <input type="checkbox" id="installReveal" checked>
+            <span>安装完成后回到实例列表并选中新实例</span>
+          </label>
+        </fieldset>
+
+        <p class="dialog-status" id="installStatus" role="status" aria-live="polite">确认选项后点「安装」</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="installSubmit" type="button">安装</button>
+      </div>
+    </section>
+
+    <!-- L4 整合包来源 · 可选文件预览 -->
+    <section class="dialog dialog--wide" id="dlgPackFiles" role="dialog" aria-modal="true" aria-labelledby="dlgPackFilesTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgPackFilesTitle">可选文件 · 整合包</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text" id="packFilesMeta">尚未选择整合包。</p>
+        <div class="pack-file-list" id="packFilesList" role="list"></div>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn dialog-btn--primary" type="button" data-dialog-close>确定</button>
       </div>
     </section>
 

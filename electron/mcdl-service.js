@@ -38,9 +38,20 @@ const GAME_SUBDIRS = [
 let gameDirCache = null;
 let versionCache = null;
 let versionCacheAt = 0;
+let versionCacheSource = '';
+let versionMeta = { latestRelease: '', latestSnapshot: '' };
 
-function resolveJavaBinary() {
-  const configured = process.env.MCDL_JAVA;
+const SOURCE_KEYS = new Set(['auto', 'official', 'bmclapi']);
+
+/** 设置里的下载源 → mcdl 的 --source 参数（官方 / BMCLAPI / 自动测速）。 */
+function normalizeSource(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (key === 'mojang' || key === 'offical') return 'official';
+  if (key === 'bmcl' || key === 'mirror') return 'bmclapi';
+  return SOURCE_KEYS.has(key) ? key : 'auto';
+}
+
+function resolveJavaBinary() {  const configured = process.env.MCDL_JAVA;
   if (!configured) return 'java';
 
   const resolved = path.resolve(configured);
@@ -425,14 +436,24 @@ function normalizeVersionType(label) {
   return 'release';
 }
 
-async function listVersions() {
+async function listVersions({ source = 'auto' } = {}) {
   const now = Date.now();
-  if (versionCache && now - versionCacheAt < 10 * 60 * 1000) {
+  const sourceKey = normalizeSource(source);
+  if (versionCache && versionCacheSource === sourceKey && now - versionCacheAt < 10 * 60 * 1000) {
     return versionCache;
   }
 
-  const result = await runMcdl(['--list', '--type', 'all']);
+  const result = await runMcdl(['--list', '--type', 'all', '--source', sourceKey]);
   const versions = [];
+
+  // mcdl 的列表头写着「最新正式版：1.21.8    最新快照：25w31a」，
+  // 下载页的「最新」两张卡直接用这两行，不再自己按日期猜。
+  const latest = String(result.stdout).match(
+    /最新正式版[：:]\s*([^\s]+)\s+最新快照[：:]\s*([^\s]+)/
+  );
+  if (latest) {
+    versionMeta = { latestRelease: latest[1], latestSnapshot: latest[2] };
+  }
 
   for (const line of result.stdout.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -456,10 +477,11 @@ async function listVersions() {
 
   versionCache = versions;
   versionCacheAt = now;
+  versionCacheSource = sourceKey;
   return versions;
 }
 
-async function installVersion({ version, gameDir, source = 'auto', jobs = 16, onData }) {
+async function installVersion({ version, gameDir, source = 'auto', jobs = 16, assets = true, onData }) {
   // 快照/远古版本的 ID 可能包含空格和括号（如 1.14.2 Pre-Release 4）。
   // spawn 使用参数数组，不经过 shell，因此允许这些字符，只排除换行和路径控制字符。
   if (!/^[A-Za-z0-9][A-Za-z0-9 ._()+\-]{0,127}$/.test(String(version || ''))) {
@@ -472,9 +494,10 @@ async function installVersion({ version, gameDir, source = 'auto', jobs = 16, on
   const args = [
     '--install', version,
     '--dir', dir,
-    '--source', source,
+    '--source', normalizeSource(source),
     '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16)))
   ];
+  if (assets === false) args.push('--no-assets');
 
   await runMcdl(args, {
     onData: (text, stream) => {
@@ -485,10 +508,149 @@ async function installVersion({ version, gameDir, source = 'auto', jobs = 16, on
   return dir;
 }
 
+/**
+ * 版本目录：版本列表 + mcdl 给出的最新正式版 / 最新快照。
+ * force 用于下载页的「刷新」（mcdl-service 里缓存 10 分钟）。
+ */
+async function versionCatalog({ force = false, source = 'auto' } = {}) {
+  if (force) {
+    versionCache = null;
+    versionCacheAt = 0;
+    versionCacheSource = '';
+  }
+  const versions = await listVersions({ source });
+  return {
+    versions,
+    latestRelease: versionMeta.latestRelease || (versions[0] && versions[0].id) || '',
+    latestSnapshot: versionMeta.latestSnapshot || '',
+    fetchedAt: versionCacheAt,
+    cached: !force
+  };
+}
+
+// ---------------- 整合包：本地 zip / mrpack ----------------
+
+/**
+ * 读取 zip 的中央目录，不依赖任何 zip 库（整合包动辄几百 MB，只读目录区）。
+ * @returns {Promise<Array<{name:string,size:number}>>}
+ */
+async function readZipEntries(file, limit = 800) {
+  const handle = await fs.open(file, 'r');
+  try {
+    const stat = await handle.stat();
+    const size = stat.size;
+    if (size < 22) return [];
+
+    const tailLen = Math.min(size, 66 * 1024);
+    const tail = Buffer.alloc(tailLen);
+    await handle.read(tail, 0, tailLen, size - tailLen);
+
+    let eocd = -1;
+    for (let i = tail.length - 22; i >= 0; i -= 1) {
+      if (tail.readUInt32LE(i) === 0x06054b50) {
+        eocd = i;
+        break;
+      }
+    }
+    if (eocd < 0) return [];
+
+    const total = tail.readUInt16LE(eocd + 10);
+    const cdSize = tail.readUInt32LE(eocd + 12);
+    const cdOffset = tail.readUInt32LE(eocd + 16);
+    if (!cdSize || cdOffset >= size) return [];
+
+    const cdLen = Math.min(cdSize, 8 * 1024 * 1024);
+    const cd = Buffer.alloc(cdLen);
+    await handle.read(cd, 0, cdLen, cdOffset);
+
+    const entries = [];
+    let p = 0;
+    for (let i = 0; i < total && p + 46 <= cd.length; i += 1) {
+      if (cd.readUInt32LE(p) !== 0x02014b50) break;
+      const compressed = cd.readUInt32LE(p + 20);
+      const nameLen = cd.readUInt16LE(p + 28);
+      const extraLen = cd.readUInt16LE(p + 30);
+      const commentLen = cd.readUInt16LE(p + 32);
+      const name = cd.slice(p + 46, p + 46 + nameLen).toString('utf8');
+      entries.push({ name, size: compressed });
+      p += 46 + nameLen + extraLen + commentLen;
+      if (entries.length >= limit) break;
+    }
+    return entries;
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * 整合包预览：文件名、大小、条目数、主要文件（manifest / mods / overrides）。
+ */
+async function inspectModpack(file) {
+  const pack = path.resolve(String(file || ''));
+  const stat = await fs.stat(pack).catch(() => null);
+  if (!stat || !stat.isFile()) throw new Error('找不到整合包文件');
+  const ext = path.extname(pack).toLowerCase();
+  if (ext !== '.zip' && ext !== '.mrpack') throw new Error('只支持 .zip / .mrpack 整合包');
+
+  const entries = await readZipEntries(pack);
+  // Windows 打出来的 zip 里分隔符可能是反斜杠，两个都认。
+  const manifest = entries.find((entry) => /(^|[\\/])(modrinth|manifest|instance)\.(index\.)?json$/i.test(entry.name));
+  const mods = entries.filter((entry) => /(^|[\\/])(mods|overrides[\\/]mods)[\\/]/i.test(entry.name));
+  const overrides = entries.filter((entry) => /(^|[\\/])overrides[\\/]/i.test(entry.name));
+
+  return {
+    path: pack,
+    file: path.basename(pack),
+    size: stat.size,
+    entryCount: entries.length,
+    manifest: manifest ? manifest.name : '',
+    sample: entries.slice(0, 60).map((entry) => entry.name),
+    modCount: mods.length,
+    overrideCount: overrides.length
+  };
+}
+
+/**
+ * 安装整合包：mcdl --install-pack 解压到 <gameDir>/versions/<实例名>。
+ * @returns {{instanceId:string,instanceDir:string,gameDir:string}}
+ */
+async function installModpack({ file, name = '', gameDir, jobs = 16, cfKey = '', onData }) {
+  const pack = path.resolve(String(file || ''));
+  const stat = await fs.stat(pack).catch(() => null);
+  if (!stat || !stat.isFile()) throw new Error('找不到整合包文件');
+  const ext = path.extname(pack).toLowerCase();
+  if (ext !== '.zip' && ext !== '.mrpack') throw new Error('只支持 .zip / .mrpack 整合包');
+
+  const dir = gameDir || await detectGameDir();
+  await fs.mkdir(dir, { recursive: true });
+
+  const args = [
+    '--install-pack', pack,
+    '--dir', dir,
+    '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16)))
+  ];
+  if (name) args.push('--name', String(name));
+  if (cfKey) args.push('--cf-key', String(cfKey));
+
+  const result = await runMcdl(args, {
+    onData: (text, stream) => {
+      if (typeof onData === 'function') onData(text, stream);
+    }
+  });
+
+  const done = String(result.stdout).match(/\[完成\]\s*实例\s+(.+?)\s*→\s*(.+)\s*$/m);
+  const instanceId = done ? done[1].trim() : (name || path.basename(pack, ext));
+  const instanceDir = done ? done[2].trim() : path.join(dir, 'versions', instanceId);
+
+  return { instanceId, instanceDir, gameDir: dir };
+}
+
 function clearCaches() {
   gameDirCache = null;
   versionCache = null;
   versionCacheAt = 0;
+  versionCacheSource = '';
+  versionMeta = { latestRelease: '', latestSnapshot: '' };
 }
 
 // ---------------- 模组加载器：列表 / 自动安装 ----------------
@@ -528,12 +690,16 @@ function parseTrailingJson(stdout) {
  * 列出某个 Minecraft 版本可用的加载器构建。
  * @returns {{loader:string,label:string,gameVersion:string,versions:Array<{version:string,stable:boolean,note:string}>}}
  */
-async function listLoaders({ loader, mcVersion } = {}) {
+async function listLoaders({ loader, mcVersion, source = 'auto' } = {}) {
   const key = loaderKeyOf(loader);
   if (!key) throw new Error(`不支持的加载器：${loader}`);
   if (!mcVersion) throw new Error('缺少 Minecraft 版本');
 
-  const result = await runMcdl(['--list-loaders', key, '--mc', String(mcVersion)]);
+  const result = await runMcdl([
+    '--list-loaders', key,
+    '--mc', String(mcVersion),
+    '--source', normalizeSource(source)
+  ]);
   let parsed;
   try {
     parsed = JSON.parse(result.stdout);
@@ -557,6 +723,7 @@ async function installLoader({
   name = '',
   gameDir,
   jobs = 16,
+  source = 'auto',
   onData
 } = {}) {
   const key = loaderKeyOf(loader);
@@ -573,7 +740,8 @@ async function installLoader({
     '--install-loader', key,
     '--mc', String(mcVersion),
     '--dir', dir,
-    '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16)))
+    '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16))),
+    '--source', normalizeSource(source)
   ];
   if (loaderVersion) args.push('--loader-version', String(loaderVersion));
   if (name) args.push('--name', String(name));
@@ -600,12 +768,16 @@ module.exports = {
   findOtherGameDirs,
   scanInstances,
   listVersions,
+  versionCatalog,
   installVersion,
   listLoaders,
   installLoader,
   isSupportedLoader,
   loaderKeyOf,
+  inspectModpack,
+  installModpack,
   listJavaPaths,
   parseGameDirs,
+  normalizeSource,
   clearCaches
 };

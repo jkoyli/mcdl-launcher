@@ -114,6 +114,79 @@ const launcherAPI = {
   },
 
   /**
+   * 下载中心：版本目录（含最新正式版 / 最新快照）。
+   */
+  getVersionCatalog: (payload) => ipcRenderer.invoke('downloads:versions', payload || {}),
+
+  /**
+   * 下载中心：整合包（本地 .zip / .mrpack）。
+   *   pickModpack 打开系统选择框并返回预览；inspectModpack 只读已知路径。
+   */
+  pickModpack: () => ipcRenderer.invoke('downloads:pick-pack'),
+
+  inspectModpack: (payload) => ipcRenderer.invoke('downloads:inspect-pack', payload),
+
+  installModpack: (payload) => ipcRenderer.invoke('downloads:install-pack', payload),
+
+  onDownloadProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('downloads:progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /**
+   * 下载中心：Modrinth 内容（模组 / 资源包 / 光影）。
+   */
+  searchAddons: (payload) => ipcRenderer.invoke('downloads:addon-search', payload || {}),
+
+  listAddonVersions: (payload) => ipcRenderer.invoke('downloads:addon-versions', payload || {}),
+
+  installAddon: (payload) => ipcRenderer.invoke('downloads:install-addon', payload || {}),
+
+  saveAddon: (payload) => ipcRenderer.invoke('downloads:save-addon', payload || {}),
+
+  onAddonProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('downloads:addon-progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /**
+   * 世界（存档）：列表 / level.dat 读写 / 导出 / 备份 / 数据包。
+   */
+  listWorlds: (payload) => ipcRenderer.invoke('worlds:list', payload || {}),
+
+  getWorldInfo: (payload) => ipcRenderer.invoke('worlds:info', payload || {}),
+
+  saveWorldInfo: (payload) => ipcRenderer.invoke('worlds:save-info', payload || {}),
+
+  deleteWorld: (payload) => ipcRenderer.invoke('worlds:delete', payload || {}),
+
+  duplicateWorld: (payload) => ipcRenderer.invoke('worlds:duplicate', payload || {}),
+
+  exportWorld: (payload) => ipcRenderer.invoke('worlds:export', payload || {}),
+
+  openWorldFolder: (payload) => ipcRenderer.invoke('worlds:open-folder', payload || {}),
+
+  listWorldBackups: (payload) => ipcRenderer.invoke('worlds:backups', payload || {}),
+
+  createWorldBackup: (payload) => ipcRenderer.invoke('worlds:backup-create', payload || {}),
+
+  restoreWorldBackup: (payload) => ipcRenderer.invoke('worlds:backup-restore', payload || {}),
+
+  deleteWorldBackup: (payload) => ipcRenderer.invoke('worlds:backup-delete', payload || {}),
+
+  openWorldBackupFolder: (payload) => ipcRenderer.invoke('worlds:open-backup-folder', payload || {}),
+
+  listDatapacks: (payload) => ipcRenderer.invoke('worlds:datapacks', payload || {}),
+
+  importDatapack: (payload) => ipcRenderer.invoke('worlds:import-datapack', payload || {}),
+
+  deleteDatapack: (payload) => ipcRenderer.invoke('worlds:delete-datapack', payload || {}),
+
+  /**
    * 真实启动：主进程按版本 JSON 拼 java 命令并拉起游戏。
    */
   launchGame: (payload) => ipcRenderer.invoke('launcher:launch', payload),
@@ -178,6 +251,14 @@ const launcherAPI = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
 
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+
+  /** 启动时读偏好（不触发 Java 扫描）。 */
+  getPreferences: () => ipcRenderer.invoke('settings:preferences'),
+
+  /**
+   * 关于页：版本、Electron / Node、数据目录、仓库地址。
+   */
+  getAppInfo: () => ipcRenderer.invoke('app:info'),
 
   /**
    * 渲染模式：{ mode: 'gpu'|'software', software, gpuFeatureStatus, crashMarker }

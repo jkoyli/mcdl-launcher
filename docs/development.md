@@ -22,9 +22,14 @@ electron/
 ├── version-manifest.js   # 版本 JSON 解析：inheritsFrom / rules / classpath / natives
 ├── launch.js             # 真实启动：命令拼接、natives 解压、进程拉起
 ├── accounts.js           # 离线 / 微软 / authlib-injector 账号、认证服务器、离线皮肤
+├── game-directories.js   # 用户添加的游戏文件夹
+├── instance-store.js     # 实例级设置 / 图标 / 内容目录与内容管理
+├── modrinth.js           # Modrinth 客户端：搜索、版本、必需前置、流式下载
+├── nbt.js                # 最小 NBT 读写（level.dat，全部 12 种 tag + gzip）
+├── worlds.js             # 世界列表 / level.dat 读写 / 导出 / 备份 / 数据包
 ├── renderer/
 │   ├── index.html        # 界面与样式（单文件内联 CSS）
-│   └── renderer.js       # 渲染逻辑：主视区、实例面板、账户面板 + 弹窗、设置面板
+│   └── renderer.js       # 渲染逻辑：主视区、实例面板、账户面板 + 弹窗、设置面板、下载中心
 └── package.json          # 启动脚本与 electron 依赖
 ```
 
@@ -196,6 +201,7 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `%APPDATA%\mcdl-launcher-electron\instance-icons.json` | 实例图标（内置 key 或自定义图片文件名） |
 | `%APPDATA%\mcdl-launcher-electron\icons\` | 自定义图标图片 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
+| `%APPDATA%\mcdl-launcher-electron\world-backups\<saves 哈希>\<世界>__<时间戳>.zip` | 世界备份 |
 | `%APPDATA%\mcdl-launcher-electron\gpu-crash.json` | 最近一次 GPU 崩溃记录（存在时下次启动走软件渲染） |
 | `<gameDir>\logs\mcdl-launcher-<时间戳>.log` | 每次启动的完整输出 |
 | `<gameDir>\logs\latest.log` | 游戏自身的日志 |
@@ -224,7 +230,17 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `instances:list` | renderer → main | 扫描实例（自身目录 + 已添加的游戏文件夹 + 已缓存的其他启动器） |
 | `instances:scan-other` | renderer → main | 主动扫描 PCL / HMCL 并写缓存 |
 | `versions:list` | renderer → main | 通过 `mcdl --list` 拉取版本列表 |
-| `instances:create` | renderer → main | 调用 `mcdl --install` 安装原版 |
+| `downloads:versions` | renderer → main | 下载中心的版本目录：`{ versions, latestRelease, latestSnapshot }`，`force` 绕过 10 分钟缓存 |
+| `downloads:pick-pack` | renderer → main | 选择整合包（`.zip` / `.mrpack`）并返回预览（条目数 / mod 数 / 前 60 个条目） |
+| `downloads:inspect-pack` | renderer → main | 按已知路径读取整合包预览 |
+| `downloads:install-pack` | renderer → main | 调用 `mcdl --install-pack` 安装整合包，返回实例 id + 新快照 |
+| `downloads:addon-search` | renderer → main | Modrinth 搜索：`{ kind, query, gameVersion, loader, sort, offset }` |
+| `downloads:addon-versions` | renderer → main | 某项目的版本列表，按游戏版本 / 加载器过滤 |
+| `downloads:install-addon` | renderer → main | 下载所选版本（可选必需前置）到实例内容目录 |
+| `downloads:save-addon` | renderer → main | 选一个文件夹，只下载到本地 |
+| `downloads:addon-progress` | main → renderer | 内容下载进度（单个文件 / 前置 N/M） |
+| `downloads:progress` | main → renderer | 整合包安装输出 / 进度 |
+| `instances:create` | renderer → main | 调用 `mcdl --install` / `--install-loader` 安装原版或加载器（`assets: false` 时加 `--no-assets`） |
 | `instances:install-progress` | main → renderer | 安装输出 / 进度 |
 | `instances:rename` | renderer → main | 重命名实例别名（写 `instance-display-names.json`） |
 | `instances:duplicate` | renderer → main | 复制实例目录为「… - 副本」 |
@@ -253,7 +269,17 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `accounts:set-skin-model` | renderer → main | 只切换经典 / 纤细模型 |
 | `accounts:clear-skin` | renderer → main | 删除皮肤文件 |
 | `accounts:skin-data` | renderer → main | 读取皮肤 PNG 的 data URL（预览） |
-| `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置 |
+| `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置（含下载源、隔离策略、动画开关） |
+| `settings:preferences` | renderer → main | 启动时只读偏好，不触发 Java 扫描（用于恢复「关闭动画」） |
+| `app:info` | renderer → main | 关于页：版本 / Electron / Node / 平台 / 数据目录 / 仓库地址 |
+| `worlds:list` / `worlds:info` | renderer → main | 世界列表（读 level.dat）/ 单个世界信息 |
+| `worlds:save-info` | renderer → main | 写入 level.dat（作弊 / 生成建筑 / 难度 / 锁定 / 模式） |
+| `worlds:delete` / `worlds:duplicate` | renderer → main | 删除 / 复制世界目录 |
+| `worlds:export` | renderer → main | 选保存路径后把世界目录打包成 zip |
+| `worlds:open-folder` | renderer → main | 打开世界目录 |
+| `worlds:backups` / `backup-create` / `backup-restore` / `backup-delete` | renderer → main | 世界备份的列表 / 创建 / 恢复 / 删除 |
+| `worlds:open-backup-folder` | renderer → main | 打开该存档目录的备份文件夹 |
+| `worlds:datapacks` / `import-datapack` / `delete-datapack` | renderer → main | 数据包列表 / 导入 / 删除 |
 | `shell:open-logs` | renderer → main | 打开应用日志目录 |
 
 主进程用 `assertAppWindow()` 校验调用方是否为当前应用窗口，其他来源的调用一律拒绝。
@@ -264,7 +290,7 @@ MCDL_USER_DATA（环境变量，最高优先）
 窗口（frame: false）
 ├── 标题栏  左：返回 / 刷新 / 关闭当前页 / 帮助（打开日志目录）
 │           右：最小化 / 最大化 / 关闭
-├── 侧边栏  账户 / 游戏 / 实例列表 / 下载中心（待接入，禁用） / 设置
+├── 侧边栏  账户 / 游戏 / 实例列表 / 下载中心 / 设置
 ├── 主视区  主视觉（版本名、3D 方块） + 更新日志区
 │           ├── 二级页面：实例列表  →  游戏目录管理 ／ 新建实例 ／ 实例操作弹窗
 │           ├── 二级页面：账户  →  5 个 L5 弹窗
@@ -318,10 +344,10 @@ MCDL_USER_DATA（环境变量，最高优先）
 | 页签 | key | 内容 |
 | --- | --- | --- |
 | 游戏设置 | `settings.game` | 实例级内存 / Java / 窗口宽高 / 额外 JVM 参数；留空 = 继承全局，占位符显示全局值 |
-| 自动安装 | `settings.tabs.installers` | Forge / NeoForge / Fabric / Quilt / LiteLoader / OptiFine 列表，「安装」全部禁用（mcdl 只装原版） |
+| 自动安装 | `settings.tabs.installers` | Forge / NeoForge / Fabric / Quilt 可安装（`loaders:list` + `instances:create`，实例目录为当前实例所在目录）；LiteLoader / OptiFine 仍为禁用占位 |
 | 模组管理 | `mods.manage` | 搜索、分页（每页 80 + 显示更多）、全选 / 多选、批量启用 / 批量禁用 / 批量删除、定位文件（资源管理器选中）、导入、刷新、打开文件夹；「检查更新」为禁用占位 |
 | 资源包 | `resourcepack.manage` | 搜索、分页、多选、批量删除、定位文件、导入、刷新、打开文件夹（启用状态需改 `options.txt`，未接入） |
-| 世界 | `world.manage` | 搜索、分页、多选、批量删除、定位文件、刷新、打开文件夹 |
+| 世界 | `world.manage` | 世界列表（图标 / 版本 / 模式 / 难度 / 大小 / 时间）＋管理页：世界信息（读写 level.dat）、备份管理、数据包管理 |
 | 原理图 | `schematics.manage` | 搜索、分页、多选、批量删除、定位文件、导入（schematic / schem / nbt / litematic）、刷新 |
 
 内容目录按「版本隔离」解析：`versions/<id>/<子目录>` 存在就用它（HMCL / PCL 装整合包的做法），
@@ -346,6 +372,99 @@ MCDL_USER_DATA（环境变量，最高优先）
 `instance-settings.json` 以版本目录为 key 存覆盖项（`memoryMb` / `width` / `height` / `jvmArgs` / `javaPath`）。
 启动、生成启动脚本、设置页都用 `effectiveSettings()` 合并：**实例覆盖 > 全局设置 > 自动探测**，
 Java 路径也按这个顺序挑（`resolveJavaRuntime({ javaPath })`）。
+
+### 下载中心（对照 [L2] 下载）
+
+侧边栏「下载」进入独立的二级页面（`stageDownload`）。布局沿用其他二级页：左侧大标题，右侧
+`download-body`（6 个页签 + 内容区）。页签与清单一一对应：`游戏` / `整合包` / `模组` / `资源包` /
+`光影` / `世界`。前两个走 `mcdl`，中间三个走 Modrinth；「世界」没有可用在线源，保留占位。
+
+**游戏页签**（对照 [L3] 游戏版本 与 [L4] 安装向导 · 可选文件）：
+
+| 控件 | control key | 行为 |
+| --- | --- | --- |
+| 版本卡片 | 运行时 | 打开「安装 · 可选文件」弹窗并带上该版本；已安装的版本卡标「已安装」 |
+| 最新正式版 / 最新快照 | 运行时 | 两张固定卡片，版本号取自 `mcdl --list` 的列表头 |
+| 搜索框 | `search` | 按版本号 / 日期过滤，最多渲染 240 张卡片 |
+| 版本类型 | — | 正式版 / 快照 / 远古版 / 全部 |
+| 刷新 | `button.refresh` | `downloads:versions { force: true }`，清掉 mcdl-service 的 10 分钟缓存 |
+| 加载器 / 加载器版本 | — | 选非 Vanilla 时用 `loaders:list` 拉取构建列表 |
+| 实例名称 | — | 留空按 `<版本> · <加载器>` 自动生成 |
+| 可选文件 · assets | — | 取消勾选时给 `--install` 加 `--no-assets`，只装版本与库 |
+| 安装 | `button.install` | `instances:create`；成功后关闭弹窗、刷新实例，并（默认）跳到实例列表 |
+
+安装期间弹窗不可关闭（Esc、取消、右上角 × 都被拦截），进度来自 `instances:install-progress`。
+
+**整合包页签**（对照 [L3] 整合包 与 [L4] 整合包类型选择）：
+
+| 控件 | control key | 行为 |
+| --- | --- | --- |
+| 本地整合包 / Modrinth / CurseForge | — | 只有「本地整合包」可用，另两个标待接入并禁用 |
+| 选择文件 | — | `downloads:pick-pack`：系统选择框 + 读 zip 中央目录做预览 |
+| 可选文件 | `modpack.optional_files` | 弹窗列出包内前 60 个条目（mcdl 会解压全部内容，这里只做预览） |
+| 安装 | `button.install` | `downloads:install-pack` → `mcdl --install-pack <file> --dir <游戏目录> [--name]` |
+
+zip 预览不依赖第三方库：`mcdl-service.js` 的 `readZipEntries()` 只读文件尾部的中央目录，
+条目名同时接受 `/` 与 `\`（Windows 打出来的 zip 用反斜杠），并识别 `modrinth.index.json` /
+`manifest.json`、`mods/`、`overrides/`。
+
+**内容页签**（对照 [L3] 内容列表 与 [L4] 内容下载页）：模组 / 资源包 / 光影共用同一套列表与弹窗，
+入口是 `electron/modrinth.js`。
+
+| 控件 | control key | 行为 |
+| --- | --- | --- |
+| 搜索 + 版本 / 加载器 / 排序 | `search` | `downloads:addon-search` → `GET /search`，facets 为 `project_type` + `versions` + `categories`；打开页签时用空关键词先拉热门 |
+| 结果卡片 | 运行时 | 图标、标题、作者、下载量、两行简介；点击打开「内容下载页」 |
+| 内容下载页 · 版本行 | 运行时 | `downloads:addon-versions` 按当前实例的 MC 版本 / 加载器过滤；没有匹配时回退成全部版本并提示 |
+| 内容下载页 · 必需前置 | — | 勾选时递归下载 `dependency_type=required` 的文件（深度 3、最多 8 个） |
+| 内容下载页 · 确定 | `button.ok` | `downloads:install-addon` → 下载到实例的内容目录（`mods` / `resourcepacks` / `shaderpacks`，按版本隔离规则解析） |
+| 内容下载页 · 下载到本地文件夹 | `mods.save_as` | 选目录后只下载，不写入实例 |
+| 内容下载页 · 取消 | `button.cancel` | 关闭弹窗（下载中禁止关闭） |
+
+目标实例取右侧控制台当前选中的实例；没选实例时「确定」禁用并提示。文件下载走主进程的
+`fetch` + 流式写盘，先写 `.part`、校验 SHA1 后改名，重名自动加 `(2)`。世界页签没有在线源：
+Modrinth 没有世界分类，CurseForge 需要 API Key。
+
+### 设置页（对照 [L2] 设置：6 个页签）
+
+`stageSettings` 右侧是 6 个页签：游戏设置 / Java 管理 / 通用 / 外观 / 下载 / 关于。页签状态记在
+`renderer.js` 的 `setSettingsTab()`，其余面板保持 `hidden`。所有设置项写 `launcher-settings.json`：
+
+| 键 | 默认 | 作用 |
+| --- | --- | --- |
+| `memoryMb` / `width` / `height` / `jvmArgs` / `javaPath` | — | 启动参数（原有字段，实例级可覆盖） |
+| `gameIsolation` | `auto` | 默认版本隔离策略：`auto`（按目录判断）/ `isolated` / `global`；`instance-store` 的 `contentRootFor()` 直接使用 |
+| `disableAprilFools` | `false` | 记录用；当前版本没有愚人节彩蛋 |
+| `language` | `zh-CN` | 目前只提供简体中文 |
+| `versionListSource` | `auto` | 版本列表的 `--source`：`auto` / `official` / `bmclapi` |
+| `downloadSource` | `auto` | 安装原版 / 加载器时的 `--source` |
+| `addonSource` | `modrinth` | 附加内容默认源；CurseForge 需要 API Key，选项禁用 |
+| `disableAnimations` | `false` | 给 `body` 加 `no-motion`，停掉过渡与极光层动画 |
+
+- 游戏设置页签保留表单 + 「保存设置」；其余页签的控件改完立即 `saveSettings`（`saveSettingsPatch()`）。
+- 下载源三项会分别进入 `mcdl --list`、`--install`、`--install-loader`、`--list-loaders`。
+- Java 管理页签列出 `settings:get` 扫描到的运行时，可指定固定 Java 或「重新扫描」；自动安装 / 恢复
+  Java 还没接入（按钮禁用并注明）。
+- 关于页签通过 `app:info` 显示版本、Electron / Chromium / Node、平台与数据目录，并提供项目主页 /
+  开源许可两个外链；用户协议入口未单独提供。
+
+### 世界管理（对照 [L4] 世界管理 与 [L4] 世界详情）
+
+实例详情的「世界」页签是独立实现，不再走通用内容列表：
+
+- **世界列表**：读 `<saves>/<世界>/level.dat`，显示世界名、版本、游戏模式、难度、大小、最后游玩时间和
+  `icon.png`；支持搜索、刷新、打开世界文件夹；每行「管理」进入世界管理，`⋯` 打开快捷菜单
+  （启动游戏 / 世界文件夹 / 导出 / 复制 / 删除）。
+- **世界管理**：3 个页签，与清单一致：
+  - `世界信息`：允许命令、生成建筑、难度、锁定难度、游戏模式 5 项，全部直接读写 `level.dat`
+    （覆盖前把原文件复制成 `level.dat_old`）；另有启动游戏、生成启动脚本、导出、复制、删除、
+    世界文件夹与 Chunkbase 地图（种子 / 要塞 / 下界要塞 / 末地城，带 `Data.RandomSeed`）。
+  - `备份管理`：把世界目录打成 zip 存到 `<userData>/world-backups/<saves 哈希>/`，可恢复 / 删除；
+    恢复会解压成「世界名 (恢复 时间)」，不覆盖原世界。
+  - `数据包管理`：列出世界 `datapacks/` 下的文件与文件夹，支持导入 zip / 删除 / 打开文件夹。
+- NBT 读写由 `electron/nbt.js` 完成：完整解析 12 种 tag（含 Long / IntArray / LongArray），
+  读出整棵树、改几个字段再原样写回，未知字段不会丢；写入用 gzip。
+- zip 不引入依赖：导出 / 备份用 Windows 自带的 `tar.exe`（bsdtar）`-a -c -f` 打包。
 
 ### 账户页（对照 `docs/history/ui-tree-controls.html` 的 [L2] 账户）
 
@@ -380,8 +499,8 @@ Java 路径也按这个顺序挑（`resolveJavaRuntime({ javaPath })`）。
 标题栏的 `-webkit-app-region: drag` 覆盖整条顶栏，窗口控制按钮位于 `no-drag` 区域；
 双击空白处切换最大化。
 
-侧边栏五项中，「账户」「实例列表」「设置」有对应面板；「下载中心」标为待接入并禁用；
-「游戏」回到主视区。
+侧边栏五项中，「账户」「实例列表」「下载」「设置」有对应面板；「游戏」回到主视区。下载中心从原
+「待接入并禁用」改为独立二级页面（见上文「下载中心」）。
 
 ## 渲染层约定
 
@@ -391,6 +510,14 @@ Java 路径也按这个顺序挑（`resolveJavaRuntime({ javaPath })`）。
 - 其他自定义事件：`launcher:navigate`、`launcher:instance-selected`、`launcher:instance-created`、
   `launcher:instance-action`。
 - 侧边栏项由 `data-nav` 标识，事件处理器集中在 `renderer.js` 末尾的委托监听中。
+
+## 外部网络请求
+
+- 启动器主动访问的外部服务只有两类：账号相关的微软 / Mojang 接口，以及 Modrinth 内容接口
+  （`electron/modrinth.js`）。
+- 所有请求都在主进程发出，渲染进程不直连；统一带 `User-Agent: mcdl-launcher/<版本>`，并有 20 秒超时。
+- 内容文件先写 `.part`，校验 SHA1 后再改名落盘；校验失败删除临时文件。
+- 下载请求不带账号令牌，令牌只在启动游戏与账号刷新时使用。
 
 ## 安全边界
 
@@ -415,13 +542,19 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 
 ## 后续方向
 
-- 模组加载器安装（Fabric / NeoForge / Forge / Quilt）：实例详情的「自动安装」页签已列出入口，
-  但全部禁用；`mcdl` 目前只处理原版文件。
-- 下载中心面板与新闻区：目前为占位（下载入口与「前往下载页面」已标为待接入并禁用）。
+- 下载中心的「世界」页签：Modrinth 没有世界分类，CurseForge 需要 API Key；目前只能在世界管理里导入本地存档。
+- 内容下载的依赖解析只处理 `required` 且深度 3 以内，嵌套可选依赖与版本锁定策略还没做。
+- 整合包来源：Modrinth / CurseForge 在线浏览与一键安装（`mcdl --install-pack` 已支持本地文件）。
+- 新闻区：主视区的更新日志仍是占位内容。
 - 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
 - 导出整合包（`modpack.export`）：实例菜单里已放出入口但禁用，需要整理 `mods/config/saves` 的打包逻辑。
 - 模组「检查更新」：按钮已占位并禁用，需要模组来源（Modrinth / CurseForge）与版本比对。
 - 资源包启用 / 禁用：要读写 `options.txt` 的 `resourcePacks`，未做。
-- 世界详情（`world.info.*`：作弊 / 结构 / 难度 / 模式）：需要解析 `level.dat`，暂未做。
+- 世界的「进入世界」直启（`--quickPlaySingleplayer`）、数据包启用 / 禁用（`level.dat` 的 DataPacks）
+  与新建世界未做。
+- 设置页的外观页签：主题包 / 主题模式 / 色彩模式 / 背景 / 标题栏透明 / 窗口透明 / 抗锯齿仍未接入，
+  目前只有「关闭动画」与深色一套外观。
+- Java 管理的自动安装 / 恢复 Java 未接入，需要 Adoptium 之类的下载与运行时注册流程。
+- 设置页的「预设」「版本隔离（按实例覆盖）」仍未做。
 - 内容更新（`instance.update`）与清理项（`instance.manage.remove_assets` / `clean` 等）：未做。
 - Java 扫描首次约 15 秒（`mcdl --list-java` + 逐个探测）；已有 24 小时磁盘缓存，可再做后台预热。

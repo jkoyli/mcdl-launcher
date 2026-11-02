@@ -1172,7 +1172,8 @@
     create: 'stageCreate',
     gamedir: 'stageGameDir',
     account: 'stageAccount',
-    settings: 'stageSettings'
+    settings: 'stageSettings',
+    download: 'stageDownload'
   };
   var PANEL_STATES = {
     instances: 'is-instances',
@@ -1180,7 +1181,8 @@
     create: 'is-create',
     gamedir: 'is-gamedir',
     account: 'is-account',
-    settings: 'is-settings'
+    settings: 'is-settings',
+    download: 'is-download'
   };
   var activePanel = null;
 
@@ -1250,6 +1252,7 @@
     options = options || {};
     if (!activePanel) return;
     if (activePanel === 'create' && installInProgress) return;
+    if (activePanel === 'download' && (installBusy || packBusy)) return;
 
     // 游戏目录页是从实例列表进来的，返回时回到列表而不是主视区。
     // 游戏目录页 / 实例详情页都是从实例列表进来的，返回时回到列表。
@@ -1489,6 +1492,9 @@
     if (isRailButton && target === 'instances') {
       closeActivePanel({ focus: false });
       openInstancesPanel();
+    } else if (isRailButton && target === 'download') {
+      closeActivePanel({ focus: false });
+      openDownloadPanel();
     } else if (isRailButton && (target === 'account' || target === 'settings')) {
       closeActivePanel({ focus: false });
       openOverlayPanel(target);
@@ -1529,13 +1535,34 @@
   var settingsWidth = document.getElementById('settingsWidth');
   var settingsHeight = document.getElementById('settingsHeight');
   var settingsJvmArgs = document.getElementById('settingsJvmArgs');
+  var settingsIsolation = document.getElementById('settingsIsolation');
   var settingsStatus = document.getElementById('settingsStatus');
   var settingsSubmit = document.getElementById('settingsSubmit');
+
+  var settingsJavaCount = document.getElementById('settingsJavaCount');
+  var settingsJavaScan = document.getElementById('settingsJavaScan');
+  var settingsJavaInstall = document.getElementById('settingsJavaInstall');
+  var settingsJavaStatus = document.getElementById('settingsJavaStatus');
+  var settingsLanguage = document.getElementById('settingsLanguage');
+  var settingsAprilFools = document.getElementById('settingsAprilFools');
+  var settingsOpenLogs = document.getElementById('settingsOpenLogs');
+  var settingsGeneralStatus = document.getElementById('settingsGeneralStatus');
+  var settingsDisableAnimations = document.getElementById('settingsDisableAnimations');
+  var settingsVersionSource = document.getElementById('settingsVersionSource');
+  var settingsDownloadSource = document.getElementById('settingsDownloadSource');
+  var settingsAddonSource = document.getElementById('settingsAddonSource');
+  var settingsDownloadStatus = document.getElementById('settingsDownloadStatus');
+  var settingsAboutVersion = document.getElementById('settingsAboutVersion');
+  var settingsAboutMeta = document.getElementById('settingsAboutMeta');
+  var settingsOpenRepo = document.getElementById('settingsOpenRepo');
+  var settingsOpenLicense = document.getElementById('settingsOpenLicense');
 
   var ACCOUNTS = [];
   var SERVERS = [];
   var selectedAccountId = null;
   var settingsLoaded = false;
+  var settingsCache = null;
+  var settingsTab = 'game';
 
   /** 提示行：tone = 'error' | 'ok' | 省略 */
   function setHint(node, text, tone) {
@@ -1624,7 +1651,10 @@
     skin: document.getElementById('dlgSkin'),
     confirm: document.getElementById('dlgConfirm'),
     instance: document.getElementById('dlgInstance'),
-    icon: document.getElementById('dlgIcon')
+    icon: document.getElementById('dlgIcon'),
+    install: document.getElementById('dlgInstall'),
+    packFiles: document.getElementById('dlgPackFiles'),
+    addon: document.getElementById('dlgAddon')
   };
   var openDialogName = null;
   var dialogReturnFocus = null;
@@ -1657,6 +1687,9 @@
 
   function closeDialog() {
     if (!openDialogName) return;
+    // 安装 / 解压期间不允许把弹窗关掉，避免状态错乱。
+    if (openDialogName === 'install' && installBusy) return;
+    if (openDialogName === 'addon' && addonDialog.busy) return;
 
     var pane = DIALOGS[openDialogName];
     if (pane) {
@@ -2723,6 +2756,34 @@
     settingsJava.value = currentPath || '';
   }
 
+  function applyAnimationPreference(settings) {
+    var disabled = Boolean(settings && settings.disableAnimations);
+    document.body.classList.toggle('no-motion', disabled);
+  }
+
+  function fillSettingsFields(settings, runtimes) {
+    settings = settings || {};
+    if (settingsMemory) settingsMemory.value = settings.memoryMb || '';
+    if (settingsWidth) settingsWidth.value = settings.width || '';
+    if (settingsHeight) settingsHeight.value = settings.height || '';
+    if (settingsJvmArgs) settingsJvmArgs.value = settings.jvmArgs || '';
+    if (settingsIsolation) settingsIsolation.value = settings.gameIsolation || 'auto';
+    fillJavaOptions(runtimes, settings.javaPath || '');
+
+    if (settingsAprilFools) settingsAprilFools.checked = Boolean(settings.disableAprilFools);
+    if (settingsDisableAnimations) settingsDisableAnimations.checked = Boolean(settings.disableAnimations);
+    if (settingsLanguage) settingsLanguage.value = settings.language || 'zh-CN';
+
+    if (settingsVersionSource) settingsVersionSource.value = settings.versionListSource || 'auto';
+    if (settingsDownloadSource) settingsDownloadSource.value = settings.downloadSource || 'auto';
+    if (settingsAddonSource) settingsAddonSource.value = settings.addonSource || 'modrinth';
+
+    if (settingsJavaCount) {
+      settingsJavaCount.textContent = (runtimes ? runtimes.length : 0) + ' 个';
+    }
+    applyAnimationPreference(settings);
+  }
+
   function loadSettings() {
     var api = window.launcherAPI;
     if (!api || typeof api.getSettings !== 'function') return;
@@ -2734,17 +2795,18 @@
 
     api.getSettings()
       .then(function (data) {
-        var settings = (data && data.settings) || {};
-        if (settingsMemory) settingsMemory.value = settings.memoryMb || '';
-        if (settingsWidth) settingsWidth.value = settings.width || '';
-        if (settingsHeight) settingsHeight.value = settings.height || '';
-        if (settingsJvmArgs) settingsJvmArgs.value = settings.jvmArgs || '';
-        fillJavaOptions(data && data.javaRuntimes, settings.javaPath || '');
+        settingsCache = (data && data.settings) || {};
+        fillSettingsFields(settingsCache, data && data.javaRuntimes);
 
         var count = data && data.javaRuntimes ? data.javaRuntimes.length : 0;
         if (settingsStatus) {
           settingsStatus.textContent = '检测到 ' + count + ' 个 Java 运行时 · 默认内存 ' +
             ((data && data.defaultMemoryMb) || '-') + ' MB';
+        }
+        if (settingsJavaStatus) {
+          settingsJavaStatus.textContent = count
+            ? '已扫描到 ' + count + ' 个运行时'
+            : '没有扫描到 Java，可以手动安装后重新扫描';
         }
         settingsLoaded = true;
       })
@@ -2754,6 +2816,155 @@
           settingsStatus.classList.add('is-error');
         }
       });
+  }
+
+  /** 其它页签的控件没有保存按钮：改完立刻写盘。 */
+  function saveSettingsPatch(patch, statusNode) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.saveSettings !== 'function') {
+      setHint(statusNode, '主进程桥接不可用', 'error');
+      return Promise.resolve(null);
+    }
+
+    setHint(statusNode, '正在保存…');
+    return api.saveSettings(patch)
+      .then(function (saved) {
+        settingsCache = saved;
+        applyAnimationPreference(saved);
+        setHint(statusNode, '已保存', 'ok');
+        return saved;
+      })
+      .catch(function (error) {
+        setHint(statusNode, describeLaunchError(error), 'error');
+        return null;
+      });
+  }
+
+  function setSettingsTab(tab) {
+    settingsTab = tab || 'game';
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-settings-tab]'), function (button) {
+      var active = button.getAttribute('data-settings-tab') === settingsTab;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-settings-pane]'), function (pane) {
+      var active = pane.getAttribute('data-settings-pane') === settingsTab;
+      if (active) {
+        pane.removeAttribute('hidden');
+      } else {
+        pane.setAttribute('hidden', '');
+      }
+    });
+  }
+
+  function loadAppInfo() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getAppInfo !== 'function') return;
+
+    api.getAppInfo()
+      .then(function (info) {
+        if (!info) return;
+        if (settingsAboutVersion) settingsAboutVersion.textContent = 'MCDL Launcher ' + info.version;
+        if (settingsAboutMeta) {
+          settingsAboutMeta.textContent = [
+            'Electron ' + info.electron + ' · Chromium ' + info.chrome + ' · Node ' + info.node,
+            '平台 ' + info.platform,
+            '数据目录 ' + info.userData,
+            '游戏目录 ' + info.gameDir
+          ].join('\n');
+        }
+      })
+      .catch(function (error) {
+        console.warn('[settings] could not load app info:', error);
+        if (settingsAboutMeta) settingsAboutMeta.textContent = '读取版本信息失败';
+      });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-settings-tab]'), function (button) {
+    button.addEventListener('click', function () {
+      setSettingsTab(button.getAttribute('data-settings-tab'));
+      if (button.getAttribute('data-settings-tab') === 'about' && settingsAboutVersion &&
+          settingsAboutVersion.textContent === 'MCDL Launcher') {
+        loadAppInfo();
+      }
+    });
+  });
+
+  if (settingsJava) {
+    settingsJava.addEventListener('change', function () {
+      saveSettingsPatch({ javaPath: settingsJava.value }, settingsJavaStatus);
+    });
+  }
+
+  if (settingsJavaScan) {
+    settingsJavaScan.addEventListener('click', function () {
+      settingsLoaded = false;
+      setHint(settingsJavaStatus, '正在重新扫描…');
+      loadSettings();
+    });
+  }
+
+  if (settingsAprilFools) {
+    settingsAprilFools.addEventListener('change', function () {
+      saveSettingsPatch({ disableAprilFools: settingsAprilFools.checked }, settingsGeneralStatus);
+    });
+  }
+
+  if (settingsOpenLogs) {
+    settingsOpenLogs.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openLogFolder !== 'function') {
+        setHint(settingsGeneralStatus, '主进程桥接不可用', 'error');
+        return;
+      }
+      api.openLogFolder()
+        .then(function () {
+          setHint(settingsGeneralStatus, '已打开日志文件夹', 'ok');
+        })
+        .catch(function (error) {
+          setHint(settingsGeneralStatus, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (settingsDisableAnimations) {
+    settingsDisableAnimations.addEventListener('change', function () {
+      document.body.classList.toggle('no-motion', settingsDisableAnimations.checked);
+      saveSettingsPatch({ disableAnimations: settingsDisableAnimations.checked }, null);
+    });
+  }
+
+  [
+    [settingsVersionSource, 'versionListSource'],
+    [settingsDownloadSource, 'downloadSource'],
+    [settingsAddonSource, 'addonSource']
+  ].forEach(function (pair) {
+    if (!pair[0]) return;
+    pair[0].addEventListener('change', function () {
+      var patch = {};
+      patch[pair[1]] = pair[0].value;
+      saveSettingsPatch(patch, settingsDownloadStatus);
+    });
+  });
+
+  if (settingsOpenRepo) {
+    settingsOpenRepo.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (api && typeof api.openExternal === 'function') {
+        api.openExternal('https://github.com/jkoyli/mcdl-launcher');
+      }
+    });
+  }
+
+  if (settingsOpenLicense) {
+    settingsOpenLicense.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (api && typeof api.openExternal === 'function') {
+        api.openExternal('https://github.com/jkoyli/mcdl-launcher/blob/main/LICENSE');
+      }
+    });
   }
 
   if (settingsForm) {
@@ -2772,9 +2983,10 @@
         width: settingsWidth ? settingsWidth.value : '',
         height: settingsHeight ? settingsHeight.value : '',
         jvmArgs: settingsJvmArgs ? settingsJvmArgs.value : '',
-        javaPath: settingsJava ? settingsJava.value : ''
+        gameIsolation: settingsIsolation ? settingsIsolation.value : 'auto'
       })
         .then(function (saved) {
+          settingsCache = saved;
           if (settingsMemory) settingsMemory.value = saved.memoryMb;
           if (settingsWidth) settingsWidth.value = saved.width;
           if (settingsHeight) settingsHeight.value = saved.height;
@@ -2814,6 +3026,7 @@
         if (firstEntry) firstEntry.focus();
       }, 240);
     } else {
+      setSettingsTab(settingsTab);
       loadSettings();
     }
   }
@@ -2821,6 +3034,7 @@
   /** 「全局游戏设置」= 一次跳转，落到设置页的游戏设置区。 */
   function openGlobalGameSettings() {
     openOverlayPanel('settings');
+    setSettingsTab('game');
     window.setTimeout(function () {
       var form = document.getElementById('settingsForm');
       if (!form) return;
@@ -3701,6 +3915,11 @@
       return;
     }
 
+    if (tab === 'worlds') {
+      openWorldList();
+      return;
+    }
+
     var kind = TAB_CONTENT_KIND[tab];
     if (kind) loadInstanceContent(kind);
   }
@@ -4490,6 +4709,917 @@
     });
   }
 
+  // ---------------------------------------------------------
+  // 世界（存档）管理：列表 / 世界信息 / 备份 / 数据包
+  // 对照 [L4] 世界管理（3 页签）与 [L4] 世界详情（level.dat）
+  // ---------------------------------------------------------
+  var WORLD_GAME_TYPES = ['生存', '创造', '冒险', '旁观'];
+  var WORLD_DIFFICULTIES = ['和平', '简单', '普通', '困难'];
+
+  var worldState = {
+    loadedFor: '',
+    list: [],
+    query: '',
+    view: 'list',
+    folder: '',
+    info: null,
+    tab: 'info',
+    busy: false
+  };
+  var openWorldMenuFolder = null;
+
+  var worldPanel = document.getElementById('worldPanel');
+  var worldSearch = document.getElementById('worldSearch');
+  var worldRefresh = document.getElementById('worldRefresh');
+  var worldCount = document.getElementById('worldCount');
+  var worldList = document.getElementById('worldList');
+  var worldRootEl = document.getElementById('worldRoot');
+  var worldStatus = document.getElementById('worldStatus');
+  var worldOpenFolder = document.getElementById('worldOpenFolder');
+  var worldChunkbase = document.getElementById('worldChunkbase');
+  var worldManageBack = document.getElementById('worldManageBack');
+  var worldManageName = document.getElementById('worldManageName');
+  var worldManageStatus = document.getElementById('worldManageStatus');
+  var worldInfoNote = document.getElementById('worldInfoNote');
+  var worldCheats = document.getElementById('worldCheats');
+  var worldFeatures = document.getElementById('worldFeatures');
+  var worldDifficulty = document.getElementById('worldDifficulty');
+  var worldLock = document.getElementById('worldLock');
+  var worldGameMode = document.getElementById('worldGameMode');
+  var worldLaunch = document.getElementById('worldLaunch');
+  var worldScript = document.getElementById('worldScript');
+  var worldExport = document.getElementById('worldExport');
+  var worldDuplicate = document.getElementById('worldDuplicate');
+  var worldDelete = document.getElementById('worldDelete');
+  var worldManageFolder = document.getElementById('worldManageFolder');
+  var worldManageChunkbase = document.getElementById('worldManageChunkbase');
+  var worldBackupList = document.getElementById('worldBackupList');
+  var worldDatapackList = document.getElementById('worldDatapackList');
+
+  function setWorldStatus(text, tone) {
+    setHint(worldStatus, text, tone);
+  }
+
+  function setWorldManageStatus(text, tone) {
+    setHint(worldManageStatus, text, tone);
+  }
+
+  function worldApi() {
+    return window.launcherAPI || null;
+  }
+
+  function worldInstance() {
+    return detailInstance();
+  }
+
+  function formatWorldDate(value) {
+    if (!value) return '—';
+    var date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+  }
+
+  function syncWorldView() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-world-view]'), function (view) {
+      var active = view.getAttribute('data-world-view') === worldState.view;
+      if (active) view.removeAttribute('hidden');
+      else view.setAttribute('hidden', '');
+    });
+  }
+
+  function setWorldTab(tab) {
+    worldState.tab = tab || 'info';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-world-tab]'), function (button) {
+      var active = button.getAttribute('data-world-tab') === worldState.tab;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-world-panel]'), function (panel) {
+      var active = panel.getAttribute('data-world-panel') === worldState.tab;
+      if (active) panel.removeAttribute('hidden');
+      else panel.setAttribute('hidden', '');
+    });
+
+    if (worldState.tab === 'backup') loadWorldBackups();
+    if (worldState.tab === 'datapack') loadWorldDatapacks();
+  }
+
+  function renderWorldEmpty(text) {
+    if (!worldList) return;
+    worldList.innerHTML = '';
+    var empty = document.createElement('div');
+    empty.className = 'content-empty';
+    empty.textContent = text;
+    worldList.appendChild(empty);
+  }
+
+  function renderWorldList() {
+    if (!worldList) return;
+    worldList.innerHTML = '';
+
+    var query = worldState.query.trim().toLowerCase();
+    var worlds = worldState.list.filter(function (world) {
+      if (!query) return true;
+      return String(world.levelName || '').toLowerCase().indexOf(query) >= 0
+        || String(world.folder || '').toLowerCase().indexOf(query) >= 0;
+    });
+
+    if (worlds.length === 0) {
+      renderWorldEmpty(worldState.list.length === 0 ? '这个实例还没有世界。' : '没有匹配的世界。');
+      if (worldCount) worldCount.textContent = String(worldState.list.length);
+      return;
+    }
+
+    var fragment = document.createDocumentFragment();
+    worlds.forEach(function (world) {
+      var row = document.createElement('div');
+      row.className = 'content-row world-row';
+      row.setAttribute('data-world-folder', world.folder);
+      row.setAttribute('role', 'listitem');
+
+      var icon = document.createElement('span');
+      icon.className = 'world-row__icon';
+      if (world.iconDataUrl) {
+        var img = document.createElement('img');
+        img.src = world.iconDataUrl;
+        img.alt = '';
+        icon.appendChild(img);
+      } else {
+        icon.textContent = 'WORLD';
+      }
+
+      var main = document.createElement('span');
+      main.className = 'content-row__main';
+
+      var name = document.createElement('span');
+      name.className = 'content-row__name';
+      name.textContent = world.levelName || world.folder;
+
+      var meta = document.createElement('span');
+      meta.className = 'content-row__meta';
+      var mode = WORLD_GAME_TYPES[world.gameType] || '未知';
+      var difficulty = WORLD_DIFFICULTIES[world.difficulty] || '未知';
+      meta.textContent = [
+        world.versionName || '未知版本',
+        mode,
+        difficulty,
+        (world.size / (1024 * 1024)).toFixed(1) + ' MB',
+        formatWorldDate(world.lastPlayed),
+        world.hasLevelDat ? '' : '缺少 level.dat'
+      ].filter(Boolean).join(' · ');
+
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var actions = document.createElement('span');
+      actions.className = 'world-row__actions';
+
+      var manage = document.createElement('button');
+      manage.type = 'button';
+      manage.className = 'dialog-btn';
+      manage.textContent = '管理';
+      manage.setAttribute('data-world-open', world.folder);
+
+      var menu = document.createElement('button');
+      menu.type = 'button';
+      menu.className = 'dialog-btn';
+      menu.textContent = '⋯';
+      menu.setAttribute('data-world-menu', world.folder);
+      menu.setAttribute('aria-label', '世界操作');
+
+      actions.appendChild(manage);
+      actions.appendChild(menu);
+
+      row.appendChild(icon);
+      row.appendChild(main);
+      row.appendChild(actions);
+      fragment.appendChild(row);
+    });
+
+    worldList.appendChild(fragment);
+    if (worldCount) worldCount.textContent = String(worlds.length);
+  }
+
+  function loadWorlds() {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.listWorlds !== 'function' || !instance) return;
+
+    setWorldStatus('正在读取世界…');
+    api.listWorlds({ instanceId: instance.id })
+      .then(function (data) {
+        worldState.list = (data && data.worlds) || [];
+        worldState.loadedFor = instance.id;
+        if (worldRootEl) worldRootEl.textContent = data && data.root ? data.root : '';
+        renderWorldList();
+        setWorldStatus(worldState.list.length
+          ? '共 ' + worldState.list.length + ' 个世界 · 点击行进入管理'
+          : '还没有世界，进入游戏创建后刷新', worldState.list.length ? 'ok' : '');
+      })
+      .catch(function (error) {
+        console.error('[worlds] list failed:', error);
+        worldState.list = [];
+        renderWorldEmpty('读取世界列表失败');
+        setWorldStatus('读取世界失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function openWorldList() {
+    worldState.view = 'list';
+    worldState.folder = '';
+    worldState.info = null;
+    syncWorldView();
+    loadWorlds();
+  }
+
+  function findWorld(folder) {
+    return worldState.list.filter(function (world) { return world.folder === folder; })[0] || null;
+  }
+
+  function applyWorldInfo(info) {
+    worldState.info = info;
+    if (worldManageName) worldManageName.textContent = (info.levelName || info.folder)
+      + (info.versionName ? ' · ' + info.versionName : '');
+
+    if (worldCheats) worldCheats.setAttribute('aria-checked', info.allowCommands ? 'true' : 'false');
+    if (worldFeatures) worldFeatures.setAttribute('aria-checked', info.generateFeatures ? 'true' : 'false');
+    if (worldDifficulty) worldDifficulty.value = String(info.difficulty);
+    if (worldLock) worldLock.setAttribute('aria-checked', info.difficultyLocked ? 'true' : 'false');
+    if (worldGameMode) worldGameMode.value = String(info.gameType);
+
+    var disabled = !info.hasLevelDat;
+    [worldCheats, worldFeatures, worldDifficulty, worldLock, worldGameMode].forEach(function (node) {
+      if (node) node.disabled = disabled;
+    });
+
+    if (worldInfoNote) {
+      worldInfoNote.textContent = disabled
+        ? '这个目录里没有 level.dat，无法读写世界设置。'
+        : '种子 ' + (info.seed || '未知') + ' · 改动会直接写入 level.dat，覆盖前保留 level.dat_old。';
+    }
+    if (worldChunkbase) worldChunkbase.disabled = !info.seed;
+  }
+
+  function openWorldManage(folder) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.getWorldInfo !== 'function' || !instance) return;
+
+    worldState.view = 'manage';
+    worldState.folder = folder;
+    worldState.info = null;
+    syncWorldView();
+    setWorldTab('info');
+    if (worldManageName) worldManageName.textContent = folder;
+    setWorldManageStatus('正在读取 level.dat…');
+
+    api.getWorldInfo({ instanceId: instance.id, folder: folder })
+      .then(function (info) {
+        applyWorldInfo(info);
+        setWorldManageStatus(info.readError
+          ? 'level.dat 读取失败：' + info.readError
+          : '已读取世界信息', info.readError ? 'error' : 'ok');
+      })
+      .catch(function (error) {
+        console.error('[worlds] info failed:', error);
+        setWorldManageStatus('读取世界信息失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function saveWorldPatch(patch) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.saveWorldInfo !== 'function' || !instance || !worldState.folder) return;
+
+    if (worldState.busy) return;
+    worldState.busy = true;
+    setWorldManageStatus('正在写入 level.dat…');
+
+    api.saveWorldInfo({ instanceId: instance.id, folder: worldState.folder, patch: patch })
+      .then(function (info) {
+        worldState.busy = false;
+        applyWorldInfo(info);
+        var index = worldState.list.findIndex(function (world) { return world.folder === info.folder; });
+        if (index >= 0) worldState.list[index] = info;
+        renderWorldList();
+        setWorldManageStatus('已写入 level.dat', 'ok');
+      })
+      .catch(function (error) {
+        worldState.busy = false;
+        console.error('[worlds] save failed:', error);
+        setWorldManageStatus('写入失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function chunkbaseUrl(app, seed) {
+    var base = 'https://www.chunkbase.com/apps/' + app + '#seed=' + encodeURIComponent(seed) + '&platform=java';
+    return base;
+  }
+
+  function openChunkbaseMenu(anchor) {
+    var api = worldApi();
+    var info = worldState.info;
+    var seed = info && info.seed ? info.seed : '';
+    if (!api || typeof api.openExternal !== 'function' || !seed || !anchor) return;
+
+    closeWorldMenu();
+    var menu = document.createElement('div');
+    menu.className = 'account-menu ctx-menu world-menu';
+    menu.setAttribute('role', 'menu');
+
+    [
+      { app: 'seed-map', label: '种子地图' },
+      { app: 'stronghold-finder', label: '要塞地图' },
+      { app: 'nether-fortress-finder', label: '下界要塞地图' },
+      { app: 'end-city-finder', label: '末地城地图' }
+    ].forEach(function (item) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('data-world-map', item.app);
+      button.textContent = item.label;
+      menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+    var rect = anchor.getBoundingClientRect();
+    var menuRect = menu.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuRect.height - 6);
+    }
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.left = Math.round(Math.min(rect.left, window.innerWidth - menuRect.width - 12)) + 'px';
+    var first = menu.querySelector('button');
+    if (first) first.focus();
+  }
+
+  function closeWorldMenu() {
+    var menu = document.querySelector('.world-menu');
+    if (menu) menu.remove();
+    openWorldMenuFolder = null;
+  }
+
+  function openWorldMenu(folder, anchor) {
+    closeWorldMenu();
+    closeInstanceMenu();
+    closeAccountMenu();
+
+    var api = worldApi();
+    if (!api || !anchor) return;
+
+    openWorldMenuFolder = folder;
+    var menu = document.createElement('div');
+    menu.className = 'account-menu ctx-menu world-menu';
+    menu.setAttribute('role', 'menu');
+
+    [
+      { action: 'launch', label: '启动游戏' },
+      { action: 'folder', label: '世界文件夹' },
+      { action: 'export', label: '导出此世界' },
+      { action: 'duplicate', label: '复制此世界' },
+      { action: 'delete', label: '删除此世界', danger: true }
+    ].forEach(function (item) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('data-world-action', item.action);
+      button.textContent = item.label;
+      if (item.danger) button.classList.add('is-danger');
+      menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+    var rect = anchor.getBoundingClientRect();
+    var menuRect = menu.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuRect.height - 6);
+    }
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.left = Math.round(Math.min(rect.right - menuRect.width, window.innerWidth - menuRect.width - 12)) + 'px';
+    var first = menu.querySelector('button');
+    if (first) first.focus();
+  }
+
+  function exportWorld(folder) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.exportWorld !== 'function' || !instance) return;
+    setWorldManageStatus('正在导出压缩包…');
+    api.exportWorld({ instanceId: instance.id, folder: folder })
+      .then(function (result) {
+        if (!result) {
+          setWorldManageStatus('已取消导出');
+          return;
+        }
+        setWorldManageStatus('已导出：' + result.file, 'ok');
+      })
+      .catch(function (error) {
+        console.error('[worlds] export failed:', error);
+        setWorldManageStatus('导出失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function duplicateWorld(folder) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.duplicateWorld !== 'function' || !instance) return;
+    setWorldManageStatus('正在复制世界…');
+    api.duplicateWorld({ instanceId: instance.id, folder: folder })
+      .then(function (result) {
+        setWorldManageStatus('已复制为「' + (result && result.folder) + '」', 'ok');
+        loadWorlds();
+      })
+      .catch(function (error) {
+        console.error('[worlds] duplicate failed:', error);
+        setWorldManageStatus('复制失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function deleteWorld(folder) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.deleteWorld !== 'function' || !instance) return;
+
+    askConfirm('删除世界「' + folder + '」？世界目录会从磁盘删除，不能撤销。', function () {
+      api.deleteWorld({ instanceId: instance.id, folder: folder })
+        .then(function (data) {
+          worldState.view = 'list';
+          worldState.folder = '';
+          syncWorldView();
+          worldState.list = (data && data.worlds) || [];
+          renderWorldList();
+          setWorldStatus('已删除世界：' + folder, 'ok');
+        })
+        .catch(function (error) {
+          console.error('[worlds] delete failed:', error);
+          setWorldStatus('删除失败：' + describeLaunchError(error), 'error');
+        });
+    }, '删除');
+  }
+
+  function openWorldFolder(folder) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.openWorldFolder !== 'function' || !instance) return;
+    api.openWorldFolder({ instanceId: instance.id, folder: folder })
+      .then(function (result) {
+        setWorldManageStatus('已请求打开：' + (result && result.path ? result.path : folder), 'ok');
+      })
+      .catch(function (error) {
+        setWorldManageStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function loadWorldBackups() {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.listWorldBackups !== 'function' || !instance) return;
+    if (!worldBackupList) return;
+
+    api.listWorldBackups({ instanceId: instance.id })
+      .then(function (data) {
+        renderWorldBackups((data && data.backups) || []);
+      })
+      .catch(function (error) {
+        console.error('[worlds] backups failed:', error);
+        worldBackupList.innerHTML = '';
+        var empty = document.createElement('div');
+        empty.className = 'content-empty';
+        empty.textContent = '读取备份失败：' + describeLaunchError(error);
+        worldBackupList.appendChild(empty);
+      });
+  }
+
+  function renderWorldBackups(backups) {
+    if (!worldBackupList) return;
+    worldBackupList.innerHTML = '';
+
+    if (backups.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'content-empty';
+      empty.textContent = '还没有备份。点「创建备份」把当前世界打包成 zip。';
+      worldBackupList.appendChild(empty);
+      return;
+    }
+
+    var fragment = document.createDocumentFragment();
+    backups.forEach(function (backup) {
+      var row = document.createElement('div');
+      row.className = 'content-row';
+
+      var main = document.createElement('span');
+      main.className = 'content-row__main';
+      var name = document.createElement('span');
+      name.className = 'content-row__name';
+      name.textContent = backup.folder + ' · ' + (backup.at || formatWorldDate(backup.mtime));
+      var meta = document.createElement('span');
+      meta.className = 'content-row__meta';
+      meta.textContent = (backup.size / (1024 * 1024)).toFixed(1) + ' MB · '
+        + formatWorldDate(backup.mtime);
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var actions = document.createElement('span');
+      actions.className = 'content-row__actions';
+
+      var restore = document.createElement('button');
+      restore.type = 'button';
+      restore.className = 'dialog-btn';
+      restore.textContent = '恢复';
+      restore.setAttribute('data-world-backup-restore', backup.file);
+
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'dialog-btn is-danger';
+      remove.textContent = '删除';
+      remove.setAttribute('data-world-backup-delete', backup.file);
+
+      actions.appendChild(restore);
+      actions.appendChild(remove);
+      row.appendChild(main);
+      row.appendChild(actions);
+      fragment.appendChild(row);
+    });
+
+    worldBackupList.appendChild(fragment);
+  }
+
+  function createWorldBackup() {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.createWorldBackup !== 'function' || !instance) return;
+    setWorldManageStatus('正在创建备份…');
+    api.createWorldBackup({ instanceId: instance.id, folder: worldState.folder })
+      .then(function (data) {
+        renderWorldBackups((data && data.backups) || []);
+        setWorldManageStatus('已创建备份', 'ok');
+      })
+      .catch(function (error) {
+        console.error('[worlds] backup failed:', error);
+        setWorldManageStatus('创建备份失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function restoreWorldBackup(file) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.restoreWorldBackup !== 'function' || !instance) return;
+    setWorldManageStatus('正在恢复备份…');
+    api.restoreWorldBackup({ instanceId: instance.id, file: file })
+      .then(function (result) {
+        setWorldManageStatus('已恢复为「' + (result && result.folder) + '」', 'ok');
+        loadWorlds();
+      })
+      .catch(function (error) {
+        console.error('[worlds] restore failed:', error);
+        setWorldManageStatus('恢复失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function deleteWorldBackup(file) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.deleteWorldBackup !== 'function' || !instance) return;
+    api.deleteWorldBackup({ instanceId: instance.id, file: file })
+      .then(function (data) {
+        renderWorldBackups((data && data.backups) || []);
+        setWorldManageStatus('已删除备份', 'ok');
+      })
+      .catch(function (error) {
+        setWorldManageStatus('删除备份失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function loadWorldDatapacks() {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.listDatapacks !== 'function' || !instance) return;
+    if (!worldDatapackList) return;
+
+    api.listDatapacks({ instanceId: instance.id, folder: worldState.folder })
+      .then(function (data) {
+        renderWorldDatapacks((data && data.packs) || []);
+      })
+      .catch(function (error) {
+        console.error('[worlds] datapacks failed:', error);
+        worldDatapackList.innerHTML = '';
+        var empty = document.createElement('div');
+        empty.className = 'content-empty';
+        empty.textContent = '读取数据包失败：' + describeLaunchError(error);
+        worldDatapackList.appendChild(empty);
+      });
+  }
+
+  function renderWorldDatapacks(packs) {
+    if (!worldDatapackList) return;
+    worldDatapackList.innerHTML = '';
+
+    if (packs.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'content-empty';
+      empty.textContent = '这个世界的 datapacks 目录是空的。';
+      worldDatapackList.appendChild(empty);
+      return;
+    }
+
+    var fragment = document.createDocumentFragment();
+    packs.forEach(function (pack) {
+      var row = document.createElement('div');
+      row.className = 'content-row';
+
+      var main = document.createElement('span');
+      main.className = 'content-row__main';
+      var name = document.createElement('span');
+      name.className = 'content-row__name';
+      name.textContent = pack.name;
+      var meta = document.createElement('span');
+      meta.className = 'content-row__meta';
+      meta.textContent = (pack.isDirectory ? '文件夹' : '压缩包') + ' · '
+        + (pack.size / 1024).toFixed(1) + ' KB · ' + formatWorldDate(pack.modifiedAt);
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var actions = document.createElement('span');
+      actions.className = 'content-row__actions';
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'dialog-btn is-danger';
+      remove.textContent = '删除';
+      remove.setAttribute('data-world-datapack-delete', pack.name);
+      actions.appendChild(remove);
+
+      row.appendChild(main);
+      row.appendChild(actions);
+      fragment.appendChild(row);
+    });
+
+    worldDatapackList.appendChild(fragment);
+  }
+
+  function importWorldDatapack() {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.importDatapack !== 'function' || !instance) return;
+    setWorldManageStatus('正在选择数据包…');
+    api.importDatapack({ instanceId: instance.id, folder: worldState.folder })
+      .then(function (data) {
+        if (!data) {
+          setWorldManageStatus('已取消导入');
+          return;
+        }
+        renderWorldDatapacks((data && data.packs) || []);
+        setWorldManageStatus('已导入 ' + (data.imported ? data.imported.length : 0) + ' 个数据包', 'ok');
+      })
+      .catch(function (error) {
+        console.error('[worlds] import datapack failed:', error);
+        setWorldManageStatus('导入失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  function deleteWorldDatapack(name) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.deleteDatapack !== 'function' || !instance) return;
+    api.deleteDatapack({ instanceId: instance.id, folder: worldState.folder, name: name })
+      .then(function (data) {
+        renderWorldDatapacks((data && data.packs) || []);
+        setWorldManageStatus('已删除数据包', 'ok');
+      })
+      .catch(function (error) {
+        setWorldManageStatus('删除失败：' + describeLaunchError(error), 'error');
+      });
+  }
+
+  // ---- 世界：事件 ----
+
+  if (worldSearch) {
+    worldSearch.addEventListener('input', function () {
+      worldState.query = worldSearch.value;
+      renderWorldList();
+    });
+  }
+
+  if (worldRefresh) {
+    worldRefresh.addEventListener('click', function () {
+      loadWorlds();
+    });
+  }
+
+  if (worldOpenFolder) {
+    worldOpenFolder.addEventListener('click', function () {
+      var api = worldApi();
+      var instance = worldInstance();
+      if (!api || typeof api.openInstanceContentFolder !== 'function' || !instance) return;
+      api.openInstanceContentFolder({ instanceId: instance.id, kind: 'saves' })
+        .then(function () { setWorldStatus('已打开世界文件夹', 'ok'); })
+        .catch(function (error) { setWorldStatus(describeLaunchError(error), 'error'); });
+    });
+  }
+
+  if (worldChunkbase) {
+    worldChunkbase.addEventListener('click', function () {
+      var world = findWorld(worldState.folder);
+      if (world) {
+        worldState.info = world;
+      }
+      if (!worldState.info) {
+        var first = worldState.list[0];
+        if (first) worldState.info = first;
+      }
+      openChunkbaseMenu(worldChunkbase);
+    });
+  }
+
+  if (worldList) {
+    worldList.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+
+      var menuBtn = target.closest('[data-world-menu]');
+      if (menuBtn) {
+        openWorldMenu(menuBtn.getAttribute('data-world-menu'), menuBtn);
+        return;
+      }
+
+      var openBtn = target.closest('[data-world-open]');
+      if (openBtn) {
+        openWorldManage(openBtn.getAttribute('data-world-open'));
+        return;
+      }
+
+      var row = target.closest('[data-world-folder]');
+      if (row) openWorldManage(row.getAttribute('data-world-folder'));
+    });
+  }
+
+  if (worldManageBack) {
+    worldManageBack.addEventListener('click', function () {
+      openWorldList();
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-world-tab]'), function (button) {
+    button.addEventListener('click', function () {
+      setWorldTab(button.getAttribute('data-world-tab'));
+    });
+  });
+
+  if (worldCheats) {
+    worldCheats.addEventListener('click', function () {
+      saveWorldPatch({ allowCommands: worldCheats.getAttribute('aria-checked') !== 'true' });
+    });
+  }
+
+  if (worldFeatures) {
+    worldFeatures.addEventListener('click', function () {
+      saveWorldPatch({ generateFeatures: worldFeatures.getAttribute('aria-checked') !== 'true' });
+    });
+  }
+
+  if (worldDifficulty) {
+    worldDifficulty.addEventListener('change', function () {
+      saveWorldPatch({ difficulty: Number(worldDifficulty.value) });
+    });
+  }
+
+  if (worldLock) {
+    worldLock.addEventListener('click', function () {
+      saveWorldPatch({ difficultyLocked: worldLock.getAttribute('aria-checked') !== 'true' });
+    });
+  }
+
+  if (worldGameMode) {
+    worldGameMode.addEventListener('change', function () {
+      saveWorldPatch({ gameType: Number(worldGameMode.value) });
+    });
+  }
+
+  if (worldLaunch) {
+    worldLaunch.addEventListener('click', function () {
+      var instance = worldInstance();
+      if (instance) launchInstanceFlow(instance, false);
+    });
+  }
+
+  if (worldScript) {
+    worldScript.addEventListener('click', function () {
+      var instance = worldInstance();
+      if (instance) createLaunchScript(instance);
+    });
+  }
+
+  if (worldExport) worldExport.addEventListener('click', function () { exportWorld(worldState.folder); });
+  if (worldDuplicate) worldDuplicate.addEventListener('click', function () { duplicateWorld(worldState.folder); });
+  if (worldDelete) worldDelete.addEventListener('click', function () { deleteWorld(worldState.folder); });
+  if (worldManageFolder) worldManageFolder.addEventListener('click', function () { openWorldFolder(worldState.folder); });
+  if (worldManageChunkbase) {
+    worldManageChunkbase.addEventListener('click', function () {
+      openChunkbaseMenu(worldManageChunkbase);
+    });
+  }
+
+  var worldBackupCreateBtn = document.getElementById('worldBackupCreate');
+  var worldBackupFolderBtn = document.getElementById('worldBackupFolder');
+  var worldBackupRefreshBtn = document.getElementById('worldBackupRefresh');
+  var worldDatapackImportBtn = document.getElementById('worldDatapackImport');
+  var worldDatapackFolderBtn = document.getElementById('worldDatapackFolder');
+  var worldDatapackRefreshBtn = document.getElementById('worldDatapackRefresh');
+
+  if (worldBackupCreateBtn) worldBackupCreateBtn.addEventListener('click', createWorldBackup);
+  if (worldBackupRefreshBtn) worldBackupRefreshBtn.addEventListener('click', loadWorldBackups);
+  if (worldBackupFolderBtn) {
+    worldBackupFolderBtn.addEventListener('click', function () {
+      var api = worldApi();
+      var instance = worldInstance();
+      if (!api || typeof api.openWorldBackupFolder !== 'function' || !instance) return;
+      api.openWorldBackupFolder({ instanceId: instance.id })
+        .then(function () { setWorldManageStatus('已打开备份文件夹', 'ok'); })
+        .catch(function (error) { setWorldManageStatus(describeLaunchError(error), 'error'); });
+    });
+  }
+  if (worldDatapackImportBtn) worldDatapackImportBtn.addEventListener('click', importWorldDatapack);
+  if (worldDatapackRefreshBtn) worldDatapackRefreshBtn.addEventListener('click', loadWorldDatapacks);
+  if (worldDatapackFolderBtn) {
+    worldDatapackFolderBtn.addEventListener('click', function () {
+      var api = worldApi();
+      var instance = worldInstance();
+      if (!api || typeof api.openWorldFolder !== 'function' || !instance) return;
+      api.openWorldFolder({ instanceId: instance.id, folder: worldState.folder })
+        .then(function () { setWorldManageStatus('已打开世界文件夹', 'ok'); })
+        .catch(function (error) { setWorldManageStatus(describeLaunchError(error), 'error'); });
+    });
+  }
+
+  if (worldBackupList) {
+    worldBackupList.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var restore = target.closest('[data-world-backup-restore]');
+      if (restore) {
+        restoreWorldBackup(restore.getAttribute('data-world-backup-restore'));
+        return;
+      }
+      var remove = target.closest('[data-world-backup-delete]');
+      if (remove) deleteWorldBackup(remove.getAttribute('data-world-backup-delete'));
+    });
+  }
+
+  if (worldDatapackList) {
+    worldDatapackList.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var remove = target.closest('[data-world-datapack-delete]');
+      if (remove) deleteWorldDatapack(remove.getAttribute('data-world-datapack-delete'));
+    });
+  }
+
+  // 世界菜单 / Chunkbase 菜单：点外面关闭、点菜单项执行
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+
+    var mapItem = target.closest('[data-world-map]');
+    if (mapItem) {
+      var info = worldState.info;
+      var seed = info && info.seed ? info.seed : '';
+      var api = worldApi();
+      if (seed && api && typeof api.openExternal === 'function') {
+        api.openExternal(chunkbaseUrl(mapItem.getAttribute('data-world-map'), seed));
+      }
+      closeWorldMenu();
+      return;
+    }
+
+    var actionItem = target.closest('[data-world-action]');
+    if (actionItem) {
+      var folder = openWorldMenuFolder;
+      var action = actionItem.getAttribute('data-world-action');
+      closeWorldMenu();
+      if (!folder) return;
+      if (action === 'launch') {
+        var instance = worldInstance();
+        if (instance) launchInstanceFlow(instance, false);
+      } else if (action === 'folder') openWorldFolder(folder);
+      else if (action === 'export') exportWorld(folder);
+      else if (action === 'duplicate') duplicateWorld(folder);
+      else if (action === 'delete') deleteWorld(folder);
+      return;
+    }
+
+    if (target.closest('[data-world-menu]') || target.closest('.world-menu')) return;
+    if (openWorldMenuFolder) closeWorldMenu();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    if (!document.querySelector('.world-menu')) return;
+    event.stopPropagation();
+    closeWorldMenu();
+  }, true);
+
   // ---------------- 页签 / 文件夹入口绑定 ----------------
 
   Array.prototype.forEach.call(document.querySelectorAll('[data-detail-tab]'), function (button) {
@@ -5004,6 +6134,1407 @@
     applyStack(-0.8, -0.8);
     ring.style.transition = 'none';
     void ring.offsetWidth;
+  }
+
+  // ---------------------------------------------------------
+  // 下载中心（对照 docs/history/ui-tree-controls.html 的 [L2] 下载）
+  //   [L3] 游戏版本        ← 最新正式版 / 最新快照 / 版本列表 / 刷新
+  //   [L4] 安装向导·可选文件 ← dlgInstall（加载器 / 加载器版本 / 实例名 / assets）
+  //   [L3] 整合包          ← 来源 / 选择文件 / 可选文件预览 / 安装
+  //   [L3] 内容列表        ← 模组 / 资源包 / 光影 / 世界（在线源待接入）
+  // ---------------------------------------------------------
+  var stageDownload = document.getElementById('stageDownload');
+  var downloadRailBtn = document.getElementById('downloadRailBtn');
+  var downloadBack = document.getElementById('downloadBack');
+  var downloadSearch = document.getElementById('downloadSearch');
+  var downloadType = document.getElementById('downloadType');
+  var downloadRefresh = document.getElementById('downloadRefresh');
+  var downloadLatest = document.getElementById('downloadLatest');
+  var downloadVersions = document.getElementById('downloadVersions');
+  var downloadStatus = document.getElementById('downloadStatus');
+  var downloadCount = document.getElementById('downloadCount');
+
+  var packSources = document.getElementById('packSources');
+  var packPick = document.getElementById('packPick');
+  var packFileEl = document.getElementById('packFile');
+  var packMetaEl = document.getElementById('packMeta');
+  var packName = document.getElementById('packName');
+  var packOptional = document.getElementById('packOptional');
+  var packInstall = document.getElementById('packInstall');
+  var packStatus = document.getElementById('packStatus');
+
+  var installVersionEl = document.getElementById('installVersion');
+  var installMetaEl = document.getElementById('installMeta');
+  var installLoader = document.getElementById('installLoader');
+  var installLoaderVersionField = document.getElementById('installLoaderVersionField');
+  var installLoaderVersion = document.getElementById('installLoaderVersion');
+  var installName = document.getElementById('installName');
+  var installAssets = document.getElementById('installAssets');
+  var installReveal = document.getElementById('installReveal');
+  var installStatus = document.getElementById('installStatus');
+  var installSubmit = document.getElementById('installSubmit');
+
+  var packFilesMeta = document.getElementById('packFilesMeta');
+  var packFilesList = document.getElementById('packFilesList');
+
+  var DOWNLOAD_LIST_LIMIT = 240;
+
+  var downloadCatalog = null;
+  var downloadLoading = false;
+  var downloadTab = 'game';
+  var installBusy = false;
+  var packBusy = false;
+  var packInfo = null;
+  var installState = {
+    version: '',
+    loader: 'Vanilla',
+    mcVersion: '',
+    entries: [],
+    loading: false,
+    error: ''
+  };
+
+  function setDownloadStatus(text, tone) {
+    setHint(downloadStatus, text, tone);
+  }
+
+  function setPackStatus(text, tone) {
+    setHint(packStatus, text, tone);
+  }
+
+  function setInstallStatus(text, tone) {
+    setHint(installStatus, text, tone);
+  }
+
+  function versionTypeText(type) {
+    if (type === 'snapshot') return '快照';
+    if (type === 'old') return '远古';
+    return '正式';
+  }
+
+  function formatBytes(bytes) {
+    var value = Number(bytes) || 0;
+    if (value >= 1024 * 1024 * 1024) return (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    if (value >= 1024 * 1024) return (value / (1024 * 1024)).toFixed(1) + ' MB';
+    if (value >= 1024) return (value / 1024).toFixed(0) + ' KB';
+    return value + ' B';
+  }
+
+  function installedVersionSet() {
+    var set = {};
+    (INSTANCES || []).forEach(function (instance) {
+      var version = instance && instance.versionName ? String(instance.versionName) : '';
+      if (version) set[version] = true;
+    });
+    return set;
+  }
+
+  function downloadFilteredVersions() {
+    if (!downloadCatalog || !Array.isArray(downloadCatalog.versions)) return [];
+    var type = downloadType ? downloadType.value : 'release';
+    var keyword = downloadSearch && downloadSearch.value
+      ? downloadSearch.value.trim().toLowerCase()
+      : '';
+
+    return downloadCatalog.versions.filter(function (version) {
+      if (!version || !version.id) return false;
+      if (type !== 'all' && version.type !== type) return false;
+      if (!keyword) return true;
+      return String(version.id).toLowerCase().indexOf(keyword) >= 0
+        || String(version.date || '').indexOf(keyword) >= 0;
+    });
+  }
+
+  function renderDownloadLatest() {
+    if (!downloadLatest) return;
+    downloadLatest.innerHTML = '';
+
+    if (!downloadCatalog) {
+      downloadLatest.hidden = true;
+      return;
+    }
+
+    var cards = [
+      { kicker: 'Latest release / 最新正式版', id: downloadCatalog.latestRelease },
+      { kicker: 'Latest snapshot / 最新快照', id: downloadCatalog.latestSnapshot }
+    ].filter(function (item) {
+      return Boolean(item.id);
+    });
+
+    if (cards.length === 0) {
+      downloadLatest.hidden = true;
+      return;
+    }
+
+    cards.forEach(function (item) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'latest-card';
+      button.setAttribute('data-download-latest', item.id);
+
+      var kicker = document.createElement('span');
+      kicker.className = 'latest-card__kicker';
+      kicker.textContent = item.kicker;
+
+      var id = document.createElement('span');
+      id.className = 'latest-card__id';
+      id.textContent = item.id;
+
+      var note = document.createElement('span');
+      note.className = 'latest-card__note';
+      note.textContent = '点击选择版本并安装';
+
+      button.appendChild(kicker);
+      button.appendChild(id);
+      button.appendChild(note);
+      downloadLatest.appendChild(button);
+    });
+
+    downloadLatest.hidden = false;
+  }
+
+  function renderDownloadVersions() {
+    if (!downloadVersions) return;
+    downloadVersions.innerHTML = '';
+    renderDownloadLatest();
+
+    var list = downloadFilteredVersions();
+    var total = downloadCatalog && Array.isArray(downloadCatalog.versions)
+      ? downloadCatalog.versions.length
+      : 0;
+
+    if (!downloadCatalog) {
+      if (downloadCount) downloadCount.textContent = '';
+      return;
+    }
+
+    if (list.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'download-empty';
+      var strong = document.createElement('strong');
+      strong.textContent = '没有匹配的版本';
+      var span = document.createElement('span');
+      span.textContent = '换一个版本类型，或者清空搜索关键词。';
+      empty.appendChild(strong);
+      empty.appendChild(span);
+      downloadVersions.appendChild(empty);
+      if (downloadCount) downloadCount.textContent = '共 ' + total + ' 个';
+      return;
+    }
+
+    var installed = installedVersionSet();
+    var shown = list.slice(0, DOWNLOAD_LIST_LIMIT);
+    var fragment = document.createDocumentFragment();
+
+    shown.forEach(function (version) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'version-card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('data-download-version', version.id);
+      card.setAttribute('aria-label', '安装 ' + version.id);
+      if (installed[version.id]) card.classList.add('is-installed');
+
+      var id = document.createElement('span');
+      id.className = 'version-card__id';
+      id.textContent = version.id;
+
+      var row = document.createElement('span');
+      row.className = 'version-card__row';
+
+      var date = document.createElement('span');
+      date.textContent = version.date || '—';
+
+      var badge = document.createElement('span');
+      badge.className = 'version-card__badge';
+      badge.textContent = installed[version.id] ? '已安装' : versionTypeText(version.type);
+
+      row.appendChild(date);
+      row.appendChild(badge);
+      card.appendChild(id);
+      card.appendChild(row);
+      fragment.appendChild(card);
+    });
+
+    downloadVersions.appendChild(fragment);
+    if (downloadCount) {
+      downloadCount.textContent = '匹配 ' + list.length + ' / 共 ' + total
+        + (list.length > shown.length ? ' · 显示前 ' + shown.length : '');
+    }
+  }
+
+  function loadDownloadCatalog(force) {
+    if (downloadLoading) return;
+    var api = window.launcherAPI;
+    if (!api || typeof api.getVersionCatalog !== 'function') {
+      setDownloadStatus('主进程桥接不可用，无法读取版本列表', 'error');
+      return;
+    }
+
+    downloadLoading = true;
+    if (downloadRefresh) downloadRefresh.classList.add('is-busy');
+    setDownloadStatus(force ? '正在刷新版本列表…' : '正在从 mcdl 读取版本列表…');
+    renderDownloadVersions();
+
+    api.getVersionCatalog({ force: Boolean(force) })
+      .then(function (data) {
+        downloadLoading = false;
+        if (downloadRefresh) downloadRefresh.classList.remove('is-busy');
+        if (!data || !Array.isArray(data.versions) || data.versions.length === 0) {
+          throw new Error('mcdl 返回的版本列表为空');
+        }
+        downloadCatalog = data;
+        renderDownloadVersions();
+        fillAddonVersionOptions();
+        var latest = data.latestRelease ? ' 最新正式版 ' + data.latestRelease : '';
+        setDownloadStatus('版本列表已就绪' + latest, 'ok');
+      })
+      .catch(function (error) {
+        downloadLoading = false;
+        if (downloadRefresh) downloadRefresh.classList.remove('is-busy');
+        downloadCatalog = null;
+        renderDownloadVersions();
+        console.error('[downloads] failed to load versions:', error);
+        setDownloadStatus('无法读取版本列表：' + (error && error.message ? error.message : error), 'error');
+        if (downloadCount) downloadCount.textContent = '';
+      });
+  }
+
+  function setDownloadTab(tab) {
+    downloadTab = tab || 'game';
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-download-tab]'), function (button) {
+      var active = button.getAttribute('data-download-tab') === downloadTab;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-download-pane]'), function (pane) {
+      var active = pane.getAttribute('data-download-pane') === downloadTab;
+      pane.classList.toggle('is-active', active);
+      if (active) {
+        pane.removeAttribute('hidden');
+      } else {
+        pane.setAttribute('hidden', '');
+      }
+    });
+
+    if (downloadTab === 'game' && !downloadCatalog && !downloadLoading) {
+      loadDownloadCatalog(false);
+    }
+
+    if (ADDON_PAGES && ADDON_PAGES[downloadTab]) {
+      updateAddonTargets();
+      fillAddonVersionOptions();
+      var addonPage = ADDON_PAGES[downloadTab];
+      if (!addonPage.loaded && !addonPage.loading) searchAddons(downloadTab);
+    }
+  }
+
+  function openDownloadPanel() {
+    if (!mainStage || !stageDownload) return;
+
+    showPanel('download');
+    setDownloadTab(downloadTab);
+    if (!downloadCatalog) loadDownloadCatalog(false);
+
+    window.setTimeout(function () {
+      if (downloadSearch) downloadSearch.focus({ preventScroll: true });
+    }, 220);
+
+    window.dispatchEvent(new CustomEvent('launcher:panel-change', {
+      detail: { panel: 'download' }
+    }));
+  }
+
+  function closeDownloadPanel(options) {
+    if (installBusy || packBusy) return;
+    options = options || {};
+    hideActivePanel({ focus: false });
+    if (options.focus !== false && downloadRailBtn) downloadRailBtn.focus();
+  }
+
+  function updateInstallSummary() {
+    if (installVersionEl) installVersionEl.textContent = installState.version || '—';
+    if (!installMetaEl) return;
+    var loader = installLoader ? installLoader.value : 'Vanilla';
+    var label = 'Vanilla · 原版';
+    if (loader !== 'Vanilla' && installLoader && installLoader.selectedIndex >= 0) {
+      label = installLoader.options[installLoader.selectedIndex].textContent;
+    }
+    installMetaEl.textContent = label;
+  }
+
+  function setInstallLoaderVersionVisible(visible) {
+    if (installLoaderVersionField) installLoaderVersionField.hidden = !visible;
+  }
+
+  function renderInstallLoaderOptions() {
+    if (!installLoaderVersion) return;
+    var previous = installLoaderVersion.value;
+    installLoaderVersion.innerHTML = '';
+
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    if (installState.loading) {
+      placeholder.textContent = '正在读取加载器版本…';
+    } else if (installState.error) {
+      placeholder.textContent = '读取失败 · 使用最新稳定版';
+    } else {
+      placeholder.textContent = '最新稳定版';
+    }
+    installLoaderVersion.appendChild(placeholder);
+
+    installState.entries.forEach(function (entry) {
+      if (!entry || !entry.version) return;
+      var option = document.createElement('option');
+      option.value = entry.version;
+      option.textContent = entry.version + (entry.note ? ' · ' + entry.note : '');
+      installLoaderVersion.appendChild(option);
+    });
+
+    installLoaderVersion.disabled = installBusy || installState.loading;
+
+    if (previous) {
+      for (var i = 0; i < installLoaderVersion.options.length; i += 1) {
+        if (installLoaderVersion.options[i].value === previous) {
+          installLoaderVersion.value = previous;
+          break;
+        }
+      }
+    }
+  }
+
+  function refreshInstallLoaderVersions(force) {
+    var loader = installLoader ? installLoader.value : 'Vanilla';
+    var mcVersion = installState.version;
+
+    setInstallLoaderVersionVisible(loader !== 'Vanilla');
+
+    if (loader === 'Vanilla' || !mcVersion) {
+      installState = { version: mcVersion, loader: loader, mcVersion: mcVersion, entries: [], loading: false, error: '' };
+      renderInstallLoaderOptions();
+      return;
+    }
+
+    var same = installState.loader === loader && installState.mcVersion === mcVersion;
+    if (!force && same && (installState.loading || installState.entries.length > 0)) {
+      renderInstallLoaderOptions();
+      return;
+    }
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.listLoaders !== 'function') {
+      installState = { version: mcVersion, loader: loader, mcVersion: mcVersion, entries: [], loading: false, error: '桥接不可用' };
+      renderInstallLoaderOptions();
+      return;
+    }
+
+    installState = {
+      version: mcVersion,
+      loader: loader,
+      mcVersion: mcVersion,
+      entries: [],
+      loading: true,
+      error: ''
+    };
+    renderInstallLoaderOptions();
+
+    api.listLoaders({ loader: loader, mcVersion: mcVersion })
+      .then(function (data) {
+        if (installState.loader !== loader || installState.mcVersion !== mcVersion) return;
+        installState.loading = false;
+        installState.error = '';
+        installState.entries = (data && data.versions) || [];
+        renderInstallLoaderOptions();
+      })
+      .catch(function (error) {
+        if (installState.loader !== loader || installState.mcVersion !== mcVersion) return;
+        console.error('[downloads] failed to list loader versions:', error);
+        installState.loading = false;
+        installState.error = error && error.message ? error.message : String(error);
+        installState.entries = [];
+        renderInstallLoaderOptions();
+      });
+  }
+
+  function setInstallBusy(busy) {
+    installBusy = Boolean(busy);
+    if (installLoader) installLoader.disabled = installBusy;
+    if (installLoaderVersion) installLoaderVersion.disabled = installBusy || installState.loading;
+    if (installName) installName.disabled = installBusy;
+    if (installAssets) installAssets.disabled = installBusy;
+    if (installReveal) installReveal.disabled = installBusy;
+    if (installSubmit) {
+      installSubmit.disabled = installBusy;
+      installSubmit.textContent = installBusy ? '正在安装…' : '安装';
+    }
+  }
+
+  function openInstallDialog(version, trigger) {
+    if (!DIALOGS.install) return;
+
+    installState = {
+      version: version || '',
+      loader: 'Vanilla',
+      mcVersion: version || '',
+      entries: [],
+      loading: false,
+      error: ''
+    };
+
+    if (installLoader) installLoader.value = 'Vanilla';
+    if (installLoaderVersion) installLoaderVersion.value = '';
+    if (installName) {
+      installName.value = version ? version + ' · ' + loaderLabelOf('Vanilla') : '';
+      installName.classList.remove('is-invalid');
+    }
+    if (installAssets) installAssets.checked = true;
+    if (installReveal) installReveal.checked = true;
+
+    updateInstallSummary();
+    setInstallLoaderVersionVisible(false);
+    renderInstallLoaderOptions();
+    setInstallBusy(false);
+    setInstallStatus('确认选项后点「安装」');
+    openDialog('install', trigger);
+  }
+
+  function submitInstall() {
+    if (installBusy) return;
+    var api = window.launcherAPI;
+    if (!api || typeof api.createInstance !== 'function') {
+      setInstallStatus('主进程桥接不可用，无法安装', 'error');
+      return;
+    }
+
+    var version = installState.version;
+    if (!version) {
+      setInstallStatus('缺少游戏版本', 'error');
+      return;
+    }
+
+    var loader = installLoader ? installLoader.value : 'Vanilla';
+    var name = installName ? installName.value.trim() : '';
+    if (!name) {
+      name = version + ' · ' + loaderLabelOf(loader);
+      if (installName) installName.value = name;
+    }
+
+    setInstallBusy(true);
+    setInstallStatus('正在启动 mcdl…');
+
+    api.createInstance({
+      version: version,
+      loader: loader,
+      loaderVersion: installLoaderVersion ? installLoaderVersion.value : '',
+      name: name,
+      assets: installAssets ? installAssets.checked : true
+    })
+      .then(function (snapshot) {
+        setInstallBusy(false);
+        if (snapshot) {
+          instanceLoadState = 'ready';
+          instanceLoadError = '';
+          updateInstanceUI(snapshot);
+          updateScanMeta(snapshot);
+        }
+        setInstallStatus('安装完成：' + name, 'ok');
+        closeDialog();
+        window.dispatchEvent(new CustomEvent('launcher:instance-created', {
+          detail: { version: version, name: name }
+        }));
+
+        if (!installReveal || installReveal.checked) {
+          closeActivePanel({ focus: false });
+          openInstancesPanel();
+          if (snapshot && snapshot.selectedId) selectInstance(snapshot.selectedId);
+        }
+      })
+      .catch(function (error) {
+        setInstallBusy(false);
+        console.error('[downloads] install failed:', error);
+        setInstallStatus('安装失败：' + describeInstallError(error), 'error');
+      });
+  }
+
+  // ---------------- 整合包 ----------------
+
+  function setPackBusy(busy) {
+    packBusy = Boolean(busy);
+    if (packPick) packPick.disabled = packBusy;
+    if (packName) packName.disabled = packBusy;
+    if (packSources) {
+      Array.prototype.forEach.call(packSources.querySelectorAll('button'), function (button) {
+        if (button.getAttribute('data-pack-source') === 'local') button.disabled = packBusy;
+      });
+    }
+    if (packOptional) packOptional.disabled = packBusy || !packInfo;
+    if (packInstall) {
+      packInstall.disabled = packBusy || !packInfo;
+      var labelNode = packInstall.querySelector('span:first-child');
+      if (labelNode) labelNode.textContent = packBusy ? '正在安装…' : '安装';
+    }
+  }
+
+  function applyPackInfo(info) {
+    packInfo = info || null;
+    if (!info) {
+      if (packFileEl) packFileEl.textContent = '尚未选择整合包';
+      if (packMetaEl) packMetaEl.textContent = '选择 .zip / .mrpack 后这里显示包内条目、mod 数量与解压后的实例名。';
+      setPackBusy(false);
+      setPackStatus('等待选择整合包');
+      return;
+    }
+
+    if (packFileEl) packFileEl.textContent = info.file;
+    if (packMetaEl) {
+      packMetaEl.textContent = formatBytes(info.size)
+        + ' · 共 ' + info.entryCount + ' 个条目'
+        + ' · mod ' + (info.modCount || 0) + ' 个'
+        + (info.manifest ? ' · 清单 ' + info.manifest : '');
+    }
+    if (packName && !packName.value.trim()) {
+      packName.value = String(info.file).replace(/\.(zip|mrpack)$/i, '');
+    }
+    setPackBusy(false);
+    setPackStatus('已选择整合包，可以直接安装', 'ok');
+  }
+
+  function pickModpackFile() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.pickModpack !== 'function') {
+      setPackStatus('主进程桥接不可用，无法选择文件', 'error');
+      return;
+    }
+
+    setPackStatus('正在读取整合包…');
+    api.pickModpack()
+      .then(function (info) {
+        if (!info) {
+          setPackStatus('未选择整合包');
+          return;
+        }
+        applyPackInfo(info);
+      })
+      .catch(function (error) {
+        console.error('[downloads] inspect modpack failed:', error);
+        setPackStatus('无法读取整合包：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
+  function openPackFilesDialog() {
+    if (!packInfo) return;
+    if (packFilesMeta) {
+      packFilesMeta.textContent = packInfo.file + ' · ' + packInfo.entryCount + ' 个条目，前 '
+        + (packInfo.sample ? packInfo.sample.length : 0) + ' 个如下（mcdl 会解压全部内容，这里只是预览）。';
+    }
+    if (packFilesList) {
+      packFilesList.innerHTML = '';
+      (packInfo.sample || []).forEach(function (name) {
+        var row = document.createElement('span');
+        row.setAttribute('role', 'listitem');
+        row.textContent = name;
+        packFilesList.appendChild(row);
+      });
+      if (!packInfo.sample || packInfo.sample.length === 0) {
+        var empty = document.createElement('span');
+        empty.textContent = '（这个整合包里没有可显示的文件条目）';
+        packFilesList.appendChild(empty);
+      }
+    }
+    openDialog('packFiles');
+  }
+
+  function submitPackInstall() {
+    if (packBusy) return;
+    if (!packInfo) {
+      setPackStatus('请先选择整合包', 'error');
+      return;
+    }
+    var api = window.launcherAPI;
+    if (!api || typeof api.installModpack !== 'function') {
+      setPackStatus('主进程桥接不可用，无法安装', 'error');
+      return;
+    }
+
+    setPackBusy(true);
+    setPackStatus('正在解压并安装整合包…');
+
+    api.installModpack({
+      file: packInfo.path,
+      name: packName ? packName.value.trim() : ''
+    })
+      .then(function (result) {
+        setPackBusy(false);
+        if (result && result.snapshot) {
+          instanceLoadState = 'ready';
+          instanceLoadError = '';
+          updateInstanceUI(result.snapshot);
+          updateScanMeta(result.snapshot);
+        }
+        setPackStatus('安装完成：' + (result && result.instanceId ? result.instanceId : '整合包'), 'ok');
+        window.dispatchEvent(new CustomEvent('launcher:instance-created', {
+          detail: { version: '', name: result && result.instanceId ? result.instanceId : '' }
+        }));
+        closeActivePanel({ focus: false });
+        openInstancesPanel();
+        if (result && result.snapshot && result.snapshot.selectedId) {
+          selectInstance(result.snapshot.selectedId);
+        }
+      })
+      .catch(function (error) {
+        setPackBusy(false);
+        console.error('[downloads] modpack install failed:', error);
+        setPackStatus('安装失败：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
+  // 清单 [L5] 实例操作对话框里的「前往下载页面」：直接跳下载中心。
+  var instanceGotoDownloadBtn = document.getElementById('instanceGotoDownload');
+  if (instanceGotoDownloadBtn) {
+    instanceGotoDownloadBtn.addEventListener('click', function () {
+      closeDialog();
+      hideActivePanel({ focus: false });
+      openDownloadPanel();
+    });
+  }
+
+  // ---------------- 下载中心事件绑定 ----------------
+
+  if (downloadBack) {
+    downloadBack.addEventListener('click', function () {
+      closeDownloadPanel({ focus: true });
+    });
+  }
+
+  if (downloadSearch) {
+    downloadSearch.addEventListener('input', function () {
+      renderDownloadVersions();
+    });
+  }
+
+  if (downloadType) {
+    downloadType.addEventListener('change', function () {
+      renderDownloadVersions();
+    });
+  }
+
+  if (downloadRefresh) {
+    downloadRefresh.addEventListener('click', function () {
+      loadDownloadCatalog(true);
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-download-tab]'), function (button) {
+    button.addEventListener('click', function () {
+      setDownloadTab(button.getAttribute('data-download-tab'));
+    });
+  });
+
+  if (downloadVersions) {
+    downloadVersions.addEventListener('click', function (event) {
+      var card = event.target && event.target.closest
+        ? event.target.closest('[data-download-version]')
+        : null;
+      if (!card) return;
+      openInstallDialog(card.getAttribute('data-download-version'), card);
+    });
+  }
+
+  if (downloadLatest) {
+    downloadLatest.addEventListener('click', function (event) {
+      var card = event.target && event.target.closest
+        ? event.target.closest('[data-download-latest]')
+        : null;
+      if (!card) return;
+      openInstallDialog(card.getAttribute('data-download-latest'), card);
+    });
+  }
+
+  if (installLoader) {
+    installLoader.addEventListener('change', function () {
+      updateInstallSummary();
+      refreshInstallLoaderVersions(true);
+    });
+  }
+
+  if (installSubmit) {
+    installSubmit.addEventListener('click', submitInstall);
+  }
+
+  if (DIALOGS.install) {
+    DIALOGS.install.addEventListener('click', function (event) {
+      if (!installBusy) return;
+      if (event.target && event.target.closest && event.target.closest('[data-dialog-close]')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+
+  if (packPick) {
+    packPick.addEventListener('click', pickModpackFile);
+  }
+
+  if (packOptional) {
+    packOptional.addEventListener('click', openPackFilesDialog);
+  }
+
+  if (packInstall) {
+    packInstall.addEventListener('click', submitPackInstall);
+  }
+
+  if (packSources) {
+    packSources.addEventListener('click', function (event) {
+      var card = event.target && event.target.closest
+        ? event.target.closest('[data-pack-source]')
+        : null;
+      if (!card || card.disabled) return;
+      if (card.getAttribute('data-pack-source') !== 'local') return;
+      Array.prototype.forEach.call(packSources.querySelectorAll('[data-pack-source]'), function (button) {
+        var active = button === card;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    });
+  }
+
+  if (window.launcherAPI && typeof window.launcherAPI.onDownloadProgress === 'function') {
+    window.launcherAPI.onDownloadProgress(function (payload) {
+      if (!payload || !payload.message) return;
+      if (packBusy) setPackStatus(payload.message);
+    });
+  }
+
+  if (window.launcherAPI && typeof window.launcherAPI.onInstallProgress === 'function') {
+    window.launcherAPI.onInstallProgress(function (payload) {
+      if (!payload || !payload.message) return;
+      if (installBusy) setInstallStatus(payload.message);
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 下载中心 · 在线内容（Modrinth）：模组 / 资源包 / 光影
+  //   对照 [L3] 内容列表（搜索 / 结果面板）与 [L4] 内容下载页
+  //   （版本选择 / 下载到本地文件夹 / 取消 / 确定）
+  // ---------------------------------------------------------
+  var ADDON_KINDS = ['mods', 'resourcepack', 'shader'];
+  var ADDON_PAGE_SIZE = 24;
+  var ADDON_PAGES = {};
+  var addonDialog = { busy: false, kind: '', project: null, versions: [], selectedId: '' };
+
+  var dlgAddonTitle = document.getElementById('dlgAddonTitle');
+  var dlgAddonMeta = document.getElementById('dlgAddonMeta');
+  var dlgAddonDesc = document.getElementById('dlgAddonDesc');
+  var dlgAddonTarget = document.getElementById('dlgAddonTarget');
+  var addonVersionList = document.getElementById('addonVersionList');
+  var addonInstallDeps = document.getElementById('addonInstallDeps');
+  var addonDepCount = document.getElementById('addonDepCount');
+  var dlgAddonStatus = document.getElementById('dlgAddonStatus');
+  var addonConfirm = document.getElementById('addonConfirm');
+  var addonSaveAsBtn = document.getElementById('addonSaveAs');
+
+  function addonSuffix(kind) {
+    if (kind === 'mods') return 'Mods';
+    if (kind === 'resourcepack') return 'Resourcepack';
+    return 'Shader';
+  }
+
+  ADDON_KINDS.forEach(function (kind) {
+    var suffix = addonSuffix(kind);
+    ADDON_PAGES[kind] = {
+      kind: kind,
+      search: document.getElementById('addonSearch' + suffix),
+      version: document.getElementById('addonVersion' + suffix),
+      loader: document.getElementById('addonLoader' + suffix),
+      sort: document.getElementById('addonSort' + suffix),
+      grid: document.getElementById('addonGrid' + suffix),
+      status: document.getElementById('addonStatus' + suffix),
+      count: document.getElementById('addonCount' + suffix),
+      target: document.getElementById('addonTarget' + suffix),
+      items: [],
+      total: 0,
+      loading: false,
+      loaded: false
+    };
+  });
+
+  function escapeHtml(value) {
+    return String(value === undefined || value === null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatCount(value) {
+    var number = Number(value) || 0;
+    if (number >= 100000000) return (number / 100000000).toFixed(1) + ' 亿';
+    if (number >= 10000) return (number / 10000).toFixed(1) + ' 万';
+    return String(number);
+  }
+
+  function instanceLoaderKey(instance) {
+    var value = String(instance && instance.modLoader || '').toLowerCase();
+    return ['fabric', 'quilt', 'forge', 'neoforge'].indexOf(value) >= 0 ? value : '';
+  }
+
+  function addonTargetText(instance) {
+    if (!instance) return '安装到：<strong>未选择实例</strong> · 先在右侧实例列表选一个';
+    var loader = loaderLabel(instance) !== 'Vanilla' ? ' · ' + loaderLabel(instance) : '';
+    return '安装到：<strong>' + escapeHtml(instanceLabel(instance)) + '</strong> · '
+      + escapeHtml(instance.versionName || '—') + escapeHtml(loader);
+  }
+
+  function updateAddonTargets() {
+    var html = addonTargetText(getSelectedInstance());
+    ADDON_KINDS.forEach(function (kind) {
+      var page = ADDON_PAGES[kind];
+      if (page && page.target) page.target.innerHTML = html;
+    });
+    if (dlgAddonTarget) dlgAddonTarget.innerHTML = html;
+  }
+
+  function fillAddonVersionOptions() {
+    if (!downloadCatalog || !Array.isArray(downloadCatalog.versions)) return;
+
+    var list = downloadCatalog.versions.filter(function (version) {
+      return version && (version.type === 'release' || version.type === 'snapshot');
+    }).slice(0, 240);
+
+    var instance = getSelectedInstance();
+    var instanceVersion = instance && instance.versionName ? instance.versionName : '';
+
+    ADDON_KINDS.forEach(function (kind) {
+      var page = ADDON_PAGES[kind];
+      if (!page || !page.version) return;
+
+      var current = page.version.value;
+      var preferred = current || instanceVersion;
+      page.version.innerHTML = '';
+
+      var all = document.createElement('option');
+      all.value = '';
+      all.textContent = '全部版本';
+      page.version.appendChild(all);
+
+      list.forEach(function (version) {
+        var option = document.createElement('option');
+        option.value = version.id;
+        option.textContent = version.id;
+        page.version.appendChild(option);
+      });
+
+      if (preferred) {
+        for (var i = 0; i < page.version.options.length; i += 1) {
+          if (page.version.options[i].value === preferred) {
+            page.version.value = preferred;
+            break;
+          }
+        }
+      }
+    });
+  }
+
+  function renderAddonResults(kind) {
+    var page = ADDON_PAGES[kind];
+    if (!page || !page.grid) return;
+    page.grid.innerHTML = '';
+
+    if (page.loading || !page.loaded) {
+      if (page.count) page.count.textContent = page.loading ? '搜索中…' : '';
+      return;
+    }
+
+    if (page.items.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'download-empty';
+      var strong = document.createElement('strong');
+      strong.textContent = '没有匹配的内容';
+      var span = document.createElement('span');
+      span.textContent = '换个关键词，或把「版本 / 加载器」放宽到全部。';
+      empty.appendChild(strong);
+      empty.appendChild(span);
+      page.grid.appendChild(empty);
+      if (page.count) page.count.textContent = '';
+      return;
+    }
+
+    var fragment = document.createDocumentFragment();
+
+    page.items.forEach(function (item) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'addon-card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('data-addon-id', item.id);
+      card.setAttribute('data-addon-kind', kind);
+      card.setAttribute('aria-label', item.title + ' · 选择版本');
+
+      var icon = document.createElement('span');
+      icon.className = 'addon-card__icon';
+      if (item.iconUrl) {
+        var img = document.createElement('img');
+        img.src = item.iconUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener('error', function () {
+          img.remove();
+          icon.textContent = String(item.title || '?').charAt(0).toUpperCase();
+        });
+        icon.appendChild(img);
+      } else {
+        icon.textContent = String(item.title || '?').charAt(0).toUpperCase();
+      }
+
+      var body = document.createElement('span');
+      body.className = 'addon-card__body';
+
+      var title = document.createElement('span');
+      title.className = 'addon-card__title';
+      title.textContent = item.title;
+
+      var meta = document.createElement('span');
+      meta.className = 'addon-card__meta';
+      meta.textContent = (item.author || '未知作者') + ' · ' + formatCount(item.downloads) + ' 次下载';
+
+      var desc = document.createElement('span');
+      desc.className = 'addon-card__desc';
+      desc.textContent = item.description;
+
+      var tags = document.createElement('span');
+      tags.className = 'addon-card__tags';
+      (item.categories || []).slice(0, 3).forEach(function (category) {
+        var tag = document.createElement('span');
+        tag.className = 'addon-card__tag';
+        tag.textContent = category;
+        tags.appendChild(tag);
+      });
+
+      body.appendChild(title);
+      body.appendChild(meta);
+      body.appendChild(desc);
+      body.appendChild(tags);
+
+      card.appendChild(icon);
+      card.appendChild(body);
+      fragment.appendChild(card);
+    });
+
+    page.grid.appendChild(fragment);
+    if (page.count) {
+      page.count.textContent = '显示 ' + page.items.length + ' / 共 ' + formatCount(page.total);
+    }
+  }
+
+  function searchAddons(kind) {
+    var page = ADDON_PAGES[kind];
+    if (!page) return;
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.searchAddons !== 'function') {
+      setHint(page.status, '主进程桥接不可用，无法搜索', 'error');
+      return;
+    }
+    if (page.loading) return;
+
+    page.loading = true;
+    setHint(page.status, '正在从 Modrinth 搜索…');
+    renderAddonResults(kind);
+
+    var instance = getSelectedInstance();
+    var loader = '';
+    if (kind === 'mods') {
+      loader = page.loader ? page.loader.value : '';
+      if (!loader && instance) loader = instanceLoaderKey(instance);
+    }
+
+    api.searchAddons({
+      kind: kind,
+      query: page.search ? page.search.value.trim() : '',
+      gameVersion: page.version ? page.version.value : '',
+      loader: loader,
+      sort: page.sort ? page.sort.value : 'relevance',
+      limit: ADDON_PAGE_SIZE,
+      offset: 0
+    })
+      .then(function (data) {
+        page.loading = false;
+        page.loaded = true;
+        page.items = (data && data.items) || [];
+        page.total = (data && data.total) || page.items.length;
+        renderAddonResults(kind);
+        if (page.items.length === 0) {
+          setHint(page.status, '没有匹配的内容，换个关键词或放宽筛选');
+        } else {
+          setHint(page.status, '找到 ' + formatCount(page.total) + ' 个结果 · 点击卡片选择版本', 'ok');
+        }
+      })
+      .catch(function (error) {
+        page.loading = false;
+        page.loaded = true;
+        page.items = [];
+        page.total = 0;
+        renderAddonResults(kind);
+        console.error('[addons] search failed:', error);
+        setHint(page.status, '搜索失败：' + (error && error.message ? error.message : error), 'error');
+        if (page.count) page.count.textContent = '';
+      });
+  }
+
+  function addonSelectedVersion() {
+    return addonDialog.versions.filter(function (version) {
+      return version.id === addonDialog.selectedId;
+    })[0] || null;
+  }
+
+  function refreshAddonConfirmState() {
+    if (!addonConfirm) return;
+    var hasInstance = Boolean(getSelectedInstance());
+    var hasVersion = Boolean(addonSelectedVersion());
+    addonConfirm.disabled = addonDialog.busy || !hasInstance || !hasVersion;
+    addonConfirm.textContent = addonDialog.busy ? '正在下载…' : '确定';
+    if (addonSaveAsBtn) addonSaveAsBtn.disabled = addonDialog.busy || !hasVersion;
+  }
+
+  function selectAddonVersion(id) {
+    addonDialog.selectedId = id;
+    Array.prototype.forEach.call(document.querySelectorAll('#addonVersionList [data-addon-version]'), function (row) {
+      row.classList.toggle('is-active', row.getAttribute('data-addon-version') === id);
+    });
+
+    var version = addonSelectedVersion();
+    var required = version
+      ? (version.dependencies || []).filter(function (dep) { return dep.type === 'required'; })
+      : [];
+    if (addonDepCount) addonDepCount.textContent = String(required.length);
+    if (addonInstallDeps) {
+      addonInstallDeps.checked = required.length > 0;
+      addonInstallDeps.disabled = addonDialog.busy || required.length === 0;
+    }
+    refreshAddonConfirmState();
+  }
+
+  function renderAddonVersions() {
+    if (!addonVersionList) return;
+    addonVersionList.innerHTML = '';
+
+    if (addonDialog.versions.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'download-empty';
+      var strong = document.createElement('strong');
+      strong.textContent = '没有可用版本';
+      var span = document.createElement('span');
+      span.textContent = '这个项目没有匹配当前游戏版本 / 加载器的文件，可以换个项目或在面板里放宽版本筛选。';
+      empty.appendChild(strong);
+      empty.appendChild(span);
+      addonVersionList.appendChild(empty);
+      if (addonDepCount) addonDepCount.textContent = '0';
+      refreshAddonConfirmState();
+      return;
+    }
+
+    var fragment = document.createDocumentFragment();
+    addonDialog.versions.slice(0, 40).forEach(function (version) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'addon-version';
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('data-addon-version', version.id);
+
+      var main = document.createElement('span');
+      main.className = 'addon-version__main';
+
+      var name = document.createElement('span');
+      name.className = 'addon-version__name';
+      name.textContent = version.versionNumber || version.name || version.id;
+
+      var meta = document.createElement('span');
+      meta.className = 'addon-version__meta';
+      var games = (version.gameVersions || []).slice(0, 3).join(' / ');
+      var loaders = (version.loaders || []).join(' / ');
+      meta.textContent = [games, loaders, version.file ? formatBytes(version.file.size) : '']
+        .filter(Boolean).join(' · ');
+
+      main.appendChild(name);
+      main.appendChild(meta);
+
+      var side = document.createElement('span');
+      side.className = 'addon-version__side';
+      var type = document.createElement('span');
+      type.className = 'addon-version__type';
+      type.textContent = version.versionType || 'release';
+      var date = document.createElement('span');
+      date.textContent = version.datePublished ? version.datePublished.slice(0, 10) : '';
+      side.appendChild(type);
+      side.appendChild(date);
+
+      row.appendChild(main);
+      row.appendChild(side);
+      fragment.appendChild(row);
+    });
+
+    addonVersionList.appendChild(fragment);
+    selectAddonVersion(addonDialog.versions[0].id);
+  }
+
+  function setAddonBusy(busy) {
+    addonDialog.busy = Boolean(busy);
+    if (addonInstallDeps) addonInstallDeps.disabled = addonDialog.busy;
+    refreshAddonConfirmState();
+  }
+
+  function openAddonDialog(kind, projectId, trigger) {
+    var page = ADDON_PAGES[kind];
+    if (!page) return;
+
+    var project = null;
+    page.items.forEach(function (item) {
+      if (item.id === projectId) project = item;
+    });
+    if (!project) return;
+
+    addonDialog = { busy: false, kind: kind, project: project, versions: [], selectedId: '' };
+
+    if (dlgAddonTitle) dlgAddonTitle.textContent = project.title;
+    if (dlgAddonMeta) {
+      dlgAddonMeta.textContent = (project.author || '未知作者')
+        + ' · ' + formatCount(project.downloads) + ' 次下载'
+        + ((project.categories || []).length ? ' · ' + project.categories.join(' · ') : '');
+    }
+    if (dlgAddonDesc) dlgAddonDesc.textContent = project.description;
+    updateAddonTargets();
+    if (addonDepCount) addonDepCount.textContent = '0';
+    if (addonVersionList) {
+      addonVersionList.innerHTML = '';
+      var loading = document.createElement('div');
+      loading.className = 'download-empty';
+      var strong = document.createElement('strong');
+      strong.textContent = '正在读取版本列表…';
+      loading.appendChild(strong);
+      addonVersionList.appendChild(loading);
+    }
+    setAddonBusy(false);
+    setHint(dlgAddonStatus, '正在读取可用版本…');
+    openDialog('addon', trigger);
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.listAddonVersions !== 'function') {
+      setHint(dlgAddonStatus, '主进程桥接不可用，无法读取版本', 'error');
+      return;
+    }
+
+    var instance = getSelectedInstance();
+    var gameVersion = instance && instance.versionName ? instance.versionName : '';
+    var loader = kind === 'mods' ? instanceLoaderKey(instance) : '';
+    var projectIdSafe = project.id;
+
+    api.listAddonVersions({ projectId: projectIdSafe, gameVersion: gameVersion, loader: loader })
+      .then(function (versions) {
+        if (!addonDialog.project || addonDialog.project.id !== projectIdSafe) return;
+        var list = Array.isArray(versions) ? versions : [];
+
+        if (list.length === 0 && (gameVersion || loader)) {
+          return api.listAddonVersions({ projectId: projectIdSafe, gameVersion: '', loader: '' })
+            .then(function (fallback) {
+              if (!addonDialog.project || addonDialog.project.id !== projectIdSafe) return;
+              addonDialog.versions = Array.isArray(fallback) ? fallback : [];
+              renderAddonVersions();
+              setHint(dlgAddonStatus, '当前实例的版本 / 加载器没有对应文件，已列出全部版本', 'error');
+            });
+        }
+
+        addonDialog.versions = list;
+        renderAddonVersions();
+        if (list.length === 0) {
+          setHint(dlgAddonStatus, '这个项目没有可下载的文件', 'error');
+        } else {
+          setHint(dlgAddonStatus, '选好版本后点「确定」安装到当前实例');
+        }
+        return null;
+      })
+      .catch(function (error) {
+        console.error('[addons] list versions failed:', error);
+        addonDialog.versions = [];
+        renderAddonVersions();
+        setHint(dlgAddonStatus, '读取版本失败：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
+  function installAddon() {
+    if (addonDialog.busy) return;
+
+    var instance = getSelectedInstance();
+    if (!instance) {
+      setHint(dlgAddonStatus, '请先在右侧实例列表选一个实例', 'error');
+      return;
+    }
+
+    var version = addonSelectedVersion();
+    if (!version) {
+      setHint(dlgAddonStatus, '还没有选择版本', 'error');
+      return;
+    }
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.installAddon !== 'function') {
+      setHint(dlgAddonStatus, '主进程桥接不可用，无法安装', 'error');
+      return;
+    }
+
+    setAddonBusy(true);
+    setHint(dlgAddonStatus, '正在下载 ' + (version.file ? version.file.filename : version.versionNumber) + ' …');
+
+    api.installAddon({
+      instanceId: instance.id,
+      kind: addonDialog.kind,
+      versionId: version.id,
+      installDependencies: Boolean(addonInstallDeps && addonInstallDeps.checked)
+    })
+      .then(function (result) {
+        setAddonBusy(false);
+        var installed = (result && result.installed) || [];
+        var failed = (result && result.failed) || [];
+        var names = installed.map(function (item) { return item.filename; }).join('、');
+        setHint(
+          dlgAddonStatus,
+          '已安装 ' + installed.length + ' 个文件' + (failed.length ? '（' + failed.length + ' 个前置失败）' : '')
+            + (names ? '：' + names : ''),
+          'ok'
+        );
+
+        var page = ADDON_PAGES[addonDialog.kind];
+        if (page) {
+          setHint(page.status, '已安装到 ' + (result.root || '实例内容目录'), 'ok');
+        }
+      })
+      .catch(function (error) {
+        setAddonBusy(false);
+        console.error('[addons] install failed:', error);
+        setHint(dlgAddonStatus, '安装失败：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
+  function saveAddonAs() {
+    if (addonDialog.busy) return;
+    var version = addonSelectedVersion();
+    if (!version) return;
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.saveAddon !== 'function') {
+      setHint(dlgAddonStatus, '主进程桥接不可用，无法下载', 'error');
+      return;
+    }
+
+    setAddonBusy(true);
+    setHint(dlgAddonStatus, '正在下载到本地文件夹…');
+
+    api.saveAddon({ kind: addonDialog.kind, versionId: version.id })
+      .then(function (result) {
+        setAddonBusy(false);
+        if (!result) {
+          setHint(dlgAddonStatus, '已取消');
+          return;
+        }
+        var names = (result.installed || []).map(function (item) { return item.filename; }).join('、');
+        setHint(dlgAddonStatus, '已保存到 ' + result.folder + (names ? '：' + names : ''), 'ok');
+      })
+      .catch(function (error) {
+        setAddonBusy(false);
+        console.error('[addons] save failed:', error);
+        setHint(dlgAddonStatus, '下载失败：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
+  // ---- 内容页签事件 ----
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-addon-search]'), function (button) {
+    button.addEventListener('click', function () {
+      var kind = button.getAttribute('data-addon-search');
+      if (ADDON_PAGES[kind]) searchAddons(kind);
+    });
+  });
+
+  ADDON_KINDS.forEach(function (kind) {
+    var page = ADDON_PAGES[kind];
+    if (!page) return;
+
+    if (page.search) {
+      page.search.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        searchAddons(kind);
+      });
+    }
+
+    [page.version, page.sort, page.loader].forEach(function (select) {
+      if (!select) return;
+      select.addEventListener('change', function () {
+        searchAddons(kind);
+      });
+    });
+
+    if (page.grid) {
+      page.grid.addEventListener('click', function (event) {
+        var card = event.target && event.target.closest
+          ? event.target.closest('[data-addon-id]')
+          : null;
+        if (!card) return;
+        openAddonDialog(kind, card.getAttribute('data-addon-id'), card);
+      });
+    }
+  });
+
+  if (addonVersionList) {
+    addonVersionList.addEventListener('click', function (event) {
+      var row = event.target && event.target.closest
+        ? event.target.closest('[data-addon-version]')
+        : null;
+      if (!row || addonDialog.busy) return;
+      selectAddonVersion(row.getAttribute('data-addon-version'));
+    });
+  }
+
+  if (addonConfirm) addonConfirm.addEventListener('click', installAddon);
+  if (addonSaveAsBtn) addonSaveAsBtn.addEventListener('click', saveAddonAs);
+
+  if (DIALOGS.addon) {
+    DIALOGS.addon.addEventListener('click', function (event) {
+      if (!addonDialog.busy) return;
+      if (event.target && event.target.closest && event.target.closest('[data-dialog-close]')) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+
+  if (window.launcherAPI && typeof window.launcherAPI.onAddonProgress === 'function') {
+    window.launcherAPI.onAddonProgress(function (payload) {
+      if (!payload || !payload.message) return;
+      if (addonDialog.busy) setHint(dlgAddonStatus, payload.message);
+    });
+  }
+
+  window.addEventListener('launcher:instance-selected', function () {
+    updateAddonTargets();
+    refreshAddonConfirmState();
+  });
+
+  updateAddonTargets();
+
+  setInstallBusy(false);
+  setPackBusy(false);
+
+  if (window.launcherAPI && typeof window.launcherAPI.getPreferences === 'function') {
+    window.launcherAPI.getPreferences()
+      .then(function (prefs) {
+        applyAnimationPreference(prefs);
+      })
+      .catch(function (error) {
+        console.warn('[settings] could not load preferences:', error);
+      });
   }
 
   syncPages();
