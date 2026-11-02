@@ -68,6 +68,10 @@ $env:MCDL_USER_DATA = "D:\MCDL\data"
 `electron.exe --version` 仍能正常打印版本。这属于运行环境限制，不是应用代码问题，换到普通交互式
 桌面会话或另一台 Windows 机器即可。
 
+先排除一个更常见、也可修的原因：**可执行文件所在目录被打上了 Low 完整性标签**，进程被降级后
+同样会以 `0xC0000005` 退出。用 `icacls electron.exe` 看一眼有没有
+`Mandatory Label\Low Mandatory Level`，有就按「打开文件夹 / 定位文件点了没反应」那一节重置标签。
+
 排查顺序：
 
 ```powershell
@@ -145,6 +149,98 @@ Remove-Item "$env:APPDATA\mcdl-launcher-electron\gpu-crash.json" -ErrorAction Si
 
 - 启动终端里 `[main] render mode: software` → 属于上述情况，改用硬件加速即可；
 - `[main] render mode: gpu` 仍然卡 → 检查显卡驱动，或临时用 `-SoftwareRender` 对比确认。
+
+## 打开文件夹 / 定位文件点了没反应（进程被降为低完整性级别）
+
+现象：点「打开文件夹」「定位」以及底部那排文件夹按钮，状态栏显示「已请求打开…」，
+但资源管理器窗口不出现；有时同时弹「Windows 无法访问指定设备、路径或文件」。
+账号 / 设置也可能保存失败，启动器回退到程序目录下的 `data/`。
+
+原因不在启动器代码，而在 **Windows 完整性级别**：如果 `electron.exe` 所在目录被打上了
+`Mandatory Label\Low Mandatory Level` 标签，从该目录启动的进程会被降到 Low IL。
+实测对照（同一个 `cmd.exe`）：
+
+| 启动来源 | 进程完整性级别 |
+| --- | --- |
+| 从标了 Low 的目录启动 | `0x1000`（Low） |
+| 从 `C:\Windows\System32` 启动 | `0x2000`（Medium） |
+
+低完整性进程发出的「打开这个文件夹」请求交不到中完整性的资源管理器（UIPI 拦截），
+`spawn explorer.exe` 也会继承低完整性令牌，于是**什么都不会发生**。同一台机器上
+`electron.exe --version` 还可能直接以 `0xC0000005` 退出。
+
+检查：
+
+```powershell
+icacls "<仓库>\electron\node_modules\electron\dist\electron.exe"
+# 出现 Mandatory Label\Low Mandatory Level → 就是这个问题
+```
+
+修复（把整棵树重置为默认的 Medium）：
+
+```powershell
+icacls "C:\Users\<user>\Desktop\java" /setintegritylevel M /T
+icacls "C:\Users\<user>\Desktop\java" /setintegritylevel (OI)(CI)M
+```
+
+`/setintegritylevel (OI)(CI)M /T` 只改到目录、**不会改已有文件**，必须用不带继承
+标记的 `/setintegritylevel M /T` 才会逐个文件覆盖。
+
+改完必须**完全退出启动器再重新双击 `启动.bat`**：已经在跑的那个进程还是 Low。
+
+两个连带影响：
+
+- 数据目录会从程序目录的 `data/` 切回 `%APPDATA%\mcdl-launcher-electron`（默认位置）。
+  切换前先把前者里的 `accounts.json`、`game-directories.json`、`java-runtimes.json`、
+  `scanned-game-dirs.json`、`launcher-settings.json`、`skins\` 拷到后者，否则会像「账号没了」。
+- 这类标签通常由沙箱 / 受限运行环境写入。之后再从那种环境跑命令，标签可能被重新打上；
+  启动器自检到低完整性时会在终端打印 `[env] 进程运行在低完整性级别（Low IL）`。
+
+## 点「打开文件夹」弹出 Windows 原生错误框
+
+典型文案：`Windows 无法访问指定设备、路径或文件。你可能没有适当的权限访问该项目。`
+同类还有 `Windows 找不到…`、`你当前无权访问该文件夹`。
+
+这三种文案来自不同的层，**不能靠文案反推原因**：
+
+| 文案 | 谁弹的 | 含义 |
+| --- | --- | --- |
+| Windows 无法访问指定设备、路径或文件 | `ShellExecuteEx`（`shell.openPath` / `showItemInFolder`）失败 | 路径/设备这一层拿不到（盘符不在、UNC 不可达、外壳层被拦） |
+| 你当前无权访问该文件夹 | 资源管理器自己（带「继续」按钮） | 目录 ACL 拒绝列目录 |
+| Windows 找不到… | 外壳的「找不到文件」UI | 路径整段不存在 |
+
+共同点是**调用方拿不到异常**，所以旧版启动器会「弹框 + 状态栏说打开成功」。现在
+`openFolderPath()` / `revealPath()` 的做法：
+
+1. `stat` 目标，不存在就 `mkdir`（`mods` 这类空目录很常见），存在但不是目录直接报错；
+2. 用 `fs.opendir()` 试开一次，确认这一层**真的能列目录**；
+3. Windows 上直接 `spawn` 绝对路径的 `explorer.exe`，并等 `'spawn'` / `'error'`；
+4. 只有 `explorer.exe` 起不来才回退 `shell.openPath`，且检查它的**返回值字符串**
+   （`openPath` 失败时是 resolve 而不是 reject，`.catch()` 永远不触发）。
+
+注意 `fs.access(path, R_OK)` **不能**用来做这个预检：Windows 上它只看文件属性，
+一个 deny 掉「列出文件夹内容」的目录照样返回成功（实测 `access=R_OK` 通过、
+`readdir=EPERM`），必须用 `opendir()` / `readdir()`。
+
+排查顺序：
+
+```powershell
+# 1. 主进程是不是新代码？（刷新按钮只重载渲染进程，见文末「改了代码但界面没变化」）
+#    按住 Shift 点标题栏「刷新」会整进程重启
+
+# 2. 看启动终端有没有回退日志
+#    [open-folder] explorer 启动失败，回退 shell.openPath： <code>
+
+# 3. 路径本身还在不在（移动硬盘拔了 / 网络盘断线最常见的假死）
+Test-Path 'D:\你的\游戏目录'
+icacls 'D:\你的\游戏目录'
+
+# 4. 目录能不能真的列出来（这一步才会暴露 ACL 问题）
+Get-ChildItem 'D:\你的\游戏目录' -ErrorAction Stop | Select-Object -First 1
+```
+
+如果是 ACL / 安全软件（受控文件夹访问、企业策略）拦的，启动器现在会自己在状态栏
+报「无法访问这个文件夹（EPERM）：…」，不会再把用户丢给 Windows 的原生弹窗。
 
 ## 启动游戏失败
 

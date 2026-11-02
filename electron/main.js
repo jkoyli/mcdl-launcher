@@ -1,7 +1,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
@@ -505,14 +505,103 @@ function explorerExe() {
 }
 
 /**
+ * 拉起一个和主进程解耦的 GUI 程序（explorer.exe），并等它真的启动成功。
+ *
+ * 坑：spawn() 在「可执行文件不存在 / 没有执行权限」时**不会抛异常**，而是在下一个
+ * tick 异步 emit('error')。没人监听时会变成未捕获异常，直接带走主进程（Electron
+ * 会弹「A JavaScript error occurred in the main process」，看起来就像启动器崩了）。
+ * 所以 try/catch 包 spawn 是假保护，必须等 'spawn' / 'error' 其中一个。
+ */
+function spawnDetached(exe, args) {
+  return new Promise((resolve, reject) => {
+    let child = null;
+    try {
+      child = spawn(exe, args, { detached: true, stdio: 'ignore' });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    child.once('error', (error) => reject(error));
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+/**
+ * 确认目录在 Windows 这一层真的能「进去」。
+ *
+ * 不能用 fs.access(path, R_OK)：Windows 上它只看文件属性，一个被 ACL 拒绝列目录的
+ * 文件夹照样返回成功（实测 deny RX 的目录 access=R_OK 通过、readdir=EPERM）。
+ * opendir 需要目录的 LIST 权限，正好等于资源管理器打开它所需的那一项，而且不枚举内容。
+ */
+async function assertFolderReadable(target) {
+  try {
+    const handle = await fs.opendir(target);
+    await handle.close();
+    return;
+  } catch (error) {
+    // 真没权限时给可操作的提示，别把用户丢给 Windows 的原生弹窗
+    throw new Error(
+      `无法访问这个文件夹（${error.code || error.message}）：${target}\n` +
+        '可能是权限限制或安全软件拦截。可以在资源管理器里手动打开该路径确认。'
+    );
+  }
+}
+
+/**
+ * 当前进程是不是跑在「低完整性级别」（Low IL）里。
+ *
+ * 从沙箱 / 受限终端 / 某些安全软件里启动时，进程令牌的完整性级别会低于桌面外壳，
+ * 而 Windows 的 shell 交接受 UIPI 约束：低完整性进程发出的「打开这个文件夹」请求
+ * 交不到中完整性的资源管理器，表现为**点了按钮什么也不发生**，或者系统弹
+ * 「Windows 无法访问指定设备、路径或文件」。
+ *
+ * 判断方式用 `whoami /groups` 里的 SID（S-1-16-4096 = Low），不看本地化文案。
+ * 探测失败一律当作正常，不能让探测本身影响功能。
+ */
+let integrityProbe = null;
+
+function isLowIntegrity() {
+  if (process.platform !== 'win32') return Promise.resolve(false);
+  if (!integrityProbe) {
+    integrityProbe = new Promise((resolve) => {
+      const exe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'whoami.exe');
+      execFile(exe, ['/groups'], { windowsHide: true, timeout: 5000 }, (error, stdout) => {
+        if (error || !stdout) return resolve(false);
+        resolve(/\bS-1-16-4096\b/.test(String(stdout)));
+      });
+    });
+  }
+  return integrityProbe;
+}
+
+/**
+ * 低完整性级别下，任何「把路径交给资源管理器」的做法都会静默失败：
+ * spawn explorer.exe 会继承低完整性令牌、交接受阻；ShellExecute 一侧则可能直接
+ * 返回 ERROR_ACCESS_DENIED。与其让用户面对一个没反应的按钮，不如先说明原因。
+ */
+async function assertShellHandoffAvailable(target) {
+  if (!(await isLowIntegrity())) return;
+  throw new Error(
+    '启动器运行在低完整性级别（Low IL），Windows 会拒绝它把路径交给资源管理器，所以点了没反应。' +
+      '多半是 electron.exe 所在目录被打了 Low 完整性标签：用 icacls 查看该 exe，' +
+      '执行 icacls "<目录>" /setintegritylevel M /T 重置后完全退出重启（见 docs/troubleshooting.md）。' +
+      `\n${target}`
+  );
+}
+
+/**
  * 用资源管理器打开文件夹。
  *
  * 不用 shell.openPath 直接了事的原因：
- *   - 目录不存在时它会调起 ShellExecuteEx，Windows 会弹「无法访问指定设备、
- *     路径或文件」的系统对话框，而调用方还以为成功了；
+ *   - 目录不存在 / 设备不可达时它会调起 ShellExecuteEx，失败面由 Windows 外壳决定，
+ *     用户可能只看到一个原生弹窗（「Windows 无法访问指定设备、路径或文件」），而
+ *     调用方还以为成功了；
  *   - 进程和 explorer 不在同一个权限上下文时（比如启动器被以管理员启动），
  *     ShellExecute 的 DDE 交接触发失败。
- * 所以先保证目录存在，Windows 上直接拉起 explorer.exe，再退回 shell.openPath。
+ * 所以先保证目录存在且可读，Windows 上直接拉起 explorer.exe，再退回 shell.openPath。
  */
 async function openFolderPath(dir) {
   const target = path.resolve(String(dir || ''));
@@ -535,18 +624,25 @@ async function openFolderPath(dir) {
     throw new Error(`这不是文件夹：${target}`);
   }
 
+  await assertFolderReadable(target);
+  await assertShellHandoffAvailable(target);
+
+  let shellError = null;
   if (process.platform === 'win32') {
     try {
-      const child = spawn(explorerExe(), [target], { detached: true, stdio: 'ignore' });
-      child.unref();
+      await spawnDetached(explorerExe(), [target]);
       return target;
-    } catch {
-      // 继续尝试 Electron 自带的方式
+    } catch (error) {
+      shellError = error;
+      console.warn('[open-folder] explorer 启动失败，回退 shell.openPath：', error.code || error.message);
     }
   }
 
   const error = await shell.openPath(target);
-  if (error) throw new Error(`无法打开文件夹：${error}\n${target}`);
+  if (error) {
+    const detail = shellError ? `\n（explorer.exe 也启动失败：${shellError.code || shellError.message}）` : '';
+    throw new Error(`无法打开文件夹：${error}\n${target}${detail}`);
+  }
   return target;
 }
 
@@ -564,18 +660,27 @@ async function revealPath(filePath) {
 
   if (stat.isDirectory()) return openFolderPath(target);
 
+  await assertShellHandoffAvailable(target);
+
+  let shellError = null;
   if (process.platform === 'win32') {
     try {
       // explorer.exe 的 /select 参数要拼成一个参数，路径里的逗号不用转义。
-      const child = spawn(explorerExe(), [`/select,${target}`], { detached: true, stdio: 'ignore' });
-      child.unref();
+      await spawnDetached(explorerExe(), [`/select,${target}`]);
       return target;
-    } catch {
-      // 退回 Electron 接口
+    } catch (error) {
+      shellError = error;
+      console.warn('[reveal] explorer /select 失败，回退 openPath：', error.code || error.message);
     }
   }
 
-  shell.showItemInFolder(target);
+  // 最后一道用 openPath 打开所在目录，而不是 showItemInFolder：
+  // showItemInFolder 没有返回值，失败也看不出来，等于又回到「假装成功」。
+  const error = await shell.openPath(path.dirname(target));
+  if (error) {
+    const detail = shellError ? `\n（explorer.exe 也启动失败：${shellError.code || shellError.message}）` : '';
+    throw new Error(`无法定位文件：${error}\n${target}${detail}`);
+  }
   return target;
 }
 
@@ -1291,10 +1396,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
-    const logDirectory = app.getPath('logs');
-    await fs.mkdir(logDirectory, { recursive: true });
-    const error = await shell.openPath(logDirectory);
-    if (error) throw new Error(error);
+    // 走和「打开文件夹」同一条路径：存在性 / 可读性预检 + explorer 直启 + 返回值检查
+    await openFolderPath(app.getPath('logs'));
     return true;
   });
 
@@ -1379,8 +1482,10 @@ function registerIpcHandlers() {
       await store.markUsed(account.id).catch(() => {});
 
       // 「测试游戏」：启动后把本次输出日志直接打开，方便看堆栈。
+      // openPath 不会 reject，失败时 resolve 成错误字符串，所以要读返回值。
       if (payload && payload.test) {
-        await shell.openPath(result.logFile).catch(() => {});
+        const logError = await shell.openPath(result.logFile);
+        if (logError) console.warn('[launch] 打开本次日志失败：', logError, result.logFile);
       }
 
       return {
@@ -1745,6 +1850,16 @@ if (!gotSingleInstanceLock) {
     console.log(`[mcdl] default game dir: ${mcdl.DEFAULT_GAME_DIR}`);
 
     checkUserDataWritable().catch(() => {});
+
+    // 低完整性级别不会阻止启动，但会让「打开文件夹 / 定位文件」全部静默失效，
+    // 所以启动时先探测一次，把原因直接写在终端里。
+    isLowIntegrity().then((low) => {
+      if (!low) return;
+      console.warn(
+        '[env] 进程运行在低完整性级别（Low IL）：打开文件夹 / 定位文件会被 Windows 拒绝。' +
+          '请从资源管理器直接双击 启动.bat 重启。'
+      );
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
