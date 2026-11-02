@@ -289,6 +289,17 @@ const launcherAPI = {
   /** 更新整合包：把新包装出来的临时实例合并进目标实例。 */
   mergeModpack: (payload) => ipcRenderer.invoke('instances:merge-pack', payload || {}),
 
+  /** 更新整合包的进度（备份 / 复制 / 替换目录）。 */
+  onMergeProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('instances:merge-progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /** 撤销上一次更新整合包：按备份还原被覆盖的文件、删除本次新增的文件。 */
+  undoMergeModpack: (payload) => ipcRenderer.invoke('instances:merge-undo', payload || {}),
+
   /**
    * 导出整合包：扫描 → 向导 → 打包。
    *   scan   → { categories, name, versionName, loader, … }
@@ -395,6 +406,31 @@ const launcherAPI = {
    * 关于页：版本、Electron / Node、数据目录、仓库地址。
    */
   getAppInfo: () => ipcRenderer.invoke('app:info'),
+
+  /**
+   * 更新通道（默认关闭）。未配置更新源时 getUpdateState() 返回 configured:false，
+   * 四个动作都不报错、不联网。
+   *
+   *   getUpdateState()   → { configured, currentVersion, state, version, notes, progress }
+   *   checkUpdates()     → 只查不下载
+   *   downloadUpdate()   → 用户点了才下载
+   *   installUpdate()    → 已下载完成时退出并安装
+   */
+  getUpdateState: () => ipcRenderer.invoke('updates:state'),
+
+  checkUpdates: () => ipcRenderer.invoke('updates:check'),
+
+  downloadUpdate: () => ipcRenderer.invoke('updates:download'),
+
+  installUpdate: () => ipcRenderer.invoke('updates:install'),
+
+  /** 下载进度 / 状态变化（payload 与 getUpdateState() 同形状）。 */
+  onUpdateProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('updates:progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
 
   /**
    * 渲染模式：{ mode: 'gpu'|'software', software, gpuFeatureStatus, crashMarker }

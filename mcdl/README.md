@@ -1,4 +1,4 @@
-# MCDL 1.0.7 — Minecraft 原版下载器
+﻿# MCDL 1.0.7 — Minecraft 原版下载器
 
 ![界面](docs/gui.png)
 
@@ -51,7 +51,7 @@ MCDL 是一个**零第三方依赖**的 Java 小工具：把任意原版 Minecra
 > 或用 `mcdl.bat --java <路径>`。MCDL 自己会扫描并列出机器上所有 Java（见第 13 节）。
 >
 > 便携版如果「打开文件夹」被安全软件（如火绒 HIPS）拦截，可以改用便携版目录里的 `启动.bat`
-> 启动（进程是 `javaw.exe` 而不是 `MCDL.exe`），或把 `MCDL.exe`、`McdlDialog.exe`、`java.exe`
+> 启动（进程是 `javaw.exe` 而不是 `MCDL.exe`），或把 `MCDL.exe`、`java.exe`
 > 加入信任区；系统 shell 被拦截时，MCDL 会打开应用内文件夹窗口兜底。
 
 ```bat
@@ -289,19 +289,17 @@ mcdl/
 │   └─ ui/
 │       ├─ Theme.java            深色主题
 │       ├─ VersionTableModel.java
-│       ├─ NativeDialog.java     调用原生 McdlDialog.exe
+│       ├─ NativeDialog.java     文件 / 文件夹选择器（纯 Java JFileChooser）
 │       ├─ FolderWindow.java     应用内文件夹窗口（系统 shell 被拦截时兜底）
 │       └─ MainWindow.java       主窗口
-├─ native/McdlDialog.cs         原生文件 / 文件夹选择器（IFileOpenDialog）
 ├─ tests/                       回归测试（粘贴、故意失败安装）
 ├─ run-tests.bat                编译并运行回归测试
-├─ build.bat / build.ps1       编译（jar + McdlDialog.exe）
+├─ build.bat / build.ps1       编译（javac + jar，无原生依赖）
 ├─ package.ps1                 打包（轻量版 + 便携版）
 ├─ 启动.bat / mcdl.bat         启动脚本
 ├─ docs/gui.png
 ├─ dist/                       打包产物（zip）
-├─ mcdl.jar
-└─ McdlDialog.exe
+└─ mcdl.jar
 ```
 
 ## 14. 整合包导入（Modrinth .mrpack）
@@ -419,7 +417,7 @@ powershell -ExecutionPolicy Bypass -File package.ps1
 
 | 文件 | 说明 |
 |---|---|
-| `dist/MCDL-1.0.7.zip` | 轻量版：`mcdl.jar`、`McdlDialog.exe`、`启动.bat`、`mcdl.bat`、`README.md`、`LICENSE`、`src/`、`build.bat` |
+| `dist/MCDL-1.0.7.zip` | 轻量版：`mcdl.jar`、`启动.bat`、`mcdl.bat`、`README.md`、`LICENSE`、`src/`、`build.bat` |
 | `dist/MCDL-1.0.7-portable.zip` | 便携版：`MCDL.exe` + 自带 JRE + `命令行.bat`，解压即用 |
 
 便携版由 `jpackage --type app-image` 生成（jlink 运行时包含
@@ -434,3 +432,4 @@ jpackage 的运行时默认裁掉了 native 命令，所以脚本会从本机 JD
 本工具只请求 Mojang 公开分发的元数据与文件，不绕过任何授权、不包含游戏内容。
 使用请遵守 [Minecraft EULA](https://www.minecraft.net/eula) 与当地法律；请勿用于商业分发。
 本项目与 Mojang、Microsoft、网易及 PCL2 / HMCL 作者均无关联。
+

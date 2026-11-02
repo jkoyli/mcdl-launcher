@@ -1,4 +1,4 @@
-# Electron
+﻿# Electron
 /electron/node_modules/
 /electron/dist/
 /electron/out/
@@ -25,7 +25,14 @@ Thumbs.db
 
 # 本地测试夹具 / 数据目录
 /electron/.testdata/
-/mcdl/McdlDialog.exe
 
 # DSH 沙箱权限诊断报告（本地排查用，不入库）
 /.acl-reports/
+
+# 内置 JRE（二进制，不入库；仅保留占位说明）
+/electron/jre/*
+!/electron/jre/README.txt
+
+# electron-builder 输出（dist/win-unpacked、安装包、zip）
+/dist/
+

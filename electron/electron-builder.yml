@@ -1,0 +1,93 @@
+# MCDL Launcher — electron-builder 配置
+#
+# 关键约束（见 docs/history 的打包前体检）：
+#   1. Java sidecar（mcdl.jar）必须放在 asar 之外 —— java -jar 读不了 asar 里的文件，
+#      所以它走 extraResources，运行时由 main 进程按 process.resourcesPath 解析。
+#   2. 渲染层全部相对路径加载（<script src="./renderer.js">），无构建步骤，不需要 base/publicPath 配置。
+#   3. 运行时 npm 依赖只有 electron-updater（更新通道，默认关闭）。它必须进 asar；
+#      electron / electron-builder 是 devDependencies，由 electron-builder 按生产依赖树
+#      自行裁剪，绝不能出现在包里。
+
+appId: com.mcdl.launcher
+productName: MCDL Launcher
+copyright: Copyright © 2026 MCDL Launcher
+
+# 兜底命名（nsis / portable 各自覆盖自己的）。zip 没有专属配置节，
+# 用的就是这一条 —— 目的仍然是不让文件名里出现空格。
+artifactName: MCDL-Launcher-${version}-${arch}.${ext}
+
+directories:
+  output: ../dist
+  buildResources: build
+
+# 进 asar 的内容。测试、data（运行时用户数据兜底）、打包图标都不进包。
+#
+# node_modules 必须显式列出：files 是白名单，不写就不保证生产依赖进包。
+# electron-builder 只会按 package.json 的 dependencies 收集（devDependencies 一律裁掉），
+# 所以这里不会把 electron / electron-builder 带进来。
+files:
+  - "*.js"
+  - "renderer/**/*"
+  - "package.json"
+  - "node_modules/**/*"
+  - "!node_modules/.bin/**"
+  - "!tests/**"
+  - "!data/**"
+  - "!build/**"
+  - "!scripts/**"
+
+# 进 resources/（asar 外）的内容。mcdl.jar 必须在这里。
+extraResources:
+  - from: ../mcdl/mcdl.jar
+    to: mcdl/mcdl.jar
+  # 内置 JRE（可选）：`npm run fetch:jre` 会把 Temurin JRE 解到 electron/jre/。
+  # 目录允许为空占位，运行时按「里面有 bin/java.exe」判断是否真的可用。
+  - from: jre
+    to: jre
+
+asar: true
+# 零原生模块，跳过 rebuild 加快打包。
+npmRebuild: false
+buildDependenciesFromSource: false
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+    # zip：给内测用。没有安装器就不会被 360/管家拦在「安装」这一步，
+    # 用户解压即用；也方便在拿到证书前先发给朋友试用。
+    - target: zip
+      arch: [x64]
+  # 未签名时不要把 SmartScreen 责任藏起来，构建日志里能看到。
+  # 注意：signAndEditExecutable 不只管签名，还负责把图标/版本信息/产品名写进 exe。
+  # 没证书时**保留 true**（= 写资源但跳过签名）；设成 false 会连图标和版本信息都丢掉。
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MCDL Launcher
+  # 文件名里不要留空格：latest.yml 里的 path 直接对应它，带空格容易在个别
+  # 静态服务器 / CDN 上变成 404，或被 URL 编码规则坑掉。
+  artifactName: MCDL-Launcher-${version}-setup.${ext}
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: MCDL-Launcher-${version}-portable.${ext}
+
+# 自动更新的发布物（latest.yml / *.blockmap）由 electron-builder 在**有 publish 配置**时生成。
+# 现在故意不配置：`--dir` 与普通 `--win` 都只出安装包，不会产出 latest.yml。
+# 真正要发版时把下面这段解开（url 换成静态服务器根地址，必须与 update.json / MCDL_UPDATE_URL 一致），
+# 然后 `npx electron-builder --win --publish never`，dist/ 里就会出现 latest.yml、
+# 安装包的 .blockmap 与 setup.exe；把这三样一起上传到该 url 即可。
+# publish:
+#   - provider: generic
+#     url: https://example.com/mcdl/updates
+#     channel: latest

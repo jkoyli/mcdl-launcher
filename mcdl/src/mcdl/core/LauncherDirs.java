@@ -8,6 +8,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -138,6 +139,76 @@ public final class LauncherDirs {
             return Paths.get(appData, ".minecraft");
         }
         return Paths.get(System.getProperty("user.home"), ".minecraft");
+    }
+
+    //----------------------------------------------------------------------
+    // 启动器缓存目录（~/.mcdl/cache）
+    //----------------------------------------------------------------------
+
+    /**
+     * 启动器自身的缓存根目录：{@code %USERPROFILE%\.mcdl\cache}。
+     *
+     * <p>与已有的 {@code ~/.mcdl/sources.json}、{@code ~/.mcdl/curseforge.key}、
+     * {@code ~/.mcdl/dialog-error.log} 保持同一套约定，不再另起目录。</p>
+     */
+    public static Path cacheDir() {
+        return Path.of(System.getProperty("user.home"), ".mcdl", "cache");
+    }
+
+    /** 加载器安装器 jar 的落点：{@code ~/.mcdl/cache/installers}。 */
+    public static Path installerCacheDir() {
+        return cacheDir().resolve("installers");
+    }
+
+    /**
+     * 在安装器缓存目录里新建一个文件名唯一的 jar 临时文件。
+     *
+     * <p>不写系统 {@code %TEMP%}：那里是杀软最敏感的位置（"写临时目录 → 静默执行" 的组合
+     * 会被直接判为恶意行为）。调用方必须在 {@code finally} 里删除返回的文件。</p>
+     */
+    public static Path newInstallerJar(String kind) throws IOException {
+        Path dir = installerCacheDir();
+        Files.createDirectories(dir);
+        String prefix = "mcdl-" + (kind == null || kind.isBlank() ? "loader" : kind) + "-";
+        return Files.createTempFile(dir, prefix, ".jar");
+    }
+
+    /**
+     * 清扫安装器缓存目录里超过 {@code maxAge} 的残留文件（正常流程会自己删，这里兜底
+     * 进程崩溃 / 断电留下的垃圾）；返回删除数量。任何异常都被吞掉，绝不影响启动。
+     */
+    public static int pruneInstallerCache(Duration maxAge) {
+        if (maxAge == null || maxAge.isZero() || maxAge.isNegative()) {
+            return 0;
+        }
+        Path dir = installerCacheDir();
+        if (!Files.isDirectory(dir)) {
+            return 0;
+        }
+        long cutoff = System.currentTimeMillis() - maxAge.toMillis();
+        int removed = 0;
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+            for (Path p : ds) {
+                String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                if (!(name.endsWith(".jar") || name.endsWith(".jar.dl") || name.endsWith(".jar.part"))) {
+                    continue;
+                }
+                if (!Files.isRegularFile(p)) {
+                    continue;
+                }
+                try {
+                    if (Files.getLastModifiedTime(p).toMillis() < cutoff) {
+                        Files.deleteIfExists(p);
+                        removed++;
+                    }
+                } catch (IOException | RuntimeException ignored) {
+                    // 单个文件删不掉（被杀软占用等）不影响其它文件
+                }
+            }
+        } catch (IOException | RuntimeException ignored) {
+            // 目录列不出来就跳过清扫
+        }
+        return removed;
     }
 
     //----------------------------------------------------------------------

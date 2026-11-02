@@ -4,11 +4,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 import mcdl.core.Installer;
+import mcdl.core.LauncherDirs;
 import mcdl.core.Manifest;
 import mcdl.core.Sources;
 import mcdl.ui.MainWindow;
@@ -65,6 +67,13 @@ public final class Main {
             """;
 
     public static void main(String[] args) {
+        // 启动时顺带清扫安装器缓存：正常流程会自己删，这里兜底进程崩溃 / 断电留下的残留
+        // （只删 7 天前的文件，不会影响并发中的安装）。
+        try {
+            LauncherDirs.pruneInstallerCache(Duration.ofDays(7));
+        } catch (RuntimeException ignored) {
+            // 清扫失败绝不影响启动
+        }
         try {
             int code = run(args);
             if (code != 0) {

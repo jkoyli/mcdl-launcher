@@ -18,16 +18,3 @@ if errorlevel 1 (
   exit /b 1
 )
 echo BUILD OK: %ROOT%mcdl.jar
-
-rem Native dialog helper (IFileOpenDialog). Build once, ship with the app.
-set CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe
-if exist "%CSC%" (
-  "%CSC%" /nologo /target:winexe /out:"%ROOT%McdlDialog.exe" "%ROOT%native\McdlDialog.cs"
-  if errorlevel 1 (
-    echo BUILD FAILED: csc error
-    exit /b 1
-  )
-  echo BUILD OK: %ROOT%McdlDialog.exe
-) else (
-  echo WARNING: csc.exe not found, skip McdlDialog.exe
-)

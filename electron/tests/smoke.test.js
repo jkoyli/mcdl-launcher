@@ -23,7 +23,14 @@ const PURE_MODULES = [
   'game-directories',
   'java-install',
   'instance-store',
-  'modpack-export'
+  'modpack-export',
+  // 更新通道：纯逻辑部分（配置解析 / 版本比较 / createUpdater 的惰性封装）
+  // 必须能在没有 electron-updater、没有 electron 的 node 进程里加载。
+  'updater',
+  // 打包路径 / 内置 JRE 解析也必须是纯 node 可加载的：
+  // 它们靠 main.js 注入 isPackaged / resourcesPath，而不 require('electron')。
+  'java-runtime',
+  'mcdl-service'
 ];
 
 test('纯逻辑模块都能被 node 直接加载（不依赖 Electron 运行时）', () => {
@@ -35,11 +42,13 @@ test('纯逻辑模块都能被 node 直接加载（不依赖 Electron 运行时�
 });
 
 test('加载纯逻辑模块不会把 electron 拉进进程', () => {
-  // 只要上面的 require 成功，且 require.cache 里没有 electron 主模块，
-  // 就说明这些模块没有把 Electron 当成运行时依赖。
+  // 只要上面的 require 成功，且 require.cache 里没有 electron / electron-updater，
+  // 就说明这些模块没有把 Electron 或更新器当成「加载即依赖」的东西。
+  // updater.js 尤其关键：更新通道默认关闭，require 它本身不能把 electron-updater 拉进来。
   const electronEntries = Object.keys(require.cache).filter((file) => {
     const normalized = file.split(path.sep).join('/');
-    return /\/node_modules\/electron\//.test(normalized) || /\/electron\/main\.js$/.test(normalized);
+    return /\/node_modules\/electron(-updater|-builder)?\//.test(normalized) ||
+      /\/electron\/main\.js$/.test(normalized);
   });
 
   assert.deepEqual(electronEntries, []);

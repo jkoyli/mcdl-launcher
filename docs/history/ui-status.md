@@ -1,7 +1,8 @@
 # MCDL Launcher UI 实现状态（验收基准）
 
 > **基线**：`ui-tree-controls.html` —— 60 个节点 / 284 项控件（2026-11-01 静态扫描 HMCL 上游 `ui/**/*.java`）
-> **最近核对**：2026-11-02 21:10 · 对照 `electron/renderer/index.html`(284 KB) + `renderer.js`(374 KB) + `main.js`(163 KB / **105 条 IPC**)
+> **最近核对**：2026-11-02 23:58 · 对照 `electron/renderer/index.html`(300 KB) + `renderer.js`(428 KB) + `main.js`(205 KB / **114 条 IPC**)
+> **自动化验证**：`cd electron && npm test` → **284 / 284 pass**（`node --test --test-isolation=none`，约 1 s）
 > **图例**：✅ 完成 ｜ ⚠️ 部分 ｜ ⛔ 未做 ｜ ➖ 不做（设计决定）｜ ➕ 清单外新增
 > **口径**：`项数` = 基线控件行数；`已做` 按**功能可用**计（不按"文件/元素是否存在"计）；`disabled` 入口计为未做。
 
@@ -156,17 +157,22 @@
 - **启动参数规格/脚本** `launch-spec.js` / `launch-script.js`
 - **本轮新增**：启动器日志落盘（`app-log.js`）、运行栈导出、截图页签与查看器、实例维护（清理 / 资源 / 库）、
   更新整合包（装到临时实例再合并）、导出整合包向导、Adoptium Java 安装、NBT 编辑器、游戏设置预设
+- **主题引擎**：`data-theme` + `--accent`/`--accent-rgb` 变量化（252 处收敛）、主题模式 / 色彩模式 / 导出主题快照（见 §10.1）
+- **扫描缓存可清理**：`instances:scan-cache` / `-clear` / `-forget` + 实例面板按钮；`gamedirs:remove` 顺带剔缓存（见 §10.1）
+- **更新整合包安全层**：`instance-merge.js` 影子目录 + 两次原子 rename + 备份 + 回滚 + 启动自愈（见 §10.2 / §10.5）
+- **下载完整性**：`Http.BadContentException` 坏内容快速换源、安装器 jar 的 `.sha1` 探测 + zip 校验、Temurin SHA-256 校验（见 §11）
 
-## §4 未做清单（9 项页面级 + 2 共享 = 11 项，另 7 项不做）
+## §4 未做清单（8 项实操 + 13 项不做 = 21 项）
 
 | 块 | 项数 | 具体 | 备注 |
 |---|---:|---|---|
 | 内容更新（AddonUpdatesPage） | 5 | 导出 / 更新 / 取消 / 列表项 / 确定 | 需"检查更新"比对逻辑（Modrinth 版本匹配） |
-| 共享组件（§7 C 组） | 2 | HTMLRenderer 2（待定） | 工具栏基座已补；4 项「不做」另计，已扣 |
+| 共享组件（§7 C 组） | 2 | HTMLRenderer 2（待定） | 工具栏基座已补；4 项「不做」另计 |
 | 主页主视觉 / 新闻 | 1 | 3D 展示 / 新闻 API | 仍是 placeholder |
+| 个性化（§6） | 6 | 主题 / 主题包入口（等主题引擎，2 项）；抗锯齿 / 缓存网络图片 / 标题栏透明 / 窗口透明（`disabled` 暂不支持，4 项） | 4 项 ➖ 暂不支持 + 2 项 ⛔ 等主题引擎 |
 | 主题包管理 | 3 | 列表项 / 确定 / 导入项 | **➖ 设计决定不做**（没有主题引擎，占位保留） |
 
-**总计：5 + 2 + 1 = 8 项实操 + 7 项「不做」= 15 项剩余。**
+**总计：5（内容更新）+ 2（HTMLRenderer）+ 1（主页）= 8 项实操；+ 13 项「不做」（个性化 4 暂不支持 + 个性化 2 等引擎 + 主题包 3 + 共享 4）= 21 项剩余。**
 
 ## §5 现存 `disabled` / 占位入口
 
@@ -291,5 +297,206 @@
 
 ### 9.3 技术债提示
 
-`renderer.js`（375 KB）与 `main.js`（163 KB）均为单文件。共享基座（`createList` / `createTabs` / `askPrompt` / `runTask` / `createToolbar`）已就位，但 **25 个历史 `render*` 函数尚未回迁**；建议新页面一律用基座，老页面只在修 bug 时顺带迁移，不做专项大面积回迁。
+`renderer.js`（约 380 KB）与 `main.js`（约 170 KB）均为单文件。共享基座（`createList` / `createTabs` / `askPrompt` / `runTask` / `createToolbar`）已就位，但 **25 个历史 `render*` 函数尚未回迁**；建议新页面一律用基座，老页面只在修 bug 时顺带迁移，不做专项大面积回迁。
 
+---
+
+## §10 2026-11-02 第三批：主题 / 测试 / Java 恢复 / 缓存清理 / 合并安全
+
+> 这一批 5 项由子代理并行完成，均经主会话独立复核（`node --check` + 全量测试 + 人工破坏性验证）。
+
+### 10.1 完成清单
+
+| # | 项 | 交付 | 复核结果 |
+|---|---|---|---|
+| 1 | **主题引擎** | 主题模式（跟随系统/浅/深）+ 色彩模式（自定义主色）+ 导出主题快照；`data-theme` 写在 `<html>`，252 处 `rgba(159,208,255,α)` 收敛为 `var(--accent-rgb)` | 个性化 2/11 → **5/11**；`node --check` 通过；CSS 括号配平 889/889 |
+| 2 | **Electron 测试基建** | `electron/tests/` 12 个文件 + `npm test`；覆盖 path-guard / modpack-guard / version-manifest / instance-store / nbt-editor / launch-spec / modpack-export / java-install / modrinth-download / game-directories / instance-isolation / smoke | **284 / 284 绿**（沙箱内因管道 stdio 会挂 1 条 `game-window`，全权限下通过，属环境性；见 10.4 #5） |
+| 3 | **恢复 Java** | `#settingsJavaReset`「恢复默认」；`javaPath` 为空时置灰、扫描不到时红色高亮并说明「可能已被卸载或移动」 | id 唯一（437 个无重复）；仅改全局 `javaPath`，不动实例级 |
+| 4 | **扫描缓存可清理**（清单外） | 新通道 `instances:scan-cache` / `scan-cache-clear`；实例面板「清理缓存 (N)」按钮；`gamedirs:remove` 顺带从缓存剔除 | main / preload / renderer 三处在位 |
+| 5 | **更新整合包安全改造**（清单外，**数据安全**） | 新模块 `instance-merge.js`：影子目录 + 两次原子 rename + 自动备份 + 失败/取消回滚 + `instances:merge-undo` 撤销 | 见 10.2 |
+
+### 10.2 合并安全：修掉的真实缺陷
+
+修复前 `main.js` 的 `copyTreeInto()` 用 `fs.copyFile(from, to)` **无条件覆盖**用户实例文件，无备份、无回滚；游戏运行中 / 磁盘满 / 取消 / 断电都会留下**半新半旧**的实例。这与 PCL2 那次「整合包覆盖损坏用户文件」属同一类缺陷（业界最严重的一档）。
+
+修复后：
+
+```
+1) 复制 target → versions/.<name>.mcdl-merge-<token>.tmp   （同分区）
+2) staging 覆盖进 tmp（跳过版本 json/jar）
+3) rename(target → .old)；rename(tmp → target)             （两次原子 rename）
+```
+
+- **两次 rename 之前，目标实例一个字节都没被写过** → 结构上不存在半覆盖；
+- 动手前把将被覆盖的文件备份到 `<userData>/instance-merge-backups/<实例名-sha1>/<时间戳>/`；
+- 失败/取消自动回滚；回滚失败给出 `.old` 绝对路径；
+- 游戏运行中直接拒绝（`assertNoActiveLaunch`）；
+- UI 显示「覆盖 N / 新增 M / 跳过 J + 备份路径」，并提供「撤销本次更新」。
+
+**人工破坏性验证**（主会话独立执行，13/13 通过）：第 2 个文件复制前抛错 → 目标 `a.txt`/`b.txt` 仍是旧值、`.tmp`/`.old` 零残留、实例目录完好；正常合并后无关文件保留、staging 版本 json 未被带入；`restoreFromBackup` 能还原旧内容。
+
+### 10.3 顺带修掉的 bug
+
+- **NBT `long` 精度**：`parseValue('long', ...)` 经 `Number` 中转，超过 2^53 静默丢精度 → 在 NBT 编辑器改 `RandomSeed` 会改掉世界种子。改为正则校验 + `BigInt` 直解析 + 64 位范围校验，并补 2 条边界用例（`2^53±1`、`±2^63`、`1e5`/`12.5`/`0x10` 必须被拒）。
+
+### 10.4 已知问题
+
+| # | 问题 | 影响 | 状态 |
+|---|---|---|---|
+| 1 | 主题存在 **localStorage**（`mcdl.theme.v1`），因 `main.js` 的 `normalizeExtraSettings` 白名单不含 `themeMode`/`colorStyle`/`accentColor`，未知键会被丢弃 | 主题设置不随 `settings.json` 备份/迁移 | ⛔ 未修（渲染层已做自动探测，主进程补 3 个键后即可切换） |
+| 2 | 浅色主题是 **`filter: invert(1) hue-rotate(180deg)`** 反相实现（约 300 处硬编码深色） | 图片双重反相有轻微色偏；浅色下壁纸"压暗"变"提亮"；`backdrop-filter` 未验证。已补 `color-scheme: light` 修原生下拉仍是深色 | ⛔ 未修（长期应收敛为变量覆盖） |
+| 3 | 合并备份只增不减 | 磁盘随更新累积 | ✅ **已修**（见 10.5） |
+| 4 | 合并 `kill -9` 落在两次 rename 之间 | 实例暂时从列表消失，数据在 `.old` | ✅ **已修**（见 10.5） |
+| 5 | `tests/game-window.test.js` 在 DSH 沙箱必然 15s 超时 | `game-window.js` 用 `spawn(powershell, {stdio:['ignore','pipe','ignore']})` 抓 stdout，沙箱禁止管道 stdio | ➖ 非代码问题（本机终端可正常跑） |
+
+### 10.5 收尾加固：启动自愈 + 备份保留
+
+**自愈**：`recoverInterruptedMerges({ versionsRoot })`（`instance-merge.js:639`），在 `app.whenReady()` 里、`createWindow()` 之前 `await`，保证渲染层第一次拿到的实例列表已是恢复后的状态。
+
+| 现场 | 处理 |
+|---|---|
+| `.old` 在、目标缺失 | `rename(.old → 目标)` 让实例回来；同批 `.tmp` 改名成隐藏的 `…mcdl-merge-lost-<时间戳>` 留档（`.` 前缀继续被实例扫描跳过） |
+| `.old` 在、目标也在 | 只删 `.old`（上一版副本），目标内容不动 |
+| 只有 `.tmp`、目标在 | 删半成品 |
+| 只有 `.tmp`、目标缺失 | **不改名不删除**（无法判断完整性，宁可让用户按日志排查） |
+
+安全边界：只扫 `versions/` 直接子项、父目录 basename 必须是 `versions`、只认 `MERGE_LEFTOVER_PATTERN`、符号链接不碰、全程 try/catch 不阻塞启动。
+
+**保留**：`pruneMergedBackups({ backupRoot, keep })`，`KEEP_BACKUPS = 3`。删除需同时满足三条（是目录 / 目录名匹配 ISO 时间戳 / 有可解析的 `manifest.json`），否则跳过；`keep` 为 `null`/`NaN`/负数退回默认 3，只有显式 `0` 才全删。合并成功后自动清理，启动时另有一次性后台清理。
+
+**人工验证**（主会话独立执行，19/19 通过）：四类现场各一例 + 不碰无关目录 + 非 `versions` 父目录整次放弃；备份保 5 份 → 清理后恰留最新 3 份、无 manifest 目录与用户自建目录均未被删、`keep=null/-1` 不误删。
+
+> 小瑕疵（不影响功能）：残留目录名是 `.<实例名>..mcdl-merge-<token>.old`，中间有双点（`MERGE_MARKER` 自带前导点又拼了一次）。消费者与生产者用同一模板所以功能正确，仅资源管理器里看着奇怪，可后续统一。
+
+---
+
+## §11 2026-11-02 第四批：下载完整性（镜像不一致防护）
+
+> 起因：对照 HMCL 的「镜像源与官方源不一致 → 装到一半崩、报看不懂的错误」问题做的专项核查。
+> 结论：本项目的**架构层已经不会犯这个错**（候选地址永远带官方兜底 + 下载即校验 SHA-1 + 失败自动换源），但有 3 处「裸奔」的下载点被补齐。
+
+### 11.1 核查结论：已经做对的部分
+
+| 机制 | 位置 | 说明 |
+|---|---|---|
+| 候选列表永远带官方兜底 | `Sources.java`（`assetCandidates` / `fileCandidates` / `mavenCandidates` / `versionJsonCandidates`） | 镜像排第一、官方排第二，`dedupe` 去重 |
+| 下载即校验 + 自动换源 | `Http.download` | SHA-1 / 大小不符 → 删 `.part` → 换下一个 URL |
+| 版本 JSON 被篡改有专用报错 | `Installer.java:324` | 「版本 JSON 的 SHA-1 不符（可能被镜像篡改或缓存过期），请换下载源重试」 |
+| 资源按哈希寻址 | `Installer.java:429` | `objects/xx/<hash>` |
+| 安装器不会永久卡死 | `Loaders.java:702` | `waitFor(30, MINUTES)` + `destroyForcibly` |
+| 整合包失败可精确重试 | `ImportState` + `Modpack` | 失败项保留 `path/sha1/size/url` |
+
+### 11.2 补掉的 3 个裸奔点
+
+| # | 缺陷 | 修复 |
+|---|---|---|
+| 1 | `Http` 对「内容错误」太宽容：SHA-1/大小不符仍会在**同一 URL** 重试满 3 次才换源（每次可能 60s 超时 + 退避）＝用户体感"卡很久" | 新增 `Http.BadContentException`；`download()` 捕获后**立即 break 换下一个地址**，不再消耗重试预算。连接失败 / 5xx / 416 / 超时仍是 `RetryableException` 原样重试。公开签名未变 |
+| 2 | **Forge / NeoForge 安装器 jar 完全不校验**（`Loaders.java:574`、`Modpack.java:297` 都传 `null, -1`） | 新增 `Loaders.downloadInstaller()`：逐候选 ①`requireMavenSha1()`（GET `<url>.sha1`，首行 40 位 hex 才采用；**拿不到即判该候选失败**，见 §12.1）②单地址下载 ③`verifyInstallerJar()`（`PK\x03\x04`/`PK\x05\x06` + `ZipFile` 可打开且非空）④原子改名；任一环失败换下一个候选，全失败抛最后异常。安装器坏内容的文案：`安装器下载内容不是有效的 jar（来源：<url> 或镜像）。请换下载源重试，或检查网络代理是否劫持了下载。` |
+| 3 | **Temurin JDK 下载零校验**（`java-install.js` 直接 fetch → tar） | 改走 `/v3/assets/latest` 取 `link` + `checksum` + `size`；下载后**解压前**先比 size、再用 `createHash('sha256')` 流式比哈希；不符即删文件并抛可读中文错误。assets 不可用时降级旧直链，但**明确标记「本次下载未做校验」**（日志 + 进度文案，不静默） |
+
+附带：`Loaders` 的 natives 分支现在从 `lib.nativesInfo.size` 取期望大小传给 `Http.download`（原本传 `-1`）。
+
+### 11.3 验证（主会话独立复核）
+
+| 项 | 结果 |
+|---|---|
+| `javac --release 17` 全量 21 个源文件 | 0 error |
+| 新 `mcdl.jar` | 211030 字节，SHA-256 `816E7291…74D11A1`，含 `Http$BadContentException`（73 条目）；**已覆盖 `mcdl/mcdl.jar`** |
+| `java -jar mcdl/mcdl.jar --help` | exit 0 |
+| `java -jar mcdl/mcdl.jar --list` | 正常（实测自动测速：官方 573 ms / BMCLAPI 1093 ms → 选官方） |
+| 换源语义（子代理自写 `HttpSwitchTest`） | 18 项断言 PASS，含「坏内容只请求 1 次即换源」「`.sha1` 404 时降级」「全坏时不留下半截文件」 |
+| `mcdl/tests` 三个类 | ImportStateStressTest / PasteRegressionTest / FailureInstallTest 全 PASS |
+| Electron 全量测试 | **270 / 270 pass**（沙箱内曾因管道 stdio 失败 1 条，全权限下通过，确认为环境性） |
+| 残留 `null, -1` | 仅 `ModpackLink.java:97`（直链整合包，下载前无哈希可用，下载后另算 SHA-1） |
+
+### 11.4 剩余风险
+
+| 风险 | 说明 | 建议 |
+|---|---|---|
+| `.sha1` 探测是串行的 | 每个候选一次 `getRawText`（40s 超时 × 2），最坏多等约 80s 才降级；Loaders 走 BMCLAPI 优先基本无感，`Modpack` 在 AUTO 源下若官方排前面会慢一轮 | 可给探测加 10s 上限（需 `Http` 增加带超时的文本读取重载） |
+| 换源语义变严 | 「大小不符」现在删 `.part` 并立刻换源，不再靠 Range 续传修复截断；最坏多下一次 | 取舍：宁可重下，不把错误内容拼进文件。真截断在 JDK `HttpClient` 上通常是 `IOException`（仍走可重试 + 保留断点） |
+| 自解压式安装器会被拦 | zip 魔数校验只认标准 jar | Forge/NeoForge 各版本（含 1.7.10 老 Swing 安装器）都是标准 zip，暂未见误杀 |
+
+> 对照结论：HMCL 那类「镜像 JSON 过期 / 安装器不同步 → 校验失败或缺依赖 → 卡半小时后 NPE」在本项目中对应的三条防线（候选含官方、下载即校验、坏内容快速换源）现已全部到位，且错误文案都指向「换下载源重试」。
+
+
+---
+
+## §12 2026-11-02 第五批：杀软误报面收敛（安装器落点 / 强制哈希 / 镜像 https）
+
+> 起因：对照 PCL2「更新器被 Defender 秒删 → 启动器消失」的案例做同类风险排查。
+> 结论：本项目**没有自更新机制**（`electron-updater`/`autoUpdater` 引用数为 0），所以该剧本不成立；但「下载二进制 → 落临时目录 → 静默执行」这个被 AV 盯上的行为组合确实存在，本批把它收敛掉。
+
+### 12.1 P0-1 安装器不再写 %TEMP%
+
+| 项 | 改动 |
+|---|---|
+| 落点 | `LauncherDirs.cacheDir()` = `%USERPROFILE%\.mcdl\cache`，`installerCacheDir()` = 其下 `installers`（与 `sources.json`、`curseforge.key`、`dialog-error.log` 同一套 `~/.mcdl` 约定，无第二套目录） |
+| 命名 | `newInstallerJar(kind)` → `createTempFile(dir, "mcdl-<kind>-", ".jar")`，文件名唯一 |
+| 清理 | `Loaders` 与 `Modpack` 两处 `finally` 均 `deleteIfExists`（正常/异常/取消）；删不掉只吞异常，不掩盖原始错误 |
+| 过期清扫 | `Main.main` 启动时 `pruneInstallerCache(ofDays(7))`，只删 `*.jar` / `*.jar.dl` / `*.jar.part` 中 mtime 超 7 天的普通文件；任何异常全吞，不影响启动（GUI 与 CLI 共用此入口） |
+
+`createTempFile` 自查：安装器路径上已无；残留仅 `ImportState.java`（实例目录内导入状态）与 `NativeDialog.java`（PowerShell 脚本）。
+
+### 12.2 P0-2 `.sha1` 强制（取消降级）
+
+`requireMavenSha1()` 包住 `probeMavenSha1()`：探测返回 null → 抛
+
+> 无法校验安装器完整性：`<url>` 未提供 .sha1。请换个下载源或稍后重试。
+
+- 哈希不符 / 内容不合法 → 仍换下一个候选（保留原行为），全失败才抛错；
+- 执行前二次校验：`Loaders`、`Modpack` 两处 `ProcessBuilder` 之前都再 `verifyInstallerJar`；
+- Fabric / Quilt 走 meta profile 的路径未动。
+
+**行为变更**（从「能装但不校验」变成「直接失败」）：候选源 404/超时/返回 HTML → 该候选失败；自定义 https 镜像只镜像 jar 不镜像 `.sha1` → 该候选不可用；代理剥离 `.sha1` 或重定向到登录页 → 失败；`.sha1` 不是 40 位 hex → 失败；镜像 jar 已更新但 `.sha1` 是旧值 → 哈希不符失败（**以前会照装**）；Forge 1.7.10/1.12.2 老安装器（实为本地解包、不执行）同样要求 `.sha1`（偏严）。
+
+**已知取舍**：Forge/NeoForge 候选顺序是 `[BMCLAPI /maven, 官方 maven]`。若 BMCLAPI 不代理 `.sha1` 且官方不可达（国内常见），安装会失败。**未实现「镜像下 jar + 官方取 .sha1」的跨源回退** —— 这是后续首选改进（哈希只要来自可信源，jar 从哪下都行）。
+
+### 12.3 P1 自定义镜像只许 https
+
+`Sources.normalizeBase` 只接受 `https://`，回环例外（`http://localhost`、`127.0.0.1`、`127.*`、`[::1]`）；错误文案改为「镜像地址必须以 https:// 开头（本机调试可用 http://127.0.0.1 或 http://localhost）」。`loadCustomMirrors` 走同一校验：旧 `sources.json` 里的 http 公网镜像被跳过并打一行 stderr，不崩、不清空列表。
+
+### 12.4 构建链路修复（顺带）
+
+`mcdl/build.ps1` 有两个坑，都已修：
+
+1. **javac 的提示会中断构建**：`$ErrorActionPreference='Stop'` 下，javac 把「使用了未经检查或不安全的操作」写到 stderr，PowerShell 当成终止错误 → 编译成功却在打包前 `throw`。现改为只在 javac 调用期间 `Continue`，单独判 `$LASTEXITCODE`。
+2. **`.ps1` 必须带 UTF-8 BOM**：Windows PowerShell 5.1 会把无 BOM 的脚本按 ANSI 解析，中文注释/字符串里的全角括号会把引号吃掉，导致整段语法崩。改动脚本后请确认前 3 字节是 `EF BB BF`。
+
+### 12.5 验证
+
+| 项 | 结果 |
+|---|---|
+| `mcdl/build.ps1` 全量重建（javac 21 文件 → jar → csc） | ✅ 退出码 0 |
+| `mcdl/mcdl.jar` | ✅ 212682 字节 / 73 条目，**同时含** `Http$BadContentException`（§11）与 `requireMavenSha1`（§12.2） |
+| `java -jar mcdl.jar --version` / `--help` / `--list-dirs` | ✅ `MCDL 1.0.8`，退出码 0 |
+| Electron 全量测试 | ✅ **284 / 284 pass** |
+| 改动文件语法 | ✅ `main.js` / `preload.js` / `renderer.js` / `java-install.js` / `modrinth.js` 全 `node --check` 通过 |
+| 安装器行为冒烟（代理用本地 HttpServer 对成品 jar 跑） | 15 项 PASS：http 镜像被拒 / https 接受 / 回环接受 / 旧配置 http 条目被跳过 / 缓存落点与前缀 / 9 天前 jar 被清扫 / 无 `.sha1` 抛错 / 哈希不符抛错 / 正确哈希下载成功 |
+
+### 12.6 剩余风险（P2）
+
+| 项 | 说明 | 状态 |
+|---|---|---|
+| **`McdlDialog.exe` 收敛** | 已彻底删除：`NativeDialog.java` 702→约 440 行纯 Java（`JFileChooser` 选文件/选目录；`Desktop.open` 失败退 `explorer.exe`），`build.ps1` / `build.bat` 的 `csc` 步骤移除，`mcdl/native/McdlDialog.cs` 与 `mcdl/McdlDialog.exe` 删除；README 结构树、`.gitignore` 同步清理 | ✅ **已完成**（见 12.7） |
+| 代码签名 | 全仓仍无签名（Electron 主程序与 `mcdl.jar` 皆未签） | ⛔ 待定（需证书） |
+| 固定哈希白名单 | 现在每次都向 maven 要 `.sha1` | ⛔ 未做 |
+| 行为簇 | 主进程仍会调 `whoami.exe /groups`（完整性探测）、`tar.exe`（解压） | ➖ 暂留（单个合理） |
+
+### 12.7 `McdlDialog.exe` 收敛（2026-11-03 00:05）
+
+**动机**：它是构建时用 `csc.exe` 现编的 12 KB **未签名原生 exe**，且被主进程反复拉起 —— 杀软启发式里「新鲜、无签名、被拉起的小 exe」是显眼特征。
+
+**关键事实**：它**只被 mcdl 自己的 Swing GUI 使用**（`MainWindow.java:1053 / 1773 / 1842`）；Electron 前端零引用（走 `gamedirs:pick` → `dialog.showOpenDialog`）。所以收敛不影响主产品。
+
+| 项 | 变化 |
+|---|---|
+| `NativeDialog.java` | 702 → 约 440 行纯 Java。删掉内嵌 C# 源码、`-EncodedCommand` PowerShell 回退、`helperPath()` 探测、静态初始化块与 shutdown hook；`openFile`/`openFolder` 走 `JFileChooser`（headless 返回 null + `lastError`），`openWithHelper` 走 `Desktop.open` → `explorer.exe` 兜底 |
+| 对外 API | 未变（`MainWindow` 三处调用点一行未改），仅失败提示里去掉 `McdlDialog.exe` |
+| 构建 | `build.ps1` 与 `build.bat` 的 `csc` 步骤移除，现在只有 `javac + jar` |
+| 删除 | `mcdl/native/McdlDialog.cs`、`mcdl/native/`、`mcdl/McdlDialog.exe` |
+| 文档 | `mcdl/README.md` 结构树与「信任区」文案、`.gitignore` 的 `/mcdl/McdlDialog.exe` 均已清理 |
+
+**验证**：`build.ps1` 退出码 0（21 源文件）；`mcdl.jar` 204.1 KB / 73 条目（去掉 C# 载荷后变小）；`--version` → `MCDL 1.0.8`；`mcdl/src` 内 `McdlDialog` 引用 **0**；`Test-Path mcdl/McdlDialog.exe` → False；`native/` 不存在；Electron 全量测试 **284/284 pass**。
+
+**已知取舍**：选择框从资源管理器风格的 `IFileOpenDialog` 退成 Swing `JFileChooser`（观感较旧，且与 Electron 侧原生对话框不一致）；「打开文件夹」失去 `ShellExecuteEx` 的真实 HRESULT，只能靠「explorer 立即异常退出」判负，HIPS 拦截时仍走应用内 `FolderWindow` 兜底（与旧行为一致）。这是为了消除未签名 exe 付出的代价，仅影响备用 Swing GUI。

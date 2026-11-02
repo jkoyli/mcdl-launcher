@@ -3716,6 +3716,78 @@
     color: #f2f7ff;
   }
 
+  /* 作者区：头像 + 署名。头像统一裁成圆形，位图与 SVG 用同一套尺寸 */
+  .settings-authors__head {
+    margin-top: 18px;
+    padding-top: 0;
+  }
+
+  .settings-authors {
+    list-style: none;
+    margin: 8px 0 18px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .settings-author__avatar {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    background: rgba(159, 208, 255, .08);
+    border: 1px solid rgba(var(--accent-rgb), .28);
+  }
+
+  /* DeepSeek 的经典头像是一个 mark，不是照片：白底 + 居中缩放更好看 */
+  .settings-author__avatar--logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .settings-author__avatar--logo img {
+    width: 28px;
+    height: 28px;
+    display: block;
+  }
+
+  .settings-author__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .settings-author__name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: .01em;
+    color: #eaf2ff;
+  }
+
+  .settings-author__role {
+    font-size: 10.5px;
+    letter-spacing: .02em;
+    color: rgba(199, 212, 230, .5);
+  }
+
+  /* 浅色主题下头像的描边与文字需要反向补偿（body 被整体反相） */
+  html[data-theme="light"] .settings-author__avatar {
+    border-color: rgba(0, 0, 0, .12);
+  }
+
   .settings-about__meta {
     margin: 0;
     font-family: "Consolas", "Cascadia Mono", monospace;
@@ -4477,6 +4549,23 @@
     letter-spacing: .05em;
     color: rgba(199, 212, 230, .4);
     overflow-wrap: anywhere;
+  }
+
+  /* 状态文字 + 「撤销本次更新」按钮同一行；状态太长时按钮换行到下一行。 */
+  .detail-status-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+  }
+
+  .detail-status-row .detail-status {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .detail-status-row [hidden] {
+    display: none;
   }
 
   .detail-status.is-error {
@@ -7844,7 +7933,13 @@
         <div class="detail-panel" data-detail-panel="schematics" hidden>
           <div class="content-panel" data-content-panel="schematics" data-content-kind="schematics"></div>
         </div>
-        <p class="detail-status" id="detailContentStatus" role="status" aria-live="polite"></p>
+        <div class="detail-status-row">
+          <p class="detail-status" id="detailContentStatus" role="status" aria-live="polite"></p>
+          <!-- 更新整合包之后的撤销入口：默认隐藏，合并成功才出现。 -->
+          <button class="detail-chip" id="detailUndoMerge" type="button" data-control-key="instance.update.undo" hidden>
+            撤销本次更新
+          </button>
+        </div>
       </div>
 
       <div class="detail-foot" aria-label="文件夹与实例操作">
@@ -8750,6 +8845,43 @@
                   用户协议
                 </button>
               </div>
+
+              <!-- 更新通道（默认关闭）：没配置更新源时两个按钮都不出现，只留一行说明 -->
+              <div class="settings-actions">
+                <button class="download-action" id="settingsUpdateCheck" type="button" hidden>
+                  <span>检查更新</span>
+                  <span aria-hidden="true">↻</span>
+                </button>
+                <button class="download-action" id="settingsUpdateInstall" type="button" hidden>
+                  <span>下载并安装</span>
+                  <span aria-hidden="true">↓</span>
+                </button>
+              </div>
+              <p class="settings-status" id="settingsUpdateStatus" role="status" aria-live="polite">未配置更新源</p>
+
+              <!-- 作者：第一位是项目作者，第二位是协作的 AI 助手 -->
+              <div class="settings-block__head settings-authors__head">
+                <span>作者</span>
+                <span>Authors</span>
+              </div>
+              <ul class="settings-authors" id="settingsAuthors">
+                <li class="settings-author">
+                  <img class="settings-author__avatar" src="./assets/author-1.jpg" alt="总多离别的头像" width="64" height="64" loading="lazy">
+                  <span class="settings-author__text">
+                    <strong class="settings-author__name">总多离别</strong>
+                    <span class="settings-author__role">项目作者 · 界面与启动器实现</span>
+                  </span>
+                </li>
+                <li class="settings-author">
+                  <span class="settings-author__avatar settings-author__avatar--logo" aria-hidden="true">
+                    <img src="./assets/author-2-deepseek.svg" alt="" width="44" height="44" loading="lazy">
+                  </span>
+                  <span class="settings-author__text">
+                    <strong class="settings-author__name">DeepSeek</strong>
+                    <span class="settings-author__role">协作开发 · 代码与文档</span>
+                  </span>
+                </li>
+              </ul>
 
               <p class="settings-note">MCDL Launcher 使用 Electron 重写界面，内置 MIT 许可的 mcdl 下载器；界面控件清单来自早期 HMCL 定制分支。</p>
             </div>

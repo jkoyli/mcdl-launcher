@@ -7,16 +7,96 @@ const path = require('node:path');
 const os = require('node:os');
 
 const { writeFileAtomic } = require('./atomic-write');
+// 只用来查"内置 JRE / 系统 JDK 在不在"，不执行任何进程；
+// java-runtime 本身也不 require('electron')，纯 node 下可以一起加载。
+const javaRuntime = require('./java-runtime');
 
 // mcdl 是 mcdl-launcher 的内置子模块：
 //   mcdl-launcher/electron/mcdl-service.js
 //   mcdl-launcher/mcdl/mcdl.jar
 // 不再引用项目外的 ../mcdl。
-const MCDL_JAR = process.env.MCDL_JAR
-  ? path.resolve(process.env.MCDL_JAR)
-  : path.join(__dirname, '..', 'mcdl', 'mcdl.jar');
+//
+// 注意：这个文件**刻意不 require('electron')**（tests/smoke.test.js 守着这条）。
+// 打包态的 resourcesPath / userData 由 main.js 通过 configure() 显式注入，
+// 测试里也可以直接给 resolveMcdlJar({ isPackaged, resourcesPath }) 传参。
+const DEV_MCDL_JAR = path.join(__dirname, '..', 'mcdl', 'mcdl.jar');
 
-const JAVA_BIN = resolveJavaBinary();
+/** 主进程注入的运行时配置（默认值 = 开发态）。 */
+const runtimePaths = {
+  isPackaged: false,
+  resourcesPath: '',
+  userData: '',
+  workDir: ''
+};
+
+let javaBinCache = null;
+let workDirCache = '';
+
+/**
+ * 由主进程（main.js）在启动时注入打包信息。
+ * 不传任何参数时保持开发态行为，纯 node 加载不受影响。
+ */
+function configure(options = {}) {
+  if (!options || typeof options !== 'object') return;
+  if (typeof options.isPackaged === 'boolean') runtimePaths.isPackaged = options.isPackaged;
+  if (options.resourcesPath) runtimePaths.resourcesPath = path.resolve(String(options.resourcesPath));
+  if (options.userData) runtimePaths.userData = path.resolve(String(options.userData));
+  if (options.workDir) runtimePaths.workDir = path.resolve(String(options.workDir));
+  // 路径变了，之前解析出来的 Java / cwd 缓存都作废。
+  javaBinCache = null;
+  workDirCache = '';
+}
+
+/**
+ * mcdl.jar 的显式解析（不再依赖 __dirname 恰好等于 app.asar 根这种巧合）。
+ *
+ * 优先级：
+ *   1. process.env.MCDL_JAR（保留旧行为，测试 / 高级用户可覆盖）
+ *   2. 打包态：<resources>/mcdl/mcdl.jar（electron-builder extraResources）
+ *   3. 开发态：electron/../mcdl/mcdl.jar
+ *
+ * @param {{isPackaged?:boolean, resourcesPath?:string}} [options]
+ * @returns {string}
+ */
+function resolveMcdlJar(options = {}) {
+  const fromEnv = process.env.MCDL_JAR;
+  if (fromEnv) return path.resolve(fromEnv);
+
+  const isPackaged = typeof options.isPackaged === 'boolean'
+    ? options.isPackaged
+    : runtimePaths.isPackaged;
+  if (!isPackaged) return DEV_MCDL_JAR;
+
+  const resourcesPath = options.resourcesPath
+    ? path.resolve(String(options.resourcesPath))
+    : (runtimePaths.resourcesPath || (process.resourcesPath
+      ? path.resolve(String(process.resourcesPath))
+      : ''));
+  // 变量名是 process.resourcesPath，但开发态也可能有值（指向 Electron 自带的 resources），
+  // 所以只有 isPackaged 为真时才认它；真的拿不到就退回开发态路径，让 assertMcdlJar
+  // 给出"找不到 mcdl.jar"的可读错误，而不是一个空路径。
+  return resourcesPath ? path.join(resourcesPath, 'mcdl', 'mcdl.jar') : DEV_MCDL_JAR;
+}
+
+/** jar 不存在时给可读错误（而不是让 spawn 报一个莫名的失败）。 */
+async function assertMcdlJar(jarPath) {
+  const jar = path.resolve(String(jarPath || resolveMcdlJar()));
+  try {
+    const stat = await fs.stat(jar);
+    if (stat.isFile()) return jar;
+  } catch {
+    // 落到下面统一报错
+  }
+
+  const error = new Error(
+    `找不到 mcdl.jar：${jar}\n` +
+      '安装包可能不完整（缺少 resources/mcdl/mcdl.jar），请重新安装或重新打包 MCDL Launcher。'
+  );
+  error.code = 'ENOJAR';
+  error.path = jar;
+  throw error;
+}
+
 const APP_DATA_DIR = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
 const LAUNCHER_HOME = path.join(APP_DATA_DIR, 'MCDL Launcher');
 // MCDL Launcher 自己的游戏目录。PCL/HMCL 的自动定位不再作为默认来源。
@@ -53,16 +133,103 @@ function normalizeSource(value) {
   return SOURCE_KEYS.has(key) ? key : 'auto';
 }
 
-function resolveJavaBinary() {  const configured = process.env.MCDL_JAVA;
-  if (!configured) return 'java';
-
-  const resolved = path.resolve(configured);
-  return path.extname(resolved).toLowerCase() === '.exe'
-    ? resolved
-    : path.join(resolved, 'bin', 'java.exe');
+/** 「完全没有 Java」的统一错误：渲染层能拿到 code，也有一句能照着做的中文提示。 */
+function javaMissingError() {
+  const error = new Error(
+    '本机没有可用的 Java：可以点「设置 → Java 管理 → 安装 Java」下载，或手动选择 JDK。'
+  );
+  error.code = 'ENOJAVA';
+  return error;
 }
 
-function runMcdl(args, options = {}) {
+/**
+ * 解析 mcdl 子进程要用的 java。
+ *
+ * 优先级（与 java-runtime.findJavaForTools 保持一致）：
+ *   MCDL_JAVA → 内置 JRE → 已登记 / 扫描到的 JDK → JAVA_HOME → 系统 PATH
+ *
+ * 找不到时抛 code = 'ENOJAVA' 的可读错误，绝不让 spawn 的 ENOENT 冒到渲染层。
+ *
+ * @param {{force?:boolean, resourcesPath?:string, candidates?:string[]}} [options]
+ */
+async function resolveJavaBinary(options = {}) {
+  if (!options.force && javaBinCache) return javaBinCache;
+
+  const found = await javaRuntime.findJavaForTools({
+    resourcesPath: options.resourcesPath !== undefined
+      ? options.resourcesPath
+      : runtimePaths.resourcesPath,
+    candidates: options.candidates
+  });
+  if (!found) throw javaMissingError();
+
+  javaBinCache = found;
+  return found;
+}
+
+/** 目录可写探针：真实写一个临时文件再删掉，比 fs.access(W_OK) 在 Windows 上可靠。 */
+async function isWritableDir(dir) {
+  const probe = path.join(dir, `.mcdl-write-probe-${process.pid}-${crypto.randomBytes(4).toString('hex')}`);
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(probe, '1');
+    await fs.rm(probe, { force: true });
+    return true;
+  } catch {
+    await fs.rm(probe, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * mcdl 的 cwd。必须是可写目录：装在 C:\Program Files 时 resources\mcdl 只读，
+ * mcdl 一旦往 cwd 写东西就是 EACCES。
+ *
+ * 候选顺序：显式配置 → <userData>/mcdl → jar 所在目录（开发态）→ 系统临时目录。
+ * 逐项做写探针，第一个可写的胜出；全都失败时退回 os.tmpdir()，
+ * 让 spawn 至少还有机会报一个具体错误。
+ */
+async function resolveWorkDir(jarPath, options = {}) {
+  if (workDirCache && (await isWritableDir(workDirCache))) return workDirCache;
+
+  const candidates = [];
+  if (options.cwd) candidates.push(path.resolve(String(options.cwd)));
+  if (runtimePaths.workDir) candidates.push(runtimePaths.workDir);
+  if (runtimePaths.userData) candidates.push(path.join(runtimePaths.userData, 'mcdl'));
+  // 开发态：jar 就在可写的项目目录里；打包态这一项通常只读，会被探针跳过后落到临时目录。
+  candidates.push(path.dirname(jarPath));
+  candidates.push(path.join(os.tmpdir(), 'mcdl-launcher-mcdl'));
+
+  for (const candidate of dedupeWorkDirs(candidates)) {
+    if (await isWritableDir(candidate)) {
+      workDirCache = candidate;
+      return candidate;
+    }
+  }
+
+  workDirCache = os.tmpdir();
+  return workDirCache;
+}
+
+function dedupeWorkDirs(dirs) {
+  const seen = new Set();
+  const result = [];
+  for (const dir of dirs) {
+    if (!dir) continue;
+    const resolved = path.resolve(dir);
+    const key = resolved.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(resolved);
+  }
+  return result;
+}
+
+async function runMcdl(args, options = {}) {
+  const jar = await assertMcdlJar(options.jar || resolveMcdlJar(options));
+  const javaBin = await resolveJavaBinary(options);
+  const workDir = await resolveWorkDir(jar, options);
+
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
@@ -75,8 +242,8 @@ function runMcdl(args, options = {}) {
     delete env._JAVA_OPTIONS;
     delete env.JAVA_OPTIONS;
 
-    const child = spawn(JAVA_BIN, ['-Dfile.encoding=UTF-8', '-jar', MCDL_JAR, ...args], {
-      cwd: path.dirname(MCDL_JAR),
+    const child = spawn(javaBin, ['-Dfile.encoding=UTF-8', '-jar', jar, ...args], {
+      cwd: workDir,
       windowsHide: true,
       env
     });
@@ -115,6 +282,21 @@ function runMcdl(args, options = {}) {
       if (finished) return;
       finished = true;
       if (options.signal) options.signal.removeEventListener('abort', onAbort);
+
+      // ENOENT 说明 resolveJavaBinary 找到的路径在执行前被移走了（或被安全软件拦掉）。
+      // 仍然转成明确文案，不让裸 ENOENT 冒到渲染层。
+      if (error && error.code === 'ENOENT') {
+        const missing = new Error(
+          `找不到可用的 Java 可执行文件：${javaBin}\n` +
+            '可以点「设置 → Java 管理 → 安装 Java」下载，或手动选择 JDK。'
+        );
+        missing.code = 'ENOJAVA';
+        missing.stdout = stdout;
+        missing.stderr = stderr;
+        reject(missing);
+        return;
+      }
+
       reject(new Error(`无法启动 Java/mcdl: ${error.message}`));
     });
 
@@ -441,11 +623,20 @@ async function scanInstances(gameDir, aliases = {}, options = {}) {
 /**
  * mcdl 的 `--list-java` 会顺带查注册表，比纯目录扫描多找到一些安装。
  * 这里只提取其中的绝对路径，不解析中文表格里的版本/架构文字。
+ *
+ * 内置 JRE 放在最前面：它一定存在（打包时随 extraResources 分发），
+ * 也是「本机没装 Java」时唯一能选到的运行时。
  */
 async function listJavaPaths() {
   const result = await runMcdl(['--list-java']);
   const paths = [];
   const seen = new Set();
+
+  const bundled = javaRuntime.bundledJava({ resourcesPath: runtimePaths.resourcesPath });
+  if (bundled) {
+    seen.add(bundled.toLowerCase());
+    paths.push(bundled);
+  }
 
   for (const line of String(result.stdout).split(/\r?\n/)) {
     const matches = line.match(/[A-Za-z]:\\[^\r\n]*?java\.exe/gi);
@@ -799,7 +990,12 @@ async function installLoader({
 }
 
 module.exports = {
-  MCDL_JAR,
+  configure,
+  resolveMcdlJar,
+  assertMcdlJar,
+  resolveJavaBinary,
+  javaMissingError,
+  resolveWorkDir,
   DEFAULT_GAME_DIR,
   LAUNCHER_HOME,
   ensureGameDir,
@@ -820,3 +1016,9 @@ module.exports = {
   normalizeSource,
   clearCaches
 };
+
+// 兼容旧调用方（main.js 的启动日志 / 脚本）：MCDL_JAR 现在是"按当前配置解析一次"的只读视图。
+Object.defineProperty(module.exports, 'MCDL_JAR', {
+  enumerable: true,
+  get: () => resolveMcdlJar()
+});

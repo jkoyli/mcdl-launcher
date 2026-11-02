@@ -2150,6 +2150,9 @@
   var settingsAboutMeta = document.getElementById('settingsAboutMeta');
   var settingsOpenRepo = document.getElementById('settingsOpenRepo');
   var settingsOpenLicense = document.getElementById('settingsOpenLicense');
+  var settingsUpdateCheck = document.getElementById('settingsUpdateCheck');
+  var settingsUpdateInstall = document.getElementById('settingsUpdateInstall');
+  var settingsUpdateStatus = document.getElementById('settingsUpdateStatus');
 
   var ACCOUNTS = [];
   var SERVERS = [];
@@ -6132,6 +6135,8 @@
           settingsAboutVersion.textContent === 'MCDL Launcher') {
         loadAppInfo();
       }
+      // 更新入口同样按需拉：未配置更新源时返回 configured:false，按钮保持隐藏。
+      if (tab === 'about') loadUpdateStateOnce();
     }
   });
 
@@ -6161,6 +6166,161 @@
         console.warn('[settings] could not load app info:', error);
         if (settingsAboutMeta) settingsAboutMeta.textContent = '读取版本信息失败';
       });
+  }
+
+  // ---------------- 更新通道（默认关闭） ----------------
+
+  /**
+   * 更新入口的全部 UI 逻辑。
+   *
+   * 主进程是唯一的事实来源：这里只负责把 { configured, state, version, progress }
+   * 画成一句话。未配置更新源时按钮不显示，状态行写「未配置更新源」，不报错。
+   * 下载永远要用户点，装完也是用户再点一次「重启并安装」——没有自动下载 / 静默安装。
+   */
+  var updateSnapshot = null;
+
+  function hasUpdateBridge() {
+    var api = window.launcherAPI;
+    return Boolean(api && typeof api.getUpdateState === 'function');
+  }
+
+  function formatUpdatePercent(progress) {
+    var percent = progress && Number(progress.percent);
+    if (!Number.isFinite(percent)) return 0;
+    return Math.max(0, Math.min(100, Math.round(percent)));
+  }
+
+  function setInstallLabel(text) {
+    var label = settingsUpdateInstall && settingsUpdateInstall.firstElementChild;
+    if (label) label.textContent = text;
+  }
+
+  function renderUpdateState(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    updateSnapshot = snapshot;
+
+    var configured = Boolean(snapshot.configured);
+    var state = String(snapshot.state || '');
+    var remoteVersion = String(snapshot.version || '');
+    var currentVersion = String(snapshot.currentVersion || '');
+
+    // 未配置：入口整体隐藏，只保留一行说明。
+    if (settingsUpdateCheck) settingsUpdateCheck.hidden = !configured;
+    if (!configured) {
+      if (settingsUpdateInstall) settingsUpdateInstall.hidden = true;
+      setHint(settingsUpdateStatus, '未配置更新源');
+      return;
+    }
+
+    var showInstall = false;
+
+    if (state === 'checking') {
+      setHint(settingsUpdateStatus, '正在检查更新…');
+    } else if (state === 'not-available') {
+      setHint(settingsUpdateStatus, '已是最新（版本 ' + (remoteVersion || currentVersion) + '）', 'ok');
+    } else if (state === 'available') {
+      setHint(settingsUpdateStatus,
+        remoteVersion ? '发现新版本 ' + remoteVersion + '，可下载' : '发现新版本，可下载', 'ok');
+      showInstall = true;
+      setInstallLabel('下载并安装');
+    } else if (state === 'downloading') {
+      setHint(settingsUpdateStatus, '正在下载更新… ' + formatUpdatePercent(snapshot.progress) + '%');
+    } else if (state === 'downloaded') {
+      setHint(settingsUpdateStatus, '下载完成，重启以完成更新', 'ok');
+      showInstall = true;
+      setInstallLabel('重启并安装');
+    } else if (state === 'error') {
+      var reason = snapshot.error ? '：' + snapshot.error : '';
+      setHint(settingsUpdateStatus, '检查更新失败（不影响使用）' + reason, 'error');
+      showInstall = false;
+    } else {
+      // idle：已配置但还没查过
+      setHint(settingsUpdateStatus, '当前版本 ' + currentVersion);
+    }
+
+    if (settingsUpdateInstall) settingsUpdateInstall.hidden = !showInstall;
+    if (settingsUpdateInstall) settingsUpdateInstall.disabled = false;
+    if (settingsUpdateCheck) settingsUpdateCheck.disabled = false;
+  }
+
+  function refreshUpdateState() {
+    if (!hasUpdateBridge()) return;
+    window.launcherAPI.getUpdateState()
+      .then(renderUpdateState)
+      .catch(function (error) {
+        console.warn('[updater] 读取更新状态失败:', error);
+      });
+  }
+
+  var updateStateLoaded = false;
+
+  /** 关于页第一次打开时拉一次状态；之后靠按钮与 updates:progress 事件刷新。 */
+  function loadUpdateStateOnce() {
+    if (updateStateLoaded) return;
+    updateStateLoaded = true;
+    refreshUpdateState();
+  }
+
+  if (settingsUpdateCheck) {
+    settingsUpdateCheck.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.checkUpdates !== 'function') {
+        setHint(settingsUpdateStatus, '主进程桥接不可用，无法检查更新', 'error');
+        return;
+      }
+
+      settingsUpdateCheck.disabled = true;
+      setHint(settingsUpdateStatus, '正在检查更新…');
+      api.checkUpdates()
+        .then(renderUpdateState)
+        .catch(function (error) {
+          settingsUpdateCheck.disabled = false;
+          setHint(settingsUpdateStatus, '检查更新失败：' + describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (settingsUpdateInstall) {
+    settingsUpdateInstall.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api) return;
+
+      // 已经下载完：这一步才是「退出并安装」，只有用户点了才发生。
+      if (updateSnapshot && updateSnapshot.state === 'downloaded') {
+        if (typeof api.installUpdate !== 'function') return;
+        setHint(settingsUpdateStatus, '正在退出并安装…');
+        api.installUpdate()
+          .then(function (snapshot) {
+            if (snapshot && snapshot.installing) return; // 进程马上退出，不用再画
+            renderUpdateState(snapshot);
+          })
+          .catch(function (error) {
+            setHint(settingsUpdateStatus, '安装失败：' + describeLaunchError(error), 'error');
+          });
+        return;
+      }
+
+      if (typeof api.downloadUpdate !== 'function') return;
+      settingsUpdateInstall.disabled = true;
+      setHint(settingsUpdateStatus, '开始下载更新…');
+      api.downloadUpdate()
+        .then(function (snapshot) {
+          renderUpdateState(snapshot);
+          // 下载完就把按钮换成「重启并安装」；清掉缓存的状态，让下一次点击走安装分支。
+          if (snapshot && snapshot.state === 'downloaded') {
+            setHint(settingsUpdateStatus, '下载完成，重启以完成更新', 'ok');
+          }
+        })
+        .catch(function (error) {
+          settingsUpdateInstall.disabled = false;
+          setHint(settingsUpdateStatus, '下载更新失败：' + describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  // 主进程把 check / download 的进度推上来（updates:progress）。
+  if (hasUpdateBridge() && typeof window.launcherAPI.onUpdateProgress === 'function') {
+    window.launcherAPI.onUpdateProgress(renderUpdateState);
   }
 
   if (settingsJava) {
@@ -7581,6 +7741,9 @@
         letterNode.textContent = instanceLabel(instance).slice(0, 1).toUpperCase();
       }
     }
+
+    // 「撤销本次更新」只对刚合并过、还没撤销的实例显示。
+    refreshMergeUndo();
   }
 
   function openInstanceDetail(id) {
@@ -7869,6 +8032,92 @@
     });
   }
 
+  // 更新整合包的进度来自主进程（备份 / 复制影子目录 / 替换目录），推回当前任务对话框。
+  if (window.launcherAPI && typeof window.launcherAPI.onMergeProgress === 'function') {
+    window.launcherAPI.onMergeProgress(function (payload) {
+      if (!payload) return;
+      var state = taskDialogState;
+      if (!state || state.settled || state.cancelled) return;
+      if (openDialogName !== 'task') return;
+      setTaskProgress(payload.message || '正在更新整合包…', payload.percent);
+    });
+  }
+
+  /**
+   * 合并成功后记下备份位置，实例详情状态区就能给出「撤销本次更新」。
+   * 只存在内存里：重启启动器后不再提供撤销（备份文件本身仍保留在 userData 下）。
+   */
+  var mergeUndoByInstance = Object.create(null);
+
+  var detailUndoMergeBtn = document.getElementById('detailUndoMerge');
+
+  function setMergeUndo(instanceId, entry) {
+    if (!instanceId) return;
+    if (entry) mergeUndoByInstance[instanceId] = entry;
+    else delete mergeUndoByInstance[instanceId];
+    refreshMergeUndo();
+  }
+
+  function refreshMergeUndo() {
+    if (!detailUndoMergeBtn) return;
+    // mergeUndoByInstance 在模块初始化后段才赋值：早于它调用 renderDetailHeader 时按「无备份」处理。
+    var entry = (mergeUndoByInstance && mergeUndoByInstance[detailInstanceId]) || null;
+    detailUndoMergeBtn.hidden = !entry;
+    detailUndoMergeBtn.title = entry && entry.backupDir
+      ? '把实例还原到本次更新之前（备份：' + entry.backupDir + '）'
+      : '把实例还原到本次更新之前';
+  }
+
+  function mergeReportText(merged) {
+    var overwrite = Number((merged && merged.overwriteCount) || 0);
+    var create = Number((merged && merged.createCount) || 0);
+    var skipped = Number((merged && merged.skippedCount) || 0);
+    return '已更新：覆盖 ' + overwrite + ' 个文件 / 新增 ' + create + ' 个 / 跳过 ' + skipped + ' 个';
+  }
+
+  function undoModpackMerge() {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    var entry = instance ? mergeUndoByInstance[instance.id] : null;
+    if (!api || !instance || !entry) return;
+    if (typeof api.undoMergeModpack !== 'function') {
+      setDetailStatus('主进程桥接不可用，无法撤销本次更新', 'error');
+      return;
+    }
+
+    askConfirm(
+      '撤销这次整合包更新？\n' +
+      '被覆盖的文件会还原成更新前的内容，本次新增的文件会被删除。',
+      function () {
+        setDetailStatus('正在撤销本次更新…');
+        Promise.resolve(api.undoMergeModpack({
+          instanceId: instance.id,
+          backupDir: entry.backupDir
+        }))
+          .then(function (result) {
+            if (!result) return;
+            setMergeUndo(instance.id, null);
+            if (result.snapshot) updateInstanceUI(result.snapshot);
+            renderDetailHeader();
+            setDetailStatus(
+              '已撤销：还原 ' + result.restored + ' 个文件，删除 ' + result.removed + ' 个新增文件',
+              'ok'
+            );
+          })
+          .catch(function (error) {
+            setDetailStatus(describeLaunchError(error), 'error');
+          });
+      },
+      '撤销更新'
+    );
+  }
+
+  if (detailUndoMergeBtn) {
+    detailUndoMergeBtn.addEventListener('click', function () {
+      undoModpackMerge();
+    });
+  }
+
   function updateModpackFlow() {
     var api = window.launcherAPI;
     var instance = detailInstance();
@@ -7879,9 +8128,12 @@
       return;
     }
 
+    var instanceId = instance.id;
+
     askConfirm(
       '用新版整合包更新「' + instanceLabel(instance) + '」？\n' +
-      '新包里同名的文件会覆盖旧文件，存档、截图以及新包里没有的配置会保留；更新前建议先备份。',
+      '新包里同名的文件会覆盖旧文件（更新前会自动备份），存档、截图以及新包里没有的配置会保留。\n' +
+      '如果游戏正在运行，请先关闭游戏。',
       function () {
         api.pickModpack()
           .then(function (info) {
@@ -7900,10 +8152,17 @@
                   name: staging,
                   taskId: ctx.taskId
                 }).then(function (installed) {
+                  // 安装刚结束、合并还没开始时取消：必须在这里就停，否则主进程会另起一个任务。
+                  if (ctx.isCancelled()) {
+                    var stop = new Error('已取消');
+                    stop.cancelled = true;
+                    throw stop;
+                  }
                   ctx.progress('正在合并到「' + instanceLabel(instance) + '」…', 85);
                   return api.mergeModpack({
-                    instanceId: instance.id,
-                    stagingName: (installed && installed.instanceId) || staging
+                    instanceId: instanceId,
+                    stagingName: (installed && installed.instanceId) || staging,
+                    taskId: ctx.taskId
                   });
                 });
               }
@@ -7912,11 +8171,10 @@
           .then(function (merged) {
             if (!merged) return;
             if (merged.snapshot) updateInstanceUI(merged.snapshot);
+            var backup = merged.backupDir ? '；原文件已备份到 ' + merged.backupDir : '';
+            setMergeUndo(instanceId, merged.backupDir ? { backupDir: merged.backupDir } : null);
             renderDetailHeader();
-            setDetailStatus(
-              '已更新：覆盖 ' + merged.files + ' 个文件' ,
-              'ok'
-            );
+            setDetailStatus(mergeReportText(merged) + backup, 'ok');
           })
           .catch(function (error) {
             setDetailStatus(describeLaunchError(error), 'error');

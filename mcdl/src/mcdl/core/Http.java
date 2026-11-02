@@ -46,9 +46,22 @@ public final class Http {
     private static final int ATTEMPTS_PER_URL = 3;
     private static final int BUFFER = 128 * 1024;
 
-    /** 可重试的下载失败。 */
+    /** 可重试的下载失败（连接断开、HTTP 5xx、超时…）：同一个地址再试有意义。 */
     public static final class RetryableException extends IOException {
         public RetryableException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * 内容不可用：服务器确实返回了 200，但内容不是我们要的（SHA-1 不符 / 大小不符）。
+     *
+     * <p>这类错误在同一个地址上重试几乎没有意义——镜像把错误页缓存下来后会一直返回同一份
+     * 内容，重试只会让用户白等 3 轮（每轮可能 60s 超时）。所以 {@link #download} 收到它
+     * 后直接换下一个候选地址。注意它仍然是 {@link IOException}，调用方代码不用改。</p>
+     */
+    public static final class BadContentException extends IOException {
+        public BadContentException(String message) {
             super(message);
         }
     }
@@ -134,6 +147,8 @@ public final class Http {
 
         IOException last = null;
         for (String url : urls) {
+            // 内容错误（SHA-1 / 大小不符）不在同一个地址上重试：直接标记并换下一个候选
+            boolean badContent = false;
             for (int attempt = 1; attempt <= ATTEMPTS_PER_URL; attempt++) {
                 try {
                     if (tryOne(url, part, sha1, expectedSize, onBytes, label, log)) {
@@ -153,13 +168,25 @@ public final class Http {
                     if (log != null) {
                         log.accept("  失败（" + shortUrl(url) + "）：" + e.getMessage());
                     }
+                    if (e instanceof BadContentException) {
+                        // 内容本身错了，同一个地址再试也是同样的结果，省掉退避与超时
+                        badContent = true;
+                        break;
+                    }
                     if (attempt < ATTEMPTS_PER_URL) {
                         sleep(500L * attempt);
                     }
                 }
             }
+            if (badContent && log != null) {
+                log.accept("  该地址返回的内容不正确，直接换下一个下载地址");
+            }
         }
-        throw new IOException("下载失败：" + label + "（" + (last == null ? "未知原因" : last.getMessage()) + "）", last);
+        String reason = last == null ? "未知原因" : last.getMessage();
+        if (last instanceof BadContentException) {
+            reason = "所有下载地址返回的内容都校验不通过（" + reason + "）";
+        }
+        throw new IOException("下载失败：" + label + "（" + reason + "）", last);
     }
 
     /** 单次尝试；返回 true 表示 .part 已完整且校验通过。 */
@@ -231,13 +258,16 @@ public final class Http {
 
         long actual = Files.size(part);
         if (expectedSize > 0 && actual != expectedSize) {
-            throw new RetryableException("大小不符：期望 " + expectedSize + "，实际 " + actual);
+            // 大小不符说明这份内容不是我们要的文件（镜像错误页、截断的缓存…）。
+            // 删掉 .part：换源后若沿用这份字节续传，拼出来的文件必然还是错的。
+            Files.deleteIfExists(part);
+            throw new BadContentException("大小不符：期望 " + expectedSize + "，实际 " + actual);
         }
         if (sha1 != null) {
             String actualSha1 = sha1(part);
             if (!sha1.equalsIgnoreCase(actualSha1)) {
                 Files.deleteIfExists(part);
-                throw new RetryableException("SHA-1 不符：期望 " + sha1 + "，实际 " + actualSha1);
+                throw new BadContentException("SHA-1 不符：期望 " + sha1 + "，实际 " + actualSha1);
             }
         }
         if (log != null && written > 0) {

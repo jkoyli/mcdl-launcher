@@ -289,12 +289,12 @@ public final class Modpack {
                                          Path mcDir, Path instanceDir, String name, int jobs,
                                          Cancel cancel, Consumer<String> log) throws Exception {
         cancel.throwIfCancelled();
-        Path tmp = Files.createTempFile("mcdl-installer-", ".jar");
+        Path tmp = LauncherDirs.newInstallerJar("installer");
         try {
             log.accept("下载加载器安装器…");
-            Http.download(tmp, Sources.fileCandidates(Sources.Source.AUTO, installerUrl),
-                    null, -1, n -> {
-                    }, "installer", log);
+            // 交给 Loaders 统一处理：.sha1 强制校验（拿不到就换源/失败）+ zip 合法性校验 + 按候选地址换源，
+            // 避免镜像返回 HTML 错误页时一路走到"运行安装器"才莫名其妙地失败
+            Loaders.downloadInstaller(tmp, Sources.fileCandidates(Sources.Source.AUTO, installerUrl), log);
             cancel.throwIfCancelled();
 
             int javaMajor = requiredJavaMajor(mcDir, mcVersion);
@@ -304,6 +304,8 @@ public final class Modpack {
                 throw new IOException("找不到可用的 Java 来运行加载器安装器");
             }
             log.accept("运行安装器：" + java.exe + " --installClient " + mcDir);
+            // 执行前再确认一次：内容是能打开的 jar（哈希已在 downloadInstaller 里强制校验）
+            Loaders.verifyInstallerJar(tmp, installerUrl);
             ProcessBuilder pb = new ProcessBuilder(java.exe.toString(), "-jar", tmp.toString(),
                     "--installClient", mcDir.toString());
             pb.directory(mcDir.toFile());
@@ -343,7 +345,12 @@ public final class Modpack {
             }
             writeThinJson(instanceDir, name, generatedId);
         } finally {
-            Files.deleteIfExists(tmp);
+            // 正常、异常、取消都清理；删不掉也不掩盖原始异常（下次启动会清扫过期残留）
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException ignored) {
+                // 忽略
+            }
         }
     }
 

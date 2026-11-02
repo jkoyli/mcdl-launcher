@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
@@ -90,7 +91,8 @@ public final class Sources {
         String n = name == null ? "" : name.trim();
         String b = normalizeBase(base);
         if (b == null) {
-            throw new IOException("镜像地址必须以 http:// 或 https:// 开头");
+            throw new IOException("镜像地址必须以 https:// 开头"
+                    + "（本机调试可用 http://127.0.0.1 或 http://localhost）");
         }
         if (n.isBlank()) {
             n = b;
@@ -114,18 +116,54 @@ public final class Sources {
         }
     }
 
+    /**
+     * 校验并规范化镜像根地址。
+     *
+     * <p>只接受 {@code https://}：自定义镜像参与所有下载（包括会被执行的加载器安装器），
+     * 用 http 传输等于把完整性校验交给中间人。唯一的例外是本地回环
+     * （{@code http://127.0.0.1}、{@code http://localhost}），方便自建镜像调试。</p>
+     *
+     * @return 去掉末尾斜杠的根地址；不合法返回 {@code null}
+     */
     private static String normalizeBase(String base) {
         if (base == null) {
             return null;
         }
         String b = base.trim();
-        if (!(b.startsWith("http://") || b.startsWith("https://"))) {
-            return null;
-        }
         while (b.endsWith("/")) {
             b = b.substring(0, b.length() - 1);
         }
-        return b.isEmpty() ? null : b;
+        if (b.isEmpty()) {
+            return null;
+        }
+        URI uri;
+        try {
+            uri = URI.create(b);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        if ("https".equals(scheme)) {
+            return b;
+        }
+        if ("http".equals(scheme) && isLoopbackHost(host)) {
+            return b;
+        }
+        return null;
+    }
+
+    /** 本地回环：http 只对这类地址放行。 */
+    private static boolean isLoopbackHost(String host) {
+        String h = host.toLowerCase(Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) {
+            h = h.substring(1, h.length() - 1);
+        }
+        return h.equals("localhost") || h.equals("127.0.0.1") || h.equals("::1")
+                || h.startsWith("127.");
     }
 
     private static Path customMirrorFile() {
@@ -143,9 +181,13 @@ public final class Sources {
             Json.Value arr = root.isArray() ? root : root.path("mirrors");
             for (Json.Value v : arr.asList()) {
                 String name = v.opt("name").asString("");
-                String base = normalizeBase(v.opt("base").asString(""));
+                String raw = v.opt("base").asString("");
+                String base = normalizeBase(raw);
                 if (base != null) {
                     CUSTOM.add(new CustomMirror(name.isBlank() ? base : name, base));
+                } else if (!raw.isBlank()) {
+                    // 老配置里可能存着 http 镜像：跳过而不是让整个列表崩掉
+                    System.err.println("已忽略不安全的镜像地址（仅支持 https://）：" + raw);
                 }
             }
         } catch (Exception ignored) {

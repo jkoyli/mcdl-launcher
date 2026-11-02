@@ -1747,9 +1747,9 @@ public final class MainWindow {
     /**
      * 打开目录：只使用能确认结果的方式。
      *
-     * <p>系统 shell（ShellExecute / explorer）在部分机器上会被 HIPS 拦截，且“进程创建成功”
-     * 并不代表窗口真的打开。这里先试原生 helper（返回真实 HRESULT），再试 Desktop.open
-     * （失败会抛异常）；都失败就打开应用内文件夹窗口，并提示把程序加入安全软件信任区。</p>
+     * <p>系统 shell（ShellExecute / explorer）在部分机器上会被 HIPS 拦截。这里先试
+     * {@code NativeDialog.openWithHelper}（Desktop.open，失败再退 explorer.exe），
+     * 都失败就打开应用内文件夹窗口，并提示把程序加入安全软件信任区。</p>
      */
     private void openInExplorer(Path dir) {
         if (dir == null) {
@@ -1769,9 +1769,9 @@ public final class MainWindow {
         }
         appendLog("打开目录：" + abs);
 
-        // 1) 原生 helper：SHOpenFolderAndSelectItems / ShellExecuteEx，返回真实 HRESULT
+        // 1) Desktop.open / explorer.exe（纯 Java，见 NativeDialog.openWithHelper）
         if (NativeDialog.openWithHelper(abs)) {
-            appendLog("打开目录成功（native）：" + abs);
+            appendLog("打开目录成功（Desktop.open / explorer）：" + abs);
             return;
         }
         String helperError = NativeDialog.lastError();
@@ -1792,13 +1792,13 @@ public final class MainWindow {
         }
 
         // 3) 都失败：应用内窗口兜底
-        appendLog("打开目录失败：native=" + helperError + "；shell=" + shellError);
+        appendLog("打开目录失败：helper=" + helperError + "；shell=" + shellError);
         status("系统文件管理器被安全软件拦截，改用应用内窗口");
         Object[] options = {"在应用内查看", "复制路径", "取消"};
         int choice = JOptionPane.showOptionDialog(frame,
                 "无法打开系统资源管理器。\n\n"
                         + "通常是安全软件（如火绒 HIPS）拦截了 ShellExecute。\n"
-                        + "可以把 MCDL.exe、McdlDialog.exe、java.exe 加入信任区后重试。\n\n"
+                        + "可以把 MCDL.exe、java.exe 加入信任区后重试。\n\n"
                         + "目录：\n" + abs,
                 "打开目录失败", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE,
                 null, options, options[0]);

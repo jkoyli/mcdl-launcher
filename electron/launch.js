@@ -454,9 +454,17 @@ async function buildLaunchPlan({ gameDir, instanceDir, instanceId, account, sett
 
   // Java 先解析：它不依赖参数组装，但「版本要求哪个 Java」是用户最关心的第一件事，
   // 而且缺 Java 时没必要先去解压 natives。
-  const requiredMajor = merged.javaVersion && merged.javaVersion.majorVersion
-    ? Number(merged.javaVersion.majorVersion)
-    : 0;
+  //
+  // 1.16.5 及更早的官方 version.json 没有 javaVersion（PCL2 / HMCL 装的很多 Forge
+  // 实例也沿用这种 JSON），这时不能按「没有要求」处理：按 Mojang 默认的 Java 8，
+  // 并对旧版本封顶 8，否则会自动挑到本机最新的 Java 21，启动即
+  // `Unsupported class file major version`。
+  const javaRequirement = manifest.javaRequirement(merged);
+  const requiredMajor = javaRequirement.required;
+  const javaCeiling = javaRequirement.ceiling;
+  const javaRange = javaCeiling
+    ? (javaCeiling === requiredMajor ? `${requiredMajor}` : `${requiredMajor}~${javaCeiling}`)
+    : `${requiredMajor}+`;
 
   if (typeof resolveJava !== 'function') throw new Error('缺少 Java 运行时解析器');
   throwIfCancelled(signal);
@@ -464,15 +472,37 @@ async function buildLaunchPlan({ gameDir, instanceDir, instanceId, account, sett
     onStage,
     'java',
     'running',
-    requiredMajor ? `版本 JSON 要求 Java ${requiredMajor}` : '版本 JSON 没有声明 Java 版本要求'
+    javaRequirement.declared
+      ? `版本 JSON 要求 Java ${requiredMajor}${javaCeiling ? `（最高 ${javaCeiling}）` : ''}`
+      : `版本 JSON 没有声明 Java 版本要求，按 Java ${requiredMajor}` +
+        `${javaCeiling ? `（最高 ${javaCeiling}）` : ''} 处理`
   );
-  const java = await resolveJava({ requiredMajor, versionId });
+  const java = await resolveJava({
+    requiredMajor,
+    // 新字段：调用方（main.js / 未来的解析器）可以直接用区间信息，
+    // 老调用方只读 requiredMajor 也不受影响。
+    required: requiredMajor,
+    ceiling: javaCeiling,
+    complianceLevel: javaRequirement.complianceLevel,
+    versionId
+  });
   if (!java) {
-    emitStage(onStage, 'java', 'failed', requiredMajor ? `没有找到 Java ${requiredMajor}` : '没有找到可用的 Java');
+    emitStage(onStage, 'java', 'failed', `没有找到 Java ${javaRange}`);
     throw new Error(
-      requiredMajor
-        ? `没有找到可用的 Java ${requiredMajor} 运行时，请在设置里指定 java.exe`
-        : '没有找到可用的 Java 运行时，请在设置里指定 java.exe'
+      `该版本需要 Java ${javaRange}，但本机没有找到匹配的运行时。\n` +
+        '请在「设置 → Java」里指定 / 下载对应版本的 java.exe，或清空手动选择改用自动探测。'
+    );
+  }
+  if (javaCeiling && Number(java.major) > javaCeiling) {
+    // pickJava 在区间内没有可用版本时会回落到「>= required 的最小值」（例如本机只有
+    // Java 17 / 21），但用更高版本跑 1.12 / 1.7 必定崩在 class 文件版本上，
+    // 这里在 spawn 之前中止，而不是让游戏闪退。
+    emitStage(onStage, 'java', 'failed', `Java ${java.major} 超出该版本上限 ${javaCeiling}`);
+    throw new Error(
+      `该版本需要 Java ${javaRange}，但本机没有找到匹配的运行时` +
+        `（现在只能选到 Java ${java.major}${java.path ? `：${java.path}` : ''}）。\n` +
+        `用 Java ${java.major} 运行这个版本会因 class 文件版本不兼容直接崩溃，` +
+        `请在「设置 → Java」里指定 Java ${requiredMajor}。`
     );
   }
   emitStage(

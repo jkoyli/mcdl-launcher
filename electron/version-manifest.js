@@ -28,6 +28,14 @@ const OS_ARCH = process.arch === 'ia32'
 // 32 位 Windows 上 ${arch} 是 32，其余是 64。旧版 natives 字段使用这个占位符。
 const ARCH_BITS = process.arch === 'ia32' ? '32' : '64';
 
+// 1.16.5 及更早的官方版本 JSON 没有 javaVersion 字段，Mojang 把它当 Java 8。
+const DEFAULT_JAVA_MAJOR = 8;
+
+function finitePositive(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
 async function readJson(file) {
   const raw = await fs.readFile(file, 'utf8');
   return JSON.parse(raw.replace(/^\uFEFF/, ''));
@@ -199,6 +207,9 @@ function mergeChain(chain) {
     assets: '',
     assetIndex: null,
     javaVersion: null,
+    // 顶层 complianceLevel（老 manifest 有，现代官方 JSON 里也有）与
+    // javaVersion.complianceLevel 都要合并，供 Java 选择判断上限。
+    complianceLevel: null,
     downloads: null,
     logging: null,
     libraries: [],
@@ -218,7 +229,15 @@ function mergeChain(chain) {
     if (manifest.mainClass) merged.mainClass = manifest.mainClass;
     if (manifest.assets) merged.assets = manifest.assets;
     if (manifest.assetIndex) merged.assetIndex = manifest.assetIndex;
+    // 与其它字段一致：子覆盖父。javaVersion 整体覆盖，complianceLevel 单独合并
+    // （顶层 complianceLevel 在真实 manifest 里也存在）。
     if (manifest.javaVersion) merged.javaVersion = manifest.javaVersion;
+    if (manifest.complianceLevel !== undefined &&
+        manifest.complianceLevel !== null &&
+        manifest.complianceLevel !== '') {
+      const level = finitePositive(manifest.complianceLevel);
+      if (level) merged.complianceLevel = level;
+    }
     if (manifest.downloads) merged.downloads = manifest.downloads;
     if (manifest.logging) merged.logging = manifest.logging;
     if (manifest.jar) merged.jar = manifest.jar;
@@ -246,6 +265,52 @@ function mergeChain(chain) {
   if (hasArgumentsObject) merged.minecraftArguments = null;
 
   return merged;
+}
+
+/**
+ * 从合并后的版本描述推导该版本需要的 Java（最低版本 + 合规上限）。
+ *
+ * - 没有 `javaVersion`（1.16.5 及更早、很多 Forge 实例）：Mojang 默认 Java 8，
+ *   并且 Java 9+ 跑这些版本必炸（`Unsupported class file major version`），所以上限 8。
+ * - `javaVersion.majorVersion` 优先；没有这个字段就按 Java 8 处理
+ *   （complianceLevel 只当上限线索，不拿来当最低版本）。
+ * - `complianceLevel` 只当上限线索：
+ *     · required <= 8 → 上限 8（Java 9+ 跑这些版本必炸）；
+ *     · required >= 9 且 complianceLevel >= required → 上限 complianceLevel；
+ *     · 其余不设上限（1.17+ 用更高的 Java 一般可用）。
+ *   注意：现代官方 JSON 的顶层 `complianceLevel` 是「玩家安全合规级别」（0/1，1.16.4+
+ *   为 1），不是 Java 版本。所以 required >= 9 时不能把 1 当上限，否则 1.20.1 会被
+ *   压回 Java 8。真实 manifest 里的 Java 上限更多是版本 JSON 的 majorVersion 本身。
+ *
+ * @returns {{required:number, ceiling:number|null, complianceLevel:number, declared:boolean}}
+ */
+function javaRequirement(merged) {
+  const value = merged && typeof merged === 'object' ? merged : {};
+  const javaVersion = value.javaVersion && typeof value.javaVersion === 'object'
+    ? value.javaVersion
+    : null;
+
+  const declaredMajor = finitePositive(javaVersion && javaVersion.majorVersion);
+  const required = declaredMajor || DEFAULT_JAVA_MAJOR;
+  const complianceLevel = finitePositive(
+    javaVersion && javaVersion.complianceLevel !== undefined
+      ? javaVersion.complianceLevel
+      : value.complianceLevel
+  );
+
+  let ceiling = null;
+  if (required <= DEFAULT_JAVA_MAJOR) {
+    ceiling = DEFAULT_JAVA_MAJOR;
+  } else if (complianceLevel >= required) {
+    ceiling = complianceLevel;
+  }
+
+  return {
+    required,
+    ceiling,
+    complianceLevel,
+    declared: declaredMajor > 0
+  };
 }
 
 /** 客户端 jar 所在版本目录：按 jar → 子版本 → 祖先顺序找真正存在的 jar。 */
@@ -364,6 +429,7 @@ module.exports = {
   OS_NAME,
   OS_ARCH,
   ARCH_BITS,
+  DEFAULT_JAVA_MAJOR,
   readJson,
   exists,
   rulesAllow,
@@ -374,6 +440,7 @@ module.exports = {
   isModernNativeLibrary,
   loadVersionChain,
   mergeChain,
+  javaRequirement,
   resolveClientJar,
   describeArtifact,
   collectLibraries

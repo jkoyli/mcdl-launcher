@@ -13,6 +13,7 @@
 
 const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
+const fsSync = require('node:fs');
 const path = require('node:path');
 
 const { writeFileAtomic } = require('./atomic-write');
@@ -146,34 +147,67 @@ function javaCandidatesInHome(home) {
   ];
 }
 
-/** 环境变量 + PATH 上的 java。 */
-async function environmentCandidates() {
+/**
+ * 内置 JRE。electron-builder 把 jre/ 通过 extraResources 放到 resources 下：
+ *   打包态：<resources>/jre/bin/java.exe
+ *   开发态：electron/jre/bin/java.exe（scripts/fetch-jre.js 的落点）
+ *
+ * 只有文件**真实存在**才算可用——dist 里现在放的是只有一个 README.txt 的占位目录，
+ * 那种情况必须返回 null，否则选择器会把一个不存在的 java.exe 当成候选。
+ *
+ * @param {{resourcesPath?:string, devRoot?:string}} [options] 测试可注入根目录
+ * @returns {string|null}
+ */
+function bundledJava(options = {}) {
+  const resourcesPath = options.resourcesPath !== undefined
+    ? String(options.resourcesPath || '')
+    : String(process.resourcesPath || '');
+  const devRoot = options.devRoot !== undefined ? String(options.devRoot || '') : __dirname;
+
+  const candidates = [];
+  if (resourcesPath) candidates.push(path.join(resourcesPath, 'jre', 'bin', JAVA_EXE));
+  if (devRoot) candidates.push(path.join(devRoot, 'jre', 'bin', JAVA_EXE));
+
+  for (const candidate of candidates) {
+    try {
+      if (fsSync.statSync(candidate).isFile()) return path.resolve(candidate);
+    } catch {
+      // 不存在：继续找下一个
+    }
+  }
+  return null;
+}
+
+/** 只取 MCDL_JAVA（直接给 java.exe，或给 JDK 根目录）。 */
+function configuredCandidates() {
+  if (!process.env.MCDL_JAVA) return [];
+  const configured = path.resolve(process.env.MCDL_JAVA);
+  return /\.exe$/i.test(configured) || path.basename(configured) === JAVA_EXE
+    ? [configured]
+    : javaCandidatesInHome(configured);
+}
+
+/** JAVA_HOME 上的 java。 */
+function javaHomeCandidates() {
+  return process.env.JAVA_HOME ? javaCandidatesInHome(process.env.JAVA_HOME) : [];
+}
+
+/** PATH 上的 java（PATH 里通常就是 <jdk>\bin）。 */
+function pathCandidates() {
   const result = [];
-
-  if (process.env.MCDL_JAVA) {
-    const configured = path.resolve(process.env.MCDL_JAVA);
-    // 允许直接给 java.exe，也允许给 JDK 根目录。
-    result.push(
-      ...(/\.exe$/i.test(configured) || path.basename(configured) === JAVA_EXE
-        ? [configured]
-        : javaCandidatesInHome(configured))
-    );
-  }
-
-  if (process.env.JAVA_HOME) {
-    result.push(...javaCandidatesInHome(process.env.JAVA_HOME));
-  }
-
   const pathDirs = String(process.env.PATH || '').split(IS_WINDOWS ? ';' : ':');
   for (const dir of pathDirs) {
     if (!dir) continue;
     const trimmed = dir.replace(/^"|"$/g, '').trim();
     if (!trimmed) continue;
-    // PATH 里通常就是 <jdk>\bin。
     result.push(path.join(trimmed, JAVA_EXE));
   }
-
   return result;
+}
+
+/** 环境变量 + PATH 上的 java。 */
+async function environmentCandidates() {
+  return [...configuredCandidates(), ...javaHomeCandidates(), ...pathCandidates()];
 }
 
 /** 扫描常见安装目录，返回 <root>\<子目录>\bin\java.exe。 */
@@ -226,11 +260,54 @@ function dedupe(paths) {
 }
 
 /**
+ * 给"只需要一个能跑 JVM 的子进程"的调用方（mcdl-service）找一个 java。
+ *
+ * 优先级：MCDL_JAVA → 内置 JRE → 已扫描 / 登记的 JDK → JAVA_HOME → 常见安装目录 → PATH。
+ * 不执行任何程序，只检查文件存在（mcdl 自己只需要一个 JVM，不需要 8/17/21 的精确匹配）。
+ *
+ * `candidates` 是给测试 / 特殊调用方的显式注入：给了就只在这些路径里找。
+ *
+ * @param {{resourcesPath?:string, devRoot?:string, candidates?:string[]}} [options]
+ * @returns {Promise<string|null>}
+ */
+async function findJavaForTools(options = {}) {
+  if (Array.isArray(options.candidates)) {
+    for (const candidate of dedupe(options.candidates)) {
+      if (await isFile(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  const bundled = bundledJava(options);
+  const preferred = dedupe([
+    ...configuredCandidates(),
+    ...(bundled ? [bundled] : []),
+    ...(Array.isArray(cache) ? cache.map((item) => item && item.path) : []),
+    ...javaHomeCandidates()
+  ]);
+
+  for (const candidate of preferred) {
+    if (await isFile(candidate)) return candidate;
+  }
+
+  // 最后才做目录扫描 / 走 PATH：这两步最慢，也最不可控。
+  for (const candidate of dedupe([...(await scannedCandidates()), ...pathCandidates()])) {
+    if (await isFile(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+/**
  * 扫描本机所有可用的 Java。
- * @returns {Promise<Array<{path:string,major:number,version:string,arch:string,bitness:number,vendor:string}>>}
+ * @returns {Promise<Array<{path:string,major:number,version:string,arch:string,bitness:number,vendor:string,source?:string}>>}
  */
 async function scanJavaRuntimes(mcdlService) {
+  const bundled = bundledJava();
   const candidates = dedupe([
+    // 内置 JRE 排第一：本机没装 Java 时它是唯一的可用运行时，
+    // pickJava 能不能选到它，取决于它有没有出现在这份候选里。
+    ...(bundled ? [bundled] : []),
     ...(await environmentCandidates()),
     ...(await scannedCandidates()),
     ...(await mcdlCandidates(mcdlService))
@@ -254,6 +331,8 @@ async function scanJavaRuntimes(mcdlService) {
 
     const info = await probe(candidate);
     if (!info) continue;
+    // 标记来源，UI / 日志能区分"安装包自带的 JRE"和用户自己的 JDK。
+    if (bundled && candidate === bundled) info.source = 'bundled';
     runtimes.push(info);
   }
 
@@ -277,8 +356,21 @@ async function getJavaRuntimes(mcdlService, options = {}) {
       if (Date.now() - stat.mtimeMs < 24 * 60 * 60 * 1000) {
         const parsed = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
         if (Array.isArray(parsed.runtimes) && parsed.runtimes.length > 0) {
-          cache = parsed.runtimes;
-          return cache;
+          // 24h 缓存可能是在「还没有内置 JRE」时写下的。内置 JRE 是随包分发的，
+          // 只要它出现了就必须进候选，否则 pickJava 一辈子选不到它。
+          const bundled = bundledJava();
+          const cachedPaths = new Set(
+            parsed.runtimes.map((item) => (
+              IS_WINDOWS ? String(item && item.path || '').toLowerCase() : String(item && item.path || '')
+            ))
+          );
+          const hasBundled = !bundled || cachedPaths.has(
+            IS_WINDOWS ? path.resolve(bundled).toLowerCase() : path.resolve(bundled)
+          );
+          if (hasBundled) {
+            cache = parsed.runtimes;
+            return cache;
+          }
         }
       }
     } catch {
@@ -320,18 +412,67 @@ function compareVersion(a, b) {
   return 0;
 }
 
+// 没有 javaVersion 的旧版本（1.12.2 / 1.7.10 / 大量 Forge 实例）按 Java 8 处理。
+const DEFAULT_JAVA_MAJOR = 8;
+
 /**
- * 按版本 JSON 的 javaVersion.majorVersion 选一个 Java。
+ * 归一化 pickJava 的参数。支持三种写法（向后兼容旧调用）：
+ *   pickJava(runtimes, 17)                       // 老签名：只给最低版本
+ *   pickJava(runtimes, 17, 21)                   // 额外给上限
+ *   pickJava(runtimes, { required: 8, ceiling: 8 })
+ *
+ * 上限缺省规则与 Mojang 规范一致：
+ *   - required <= 8 → 上限 8（Java 9+ 跑 1.12 / 1.7 必炸）；
+ *   - required >= 9 → 不设上限。
+ * required 为 0（老调用表示「没有版本要求」）时不设上限，保持旧行为。
+ */
+function normalizeJavaRequirement(requiredMajorOrOptions, maybeCeiling) {
+  const options = requiredMajorOrOptions && typeof requiredMajorOrOptions === 'object'
+    ? requiredMajorOrOptions
+    : {
+      required: requiredMajorOrOptions,
+      ceiling: maybeCeiling
+    };
+
+  const rawRequired = options.required !== undefined ? options.required : options.requiredMajor;
+  const required = Math.max(0, Math.floor(Number(rawRequired) || 0));
+
+  let ceiling = null;
+  const rawCeiling = options.ceiling !== undefined ? options.ceiling : options.maxMajor;
+  if (rawCeiling !== undefined && rawCeiling !== null && rawCeiling !== '') {
+    const parsed = Math.floor(Number(rawCeiling));
+    if (Number.isFinite(parsed) && parsed > 0) ceiling = parsed;
+  }
+  if (ceiling === null && required > 0 && required <= DEFAULT_JAVA_MAJOR) {
+    ceiling = DEFAULT_JAVA_MAJOR;
+  }
+
+  return { required, ceiling };
+}
+
+/**
+ * 按版本 JSON 的 Java 要求选一个运行时。
+ *
+ * 参数：`pickJava(runtimes, required)`（旧签名）、`pickJava(runtimes, required, ceiling)`
+ * 或 `pickJava(runtimes, { required, ceiling })`。
  *
  * 规则：
- *   - 64 位优先，其次版本号更高；
- *   - 优先主版本号完全相同的；
- *   - 否则取“主版本号 >= 要求”里最小的（旧版本对高版本 JVM 常常不兼容）；
- *   - 要求高于所有可用版本时，退回最高可用版本（报错信息由启动阶段给出）。
+ *   - 64 位优先，其次版本号更高（保持历史排序语义）；
+ *   - 优先主版本号完全等于 required 的；
+ *   - 否则在 [required, ceiling] 内取主版本最小的；
+ *   - 区间内没有则回落到「>= required 的最小值」；
+ *   - 仍没有（或 required 高于本机所有版本）返回 null，由上层报错，
+ *     不再硬塞一个可能直接崩的 JVM。
+ *   - required 缺省为 0 时保持旧行为：返回排序后的第一个（最高版本），
+ *     供不关心版本的旧调用方使用。
+ *
+ * @param {Array<{major:number,version:string,bitness?:number,path:string}>} runtimes
+ * @param {number|{required?:number,ceiling?:number|null}} requiredMajorOrOptions
+ * @param {number|null} [maybeCeiling]
  */
-function pickJava(runtimes, requiredMajor) {
+function pickJava(runtimes, requiredMajorOrOptions, maybeCeiling) {
   if (!Array.isArray(runtimes) || runtimes.length === 0) return null;
-  const required = Number(requiredMajor) || 0;
+  const { required, ceiling } = normalizeJavaRequirement(requiredMajorOrOptions, maybeCeiling);
 
   const sorted = runtimes.slice().sort((a, b) => (
     (b.bitness || 0) - (a.bitness || 0) ||
@@ -344,14 +485,21 @@ function pickJava(runtimes, requiredMajor) {
   const exact = sorted.filter((item) => item.major === required);
   if (exact.length > 0) return exact[0];
 
-  const atLeast = sorted.filter((item) => item.major >= required);
-  if (atLeast.length > 0) {
-    // 已经是 64 位优先 + 高版本优先，取主版本最小的那批里的第一个。
-    const minMajor = Math.min(...atLeast.map((item) => item.major));
-    return atLeast.find((item) => item.major === minMajor) || atLeast[0];
+  const minMajorOf = (list) => Math.min(...list.map((item) => item.major));
+  const firstOfMinMajor = (list) => {
+    const minMajor = minMajorOf(list);
+    return list.find((item) => item.major === minMajor) || list[0];
+  };
+
+  if (ceiling !== null && ceiling >= required) {
+    const inRange = sorted.filter((item) => item.major >= required && item.major <= ceiling);
+    if (inRange.length > 0) return firstOfMinMajor(inRange);
   }
 
-  return sorted[0];
+  const atLeast = sorted.filter((item) => item.major >= required);
+  if (atLeast.length > 0) return firstOfMinMajor(atLeast);
+
+  return null;
 }
 
 function clearCache() {
@@ -412,7 +560,11 @@ function sameFingerprint(record, stat) {
  * 用目录白名单会误伤正常安装。
  */
 async function isEnumeratorProvidedJava(realTarget) {
+  // 内置 JRE 也是启动器自己枚举出来的（它随安装包分发），
+  // 用户把它选为默认 Java 时不应该被"未授权"挡住。
+  const bundled = bundledJava();
   const candidates = dedupe([
+    ...(bundled ? [bundled] : []),
     ...(await environmentCandidates()),
     ...(await scannedCandidates()),
     ...(Array.isArray(cache) ? cache.map((item) => item && item.path) : [])
@@ -577,7 +729,10 @@ function resetJavaAuthorizations() {
 module.exports = {
   scanJavaRuntimes,
   getJavaRuntimes,
+  bundledJava,
+  findJavaForTools,
   pickJava,
+  normalizeJavaRequirement,
   probe,
   parseProperties,
   clearCache,

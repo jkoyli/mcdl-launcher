@@ -559,20 +559,22 @@ public final class Loaders {
      * <p>先看 install_profile.json 的结构决定走哪条路：
      * 有 {@code versionInfo} 的是 1.12.2 及更早的 Swing 安装器（没有静默模式），
      * 直接在本地解包；否则用 {@code --installClient} 跑官方安装器。</p>
+     *
+     * <p>安装器 jar 落在启动器缓存目录 {@code ~/.mcdl/cache/installers}（不是系统临时目录），
+     * 并且无论成功、失败还是取消，{@code finally} 都会删掉。</p>
      */
     private static String installForgeLike(List<String> installerUrls, String kind, String mc, String loaderVersion,
                                            Path mcDir, Path instanceDir, String instanceId, Path javaPath,
                                            int jobs, Sources.Source source, Cancel cancel,
                                            Consumer<String> log) throws Exception {
-        Path tmp = Files.createTempFile("mcdl-" + kind + "-", ".jar");
+        Path tmp = LauncherDirs.newInstallerJar(kind);
         try {
             List<String> candidates = new ArrayList<>();
             for (String url : installerUrls) {
                 candidates.addAll(mavenCandidates(source, url));
             }
             log.accept("下载 " + kind + " 安装器 " + loaderVersion + " …");
-            Http.download(tmp, Sources.dedupe(candidates), null, -1, n -> {
-            }, "installer", log);
+            downloadInstaller(tmp, candidates, log);
             cancel.throwIfCancelled();
 
             Json.Value profile = readInstallProfile(tmp);
@@ -600,7 +602,175 @@ public final class Loaders {
             log.accept("已写入版本 JSON：" + instanceId + ".json（继承 " + inheritedId + "）");
             return jsonFile.toString();
         } finally {
-            Files.deleteIfExists(tmp);
+            // 正常、异常、取消都走这里；删不掉（例如安装器进程刚被杀还没释放句柄）也不掩盖
+            // 原始异常，残留文件由下次启动的 pruneInstallerCache 兜底清理。
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (IOException ignored) {
+                // 忽略
+            }
+        }
+    }
+
+    //------------------------------------------------------------------
+    // 安装器下载 + 校验（Loaders 与 Modpack 共用）
+    //------------------------------------------------------------------
+
+    /**
+     * 下载 Forge / NeoForge 安装器，并确认下载到的确实是一个 jar。
+     *
+     * <p>为什么不能只调 {@link Http#download}：安装器地址的期望哈希不在版本 JSON 里，
+     * 只能自己去 maven 拿；而国内镜像偶尔会把 HTML 错误页或半截文件当成功返回。
+     * 所以这里做三件事：</p>
+     * <ol>
+     *   <li>先读 maven 发布的 {@code <url>.sha1}（一行十六进制文本），<b>读不到就视为该地址
+     *       失败</b>——安装器稍后要被执行，没有期望哈希就不能继续；</li>
+     *   <li>逐个候选地址下载到临时文件，校验哈希后检查首 4 字节是 zip 头、且 {@link ZipFile} 能打开；</li>
+     *   <li>某个地址的内容不合法就换下一个地址，全部失败才抛错。</li>
+     * </ol>
+     *
+     * <p>注意这个方法自己按地址循环，所以传入的每个地址单独下载、单独校验：
+     * 只有这样"镜像返回坏内容"时才能立刻换到官方源。</p>
+     */
+    public static void downloadInstaller(Path dest, List<String> candidates, Consumer<String> log)
+            throws IOException {
+        List<String> urls = Sources.dedupe(candidates);
+        if (urls.isEmpty()) {
+            throw new IOException("没有可用的加载器安装器下载地址");
+        }
+        // 目标文件由调用方创建（通常在启动器缓存目录），这里先写到同目录的 .dl 再改名，
+        // 避免校验失败时把调用方的目标文件弄成半截。
+        Path scratch = dest.resolveSibling(dest.getFileName() + ".dl");
+        IOException last = null;
+        for (String url : urls) {
+            try {
+                // 安装器会被 ProcessBuilder 执行，所以哈希校验是硬性前提：
+                // 拿不到 .sha1 就把这个地址当作失败，换下一个候选（绝不"无哈希继续"）。
+                String sha1 = requireMavenSha1(url);
+                if (log != null) {
+                    log.accept("  安装器 SHA-1：" + sha1);
+                }
+                deleteQuietly(scratch);
+                Http.download(scratch, List.of(url), sha1, -1, n -> {
+                }, "installer", log);
+                verifyInstallerJar(scratch, url);
+                try {
+                    Files.move(scratch, dest, StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException atomicFailed) {
+                    Files.move(scratch, dest, StandardCopyOption.REPLACE_EXISTING);
+                }
+                return;
+            } catch (IOException e) {
+                last = e;
+                if (log != null) {
+                    log.accept("  安装器下载失败（" + shortUrl(url) + "）：" + e.getMessage());
+                }
+            } finally {
+                deleteQuietly(scratch);
+            }
+        }
+        throw new IOException("加载器安装器下载失败：" + (last == null ? "未知原因" : last.getMessage())
+                + "（已尝试 " + urls.size() + " 个地址）", last);
+    }
+
+    /**
+     * 取 maven 的 {@code <url>.sha1}，取不到直接抛错。
+     *
+     * <p>Forge / NeoForge 安装器下载后会被 {@code java -jar} 执行，没有期望哈希就等于
+     * 放弃完整性校验，因此不允许降级。国内不代理 {@code .sha1} 的镜像会因此不可用，
+     * 但调用方会按候选顺序继续尝试官方源。</p>
+     */
+    private static String requireMavenSha1(String url) throws IOException {
+        String sha1 = probeMavenSha1(url);
+        if (sha1 == null) {
+            throw new IOException("无法校验安装器完整性：" + url
+                    + " 未提供 .sha1。请换个下载源或稍后重试。");
+        }
+        return sha1;
+    }
+
+    /**
+     * maven 对每个 artifact 都发布一份 {@code <url>.sha1}：通常只有一行十六进制文本
+     * （少数仓库后面会跟一个空格 + 文件名）。
+     *
+     * <p>拿不到返回 {@code null}；调用方 {@link #requireMavenSha1(String)} 会据此判失败。
+     * 这个方法只负责解析，不决定是否允许无哈希安装。</p>
+     */
+    private static String probeMavenSha1(String url) {
+        try {
+            String text = Http.getRawText(List.of(url + ".sha1"), null);
+            if (text == null || text.isBlank()) {
+                return null;
+            }
+            // 只看第一行，避免把带 HTML 的错误页（多行）误当哈希
+            String first = text.strip().split("\\R", 2)[0].trim();
+            String hex = first.split("\\s+", 2)[0];
+            if (hex.length() == 40 && hex.matches("[0-9a-fA-F]{40}")) {
+                return hex.toLowerCase(Locale.ROOT);
+            }
+        } catch (Exception ignored) {
+            // 404 / 超时 / 返回 HTML：没有哈希可用，按无哈希流程继续
+        }
+        return null;
+    }
+
+    /**
+     * 安装器必须是能打开的 zip。镜像劫持、错误页、截断的 jar 都会在这里被拦住，
+     * 而不是等到 readInstallProfile 才报"没有 install_profile.json"。
+     */
+    static void verifyInstallerJar(Path file, String source) throws IOException {
+        if (!Files.isRegularFile(file) || Files.size(file) < 4) {
+            throw new IOException(notAJarMessage(source));
+        }
+        byte[] head = new byte[4];
+        try (InputStream in = Files.newInputStream(file)) {
+            if (in.readNBytes(head, 0, 4) < 4) {
+                throw new IOException(notAJarMessage(source));
+            }
+        }
+        boolean localHeader = head[0] == 'P' && head[1] == 'K' && head[2] == 3 && head[3] == 4;
+        boolean emptyZip = head[0] == 'P' && head[1] == 'K' && head[2] == 5 && head[3] == 6;
+        if (!localHeader && !emptyZip) {
+            throw new IOException(notAJarMessage(source));
+        }
+        int entries;
+        try (ZipFile zip = new ZipFile(file.toFile())) {
+            entries = zip.size();
+        } catch (IOException e) {
+            throw new IOException(notAJarMessage(source), e);
+        }
+        if (entries == 0) {
+            throw new IOException(notAJarMessage(source));
+        }
+    }
+
+    private static String notAJarMessage(String source) {
+        return "安装器下载内容不是有效的 jar（来源：" + source + " 或镜像）。"
+                + "请换下载源重试，或检查网络代理是否劫持了下载。";
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+            // Http.download 的断点文件，换源时一起清掉，别把坏内容续传到下一个地址
+            Files.deleteIfExists(file.resolveSibling(file.getFileName() + ".part"));
+        } catch (IOException ignored) {
+            // 临时文件删不掉不影响结果
+        }
+    }
+
+    /** 日志里用的短地址：host + 截断后的 path。 */
+    private static String shortUrl(String url) {
+        try {
+            java.net.URI u = java.net.URI.create(url);
+            String path = u.getPath();
+            if (path != null && path.length() > 48) {
+                path = "..." + path.substring(path.length() - 45);
+            }
+            return u.getHost() + path;
+        } catch (RuntimeException e) {
+            return url;
         }
     }
 
@@ -672,6 +842,9 @@ public final class Loaders {
         }
 
         Set<String> before = listVersionDirs(mcDir);
+        // 执行前再校验一次：安装器来自网络，必须先确认哈希（在 downloadInstaller 里）
+        // 且文件确实是可打开的 jar，任何一项不满足都直接抛错，绝不启动进程。
+        verifyInstallerJar(installer, installer.toString());
         log.accept("运行安装器：" + java + " -jar 安装器 --installClient " + mcDir);
         ProcessBuilder pb = new ProcessBuilder(java.toString(), "-Dfile.encoding=UTF-8", "-jar",
                 installer.toString(), "--installClient", mcDir.toString());
@@ -828,6 +1001,8 @@ public final class Loaders {
                     String path = lib.nativesInfo.opt("path").asString("");
                     String url = lib.nativesInfo.opt("url").asString("");
                     String sha1 = lib.nativesInfo.opt("sha1").asString("");
+                    // profile 里通常也带 size：有就传，让 Http 能用"大小不符"识别镜像的错误内容
+                    long size = lib.nativesInfo.opt("size").asLong(-1);
                     if (!path.isEmpty() && !url.isEmpty()) {
                         Path dest = mcDir.resolve("libraries").resolve(path);
                         futures.add(pool.submit(() -> {
@@ -835,7 +1010,7 @@ public final class Loaders {
                                 return null;
                             }
                             Http.download(dest, Sources.fileCandidates(source, url),
-                                    sha1.isBlank() ? null : sha1, -1, n -> {
+                                    sha1.isBlank() ? null : sha1, size, n -> {
                                     }, path, log);
                             return null;
                         }));

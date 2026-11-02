@@ -311,13 +311,53 @@ function cancelledError() {
 }
 
 /**
+ * 从 Modrinth 的 hashes 里挑出可用的校验值：优先 sha512，其次 sha1。
+ *
+ * 两者都没有时返回 null——调用方必须拒绝下载，绝不能「没哈希就直接落盘」：
+ * 模组 / 整合包内容会进 mods 目录并被游戏加载，等价于可执行代码。
+ *
+ * @param {unknown} hashes
+ * @returns {{algorithm:'sha512'|'sha1', value:string}|null}
+ */
+function pickExpectedHash(hashes) {
+  if (!hashes || typeof hashes !== 'object') return null;
+  for (const algorithm of ['sha512', 'sha1']) {
+    const value = String(hashes[algorithm] == null ? '' : hashes[algorithm]).trim().toLowerCase();
+    if (value) return { algorithm, value };
+  }
+  return null;
+}
+
+/** 从下载地址里取文件名，用于错误提示（取不到就退回原地址）。 */
+function filenameOfUrl(raw) {
+  const text = String(raw == null ? '' : raw);
+  try {
+    const name = new URL(text).pathname.split('/').filter(Boolean).pop() || '';
+    return decodeURIComponent(name) || text;
+  } catch {
+    const name = text.split('?')[0].split('#')[0].split('/').pop();
+    return name || text;
+  }
+}
+
+/** 「没有提供校验值」的拒绝文案：文件名要能让用户认出是哪个文件。 */
+function missingHashesMessage(url) {
+  return `该文件没有提供校验值，已拒绝下载：${filenameOfUrl(url)}`;
+}
+
+/**
  * 下载单个文件。
  *
+ * 下载前先确认有 sha512 / sha1；没有就直接拒绝，连请求都不发。
  * `signal` 来自主进程的取消令牌：一旦 abort，fetch 立刻中断，目标路径不会出现半截文件，
  * 已经下完的文件不受影响（下次重装会重新校验）。
  */
 async function downloadFile(url, target, expectedHashes, signal) {
   if (signal && signal.aborted) throw cancelledError();
+
+  // 必须在 fetch 之前判定：拿不到期望哈希就没有校验，下载下来也无法信任。
+  const expected = pickExpectedHash(expectedHashes);
+  if (!expected) throw new ModrinthError(missingHashesMessage(url));
 
   const timeout = AbortSignal.timeout(120000);
   const combined = signal ? AbortSignal.any([timeout, signal]) : timeout;
@@ -346,9 +386,8 @@ async function downloadFile(url, target, expectedHashes, signal) {
 
   if (signal && signal.aborted) throw cancelledError();
 
-  const expected = expectedHashes && expectedHashes.sha1 ? String(expectedHashes.sha1) : '';
-  if (expected && hashOf('sha1', buffer) !== expected) {
-    throw new ModrinthError('下载文件的 SHA1 校验失败');
+  if (hashOf(expected.algorithm, buffer) !== expected.value) {
+    throw new ModrinthError(`下载文件的 ${expected.algorithm.toUpperCase()} 校验失败`);
   }
 
   try {
@@ -432,5 +471,8 @@ module.exports = {
   fetchProjectIcon,
   collectRequiredDependencies,
   downloadVersion,
-  projectTypeOf
+  projectTypeOf,
+  // 导出给测试用：直接覆盖 sha512 / sha1 / 缺哈希 / 哈希不符四条路径。
+  downloadFile,
+  pickExpectedHash
 };

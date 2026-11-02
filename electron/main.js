@@ -25,6 +25,8 @@ const modpackExport = require('./modpack-export');
 const javaInstall = require('./java-install');
 const nbtEditor = require('./nbt-editor');
 const appLog = require('./app-log');
+const instanceMerge = require('./instance-merge');
+const updaterModule = require('./updater');
 const { writeFileAtomic, flushWrites, pendingWrites } = require('./atomic-write');
 
 const IS_DEV = process.argv.includes('--dev');
@@ -95,6 +97,16 @@ if (USER_DATA_DIR) {
 // 启动器日志落盘：崩溃窗口 / 日志窗口的「打开日志文件夹」都指向这里。
 // 必须在其它模块开始打日志之前初始化，所以紧跟在 userData 选定之后。
 appLog.init(USER_DATA_DIR);
+
+// mcdl-service 刻意不 require('electron')（纯 node 测试守着这条），
+// 所以打包态的资源路径与可写数据目录由主进程显式注入：
+//   - resolveMcdlJar() 用 resourcesPath 找 <resources>/mcdl/mcdl.jar；
+//   - mcdl 的 cwd 用 userData（安装到 Program Files 时 jar 目录只读）。
+mcdl.configure({
+  isPackaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  userData: USER_DATA_DIR || ''
+});
 
 /**
  * 渲染策略。
@@ -1189,6 +1201,69 @@ function uniqueDirs(dirs) {
   return result;
 }
 
+// ---------------- 合并残留自愈 / 备份保留 ----------------
+
+/** 合并备份根目录：<userData>/instance-merge-backups（绝不放进实例目录）。 */
+function mergeBackupsRoot() {
+  return path.join(app.getPath('userData'), 'instance-merge-backups');
+}
+
+/**
+ * 启动时清扫「进程在两次 rename 之间被强杀」留下的 `.mcdl-merge-*` 残留。
+ *
+ * 只做只读判定 + 少量 rename / rm，扫的是各游戏目录的 versions/（不是整棵游戏目录树），
+ * 正常情况是毫秒级。任何异常都在 instance-merge 内部吞掉，这里只保证不阻塞启动。
+ */
+async function recoverInterruptedMergesOnStartup() {
+  let roots = [];
+  try {
+    const own = await mcdl.detectGameDir();
+    const managed = await managedGameDirs();
+    const cached = await readScanCache();
+    roots = uniqueDirs([own, managed.primary, ...managed.dirs, ...cached]);
+  } catch (error) {
+    console.warn('[instances] 合并残留清扫跳过（游戏目录不可用）:', error && error.message);
+    return;
+  }
+
+  for (const root of roots) {
+    try {
+      const result = await instanceMerge.recoverInterruptedMerges({
+        versionsRoot: path.join(root, 'versions')
+      });
+      if (result.handled.length > 0) {
+        console.warn(`[instances] 启动清扫处理了 ${result.handled.length} 个合并残留（${root}）`);
+      }
+    } catch (error) {
+      // 理论上不会走到这里（函数内部已吞错），兜底也不让启动挂掉。
+      console.warn('[instances] 合并残留清扫失败:', error && error.message);
+    }
+  }
+}
+
+/**
+ * 启动时按保留策略清理各实例的旧备份（默认只留最近 KEEP_BACKUPS 份）。
+ * 删除大目录可能慢，所以这一步**不参与启动等待**，由调用方 fire-and-forget。
+ */
+async function pruneMergeBackupsOnStartup() {
+  let dirents = [];
+  try {
+    dirents = await fs.readdir(mergeBackupsRoot(), { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const dirent of dirents) {
+    if (!dirent.isDirectory()) continue;
+    const result = await instanceMerge.pruneMergedBackups({
+      backupRoot: path.join(mergeBackupsRoot(), dirent.name)
+    });
+    if (result.removed.length > 0) {
+      console.log(`[instances] 已清理 ${result.removed.length} 份旧合并备份（${dirent.name}）`);
+    }
+  }
+}
+
 /**
  * 扫描缓存的完整状态：目录 + 上次写入时间。
  * 没有缓存文件（或文件损坏）时返回 { dirs: [], updatedAt: null }。
@@ -2172,6 +2247,57 @@ function popTextContextMenu(win, params = {}) {
   });
 
   return true;
+}
+
+// ---------------- 更新通道（默认关闭） ----------------
+
+/**
+ * 更新器惰性单例。
+ *
+ * 配置优先级：MCDL_UPDATE_URL 环境变量 > <userData>/update.json。
+ * 两者都没有时，这个实例处于「未配置」状态：主进程不会 require electron-updater、
+ * 不会发任何网络请求，渲染层也据此把更新入口整体隐藏。
+ *
+ * 惰性创建还有一层意思：配置读取（一次本地 JSON）发生在第一次用到时，
+ * 而不是模块顶层，所以打包/测试环境都不需要它。
+ */
+let appUpdater = null;
+
+function updaterConfigFile() {
+  try {
+    return path.join(app.getPath('userData'), 'update.json');
+  } catch {
+    return '';
+  }
+}
+
+function getUpdater() {
+  if (appUpdater) return appUpdater;
+
+  let config = null;
+  try {
+    config = updaterModule.readFeedConfig({ env: process.env, file: updaterConfigFile() });
+  } catch (error) {
+    // 配置坏了等价于没配置：默认关闭，而不是带着半个配置去联网。
+    console.warn('[updater] 读取更新配置失败（按未配置处理）:', error.message);
+  }
+
+  appUpdater = updaterModule.createUpdater({
+    config,
+    currentVersion: app.getVersion(),
+    log: (message, error) => {
+      if (error) console.warn(message, error);
+      else console.log(message);
+    },
+    send: (channel, payload) => {
+      const win = mainWindow;
+      if (!win || win.isDestroyed()) return;
+      if (!win.webContents || win.webContents.isDestroyed()) return;
+      win.webContents.send(channel, payload);
+    }
+  });
+
+  return appUpdater;
 }
 
 function registerIpcHandlers() {
@@ -3571,35 +3697,50 @@ function registerIpcHandlers() {
   // ---------------- 实例详情：更新整合包 ----------------
 
   /**
-   * 把「新整合包安装出来的临时实例」的内容合并进目标实例，然后删掉临时实例。
+   * 更新整合包 = 把「新包安装出来的临时实例」合并进目标实例。
    *
-   * 为什么不直接原地升级：mcdl 的 --install-pack 会新建 versions/<name>（同名但包 SHA-1
-   * 不同时会退化成 <name> (2)），没有「覆盖已有实例」的入口。这里复用它的安装 +
-   * 解压核对，再在同目录内做一次覆盖复制，行为等价于「用新包的 overrides 覆盖旧实例」。
+   * 真正的合并逻辑在 electron/instance-merge.js（影子目录 + 原子替换 + 备份回滚），
+   * 这里只做接线：定位临时实例、拦住在跑的游戏、登记任务、分配备份目录。
+   * 绝不再用「逐个 copyFile 顶掉」——那和 PCL2 清空用户 mods 是同一类缺陷。
    */
-  async function copyTreeInto(source, dest, stats) {
-    const entries = await fs.readdir(source, { withFileTypes: true });
-    await fs.mkdir(dest, { recursive: true });
-    for (const entry of entries) {
-      const from = path.join(source, entry.name);
-      const to = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        await copyTreeInto(from, to, stats);
-      } else if (entry.isFile()) {
-        await fs.copyFile(from, to);
-        stats.files += 1;
-        stats.bytes += (await fs.stat(from).catch(() => ({ size: 0 }))).size;
-      }
+
+  /** 备份放在 userData 下，绝不放进实例目录（否则会被实例内容扫描当成游戏文件）。 */
+  function mergeBackupRoot() {
+    return mergeBackupsRoot();
+  }
+
+  /** 每个实例一个稳定 key（实例名 + 路径哈希），每次合并一个时间戳子目录。 */
+  function mergeBackupDirFor(instance) {
+    const resolved = path.resolve(instance.path);
+    const hash = crypto.createHash('sha1').update(resolved.toLowerCase()).digest('hex').slice(0, 10);
+    const name = `${path.basename(resolved)}-${hash}`
+      .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+      .slice(0, 80);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return path.join(mergeBackupRoot(), name, stamp);
+  }
+
+  /** 游戏在跑的时候换实例目录 = 一边读一边被替换，直接拒绝。 */
+  function assertNoActiveLaunch() {
+    const active = launcher.listActiveLaunches();
+    // 还在规划 / 校验阶段的启动也算「游戏要起来了」：再等几秒它就会占用实例目录。
+    // （pendingLaunches 声明在下面同一作用域，调用发生在 registerIpcHandlers 之后。）
+    if ((Array.isArray(active) && active.length > 0) || pendingLaunches.size > 0) {
+      throw new Error('请先关闭游戏再更新整合包');
     }
   }
 
   ipcMain.handle('instances:merge-pack', async (event, payload = {}) => {
-    assertAppWindow(event);
+    const win = assertAppWindow(event);
     const target = await requireInstance(payload);
     const stagingName = String(payload.stagingName || '').trim();
     if (!stagingName || stagingName.length > 120 || /[\\/:*?"<>|\u0000-\u001f]/.test(stagingName)) {
       throw new Error('临时实例名非法');
     }
+
+    // 合并会 rename 整个实例目录：游戏在跑时文件被占用（EBUSY）是一回事，
+    // 更糟的是运行中的游戏还在往旧路径写存档。必须先让用户关掉游戏。
+    assertNoActiveLaunch();
 
     // 临时实例刚由 install-pack 建出来，按「同一个游戏目录 + versions 下的文件夹名」定位，
     // 不依赖渲染层拼好的 id（外部目录的 id 带 @hash 后缀，拼错就会误删别的实例）。
@@ -3621,21 +3762,97 @@ function registerIpcHandlers() {
       throw new Error('实例目录不在 versions 下，已取消合并');
     }
 
-    const stats = { files: 0, bytes: 0 };
-    await copyTreeInto(stagingPath, targetPath, stats);
+    const task = beginTask(payload.taskId);
+    const backupDir = mergeBackupDirFor(target);
+    const send = (progress) => {
+      if (!progress || win.isDestroyed()) return;
+      win.webContents.send('instances:merge-progress', progress);
+    };
 
-    await fs.rm(stagingPath, { recursive: true, force: true });
+    try {
+      const merged = await instanceMerge.mergeWithBackup({
+        sourceDir: stagingPath,
+        targetDir: targetPath,
+        sourceName: stagingName,
+        backupDir,
+        signal: task.signal,
+        onProgress: send
+      });
 
-    const aliases = await readAliases();
-    delete aliases[stagingPath];
-    await writeAliases(aliases).catch(() => {});
+      // 合并成功才删临时实例：失败时留着它，方便用户重试 / 排查。
+      await fs.rm(stagingPath, { recursive: true, force: true });
 
+      const aliases = await readAliases();
+      delete aliases[stagingPath];
+      await writeAliases(aliases).catch(() => {});
+
+      if (merged.staleDir) {
+        console.warn('[instances] merge-pack left old dir behind:', merged.staleDir);
+      }
+
+      const next = await rescanInstances(target.id);
+      return {
+        ok: true,
+        files: merged.files,
+        bytes: merged.bytes,
+        freedLabel: formatBytes(merged.bytes),
+        overwriteCount: merged.counts.overwrite,
+        createCount: merged.counts.create,
+        skippedCount: merged.counts.skipped,
+        // 覆盖清单（相对路径）按需回传：大整合包可能上千个文件，预览截断避免 IPC 爆掉。
+        overwriteFiles: merged.overwrite.slice(0, 200),
+        overwriteTruncated: merged.overwrite.length > 200,
+        backupDir: merged.backupDir,
+        snapshot: next
+      };
+    } catch (error) {
+      // 取消时 instance-merge 已经回滚过目标实例，这里只做错误转译。
+      if (isCancelledError(error)) throw cancellationError();
+      console.error('[instances] merge-pack failed:', error);
+      // 失败时故意保留临时实例：用户可以直接重试，不需要重新下载整合包。
+      const wrapped = new Error(
+        `${error && error.message ? error.message : error}；临时实例「${stagingName}」已保留，可重试更新`
+      );
+      wrapped.cause = error;
+      throw wrapped;
+    } finally {
+      task.finish();
+    }
+  });
+
+  /**
+   * 撤销本次更新：按备份把被覆盖的文件还原、删掉本次新增的文件。
+   * 备份目录必须落在我们自己的备份根目录内（渲染层传上来的路径不可信）。
+   */
+  ipcMain.handle('instances:merge-undo', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const target = await requireInstance(payload);
+    assertNoActiveLaunch();
+
+    const requested = String(payload.backupDir || '').trim();
+    if (!requested) throw new Error('缺少备份目录，无法撤销本次更新');
+
+    let backupDir = '';
+    try {
+      backupDir = await pathGuard.assertInsideReal(mergeBackupRoot(), requested, '更新备份目录');
+    } catch {
+      throw new Error('备份目录不在允许的范围内，已拒绝撤销');
+    }
+
+    const targetPath = path.resolve(target.path);
+    const manifest = await instanceMerge.readBackupManifest(backupDir);
+    if (path.resolve(String(manifest.targetDir || '')).toLowerCase() !== targetPath.toLowerCase()) {
+      throw new Error('这份备份不属于当前实例，已拒绝撤销');
+    }
+
+    const restored = await instanceMerge.restoreFromBackup({ targetDir: targetPath, backupDir });
     const next = await rescanInstances(target.id);
     return {
       ok: true,
-      files: stats.files,
-      bytes: stats.bytes,
-      freedLabel: formatBytes(stats.bytes),
+      restored: restored.restored,
+      removed: restored.removed,
+      missing: restored.missing,
+      backupDir,
       snapshot: next
     };
   });
@@ -4960,6 +5177,32 @@ function registerIpcHandlers() {
   });
 
   /**
+   * 更新通道（默认关闭）：状态快照 / 手动检查 / 下载 / 安装。
+   *
+   * 四个 handler 全部走 assertAppWindow。未配置更新源时它们各自返回
+   * configured=false 的快照（不抛错、不联网），渲染层只显示「未配置更新源」。
+   */
+  ipcMain.handle('updates:state', async (event) => {
+    assertAppWindow(event);
+    return getUpdater().getState();
+  });
+
+  ipcMain.handle('updates:check', async (event) => {
+    assertAppWindow(event);
+    return getUpdater().check();
+  });
+
+  ipcMain.handle('updates:download', async (event) => {
+    assertAppWindow(event);
+    return getUpdater().download();
+  });
+
+  ipcMain.handle('updates:install', async (event) => {
+    assertAppWindow(event);
+    return getUpdater().install();
+  });
+
+  /**
    * 渲染模式：渲染进程据此启用软件渲染下的降级样式（去掉每帧重算的 blur）。
    */
   ipcMain.handle('env:render-mode', async (event) => {
@@ -5254,7 +5497,7 @@ if (!gotSingleInstanceLock) {
     mainWindow.focus();
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     console.log('[main] app ready');
 
     if (process.platform === 'win32') {
@@ -5275,6 +5518,16 @@ if (!gotSingleInstanceLock) {
     }
 
     registerIpcHandlers();
+
+    // 启动期自愈：把上次「进程在两次 rename 之间被强杀」留下的实例改回来。
+    // 必须在 createWindow() 之前 await —— 渲染层第一次拿到的实例列表就该是恢复后的；
+    // 只扫 versions/ 并做少量 rename（毫秒级），备份保留清理则放到后台不等。
+    await recoverInterruptedMergesOnStartup();
+
+    // 备份保留：只删「时间戳目录名 + 合法清单」的旧备份，失败只 warn，不阻塞启动。
+    pruneMergeBackupsOnStartup().catch((error) => {
+      console.warn('[instances] 旧备份清理失败（不影响启动）:', error && error.message);
+    });
 
     // 壁纸目录与协议要在窗口加载前就位：renderer 一启动就会去取 wallpaper:list。
     ensureWallpaperDirs().catch((error) => {
@@ -5299,8 +5552,31 @@ if (!gotSingleInstanceLock) {
       .catch((error) => console.warn('[security] Java 授权恢复失败:', error.message));
 
     console.log('[main] BrowserWindow created');
-    console.log(`[mcdl] jar: ${mcdl.MCDL_JAR}`);
+    console.log(`[mcdl] jar: ${mcdl.resolveMcdlJar()}`);
     console.log(`[mcdl] default game dir: ${mcdl.DEFAULT_GAME_DIR}`);
+
+    // 更新通道：默认完全惰性。setImmediate 把配置读取与（可能的）静默检查
+    // 挪出启动关键路径；未配置时这里只打一行日志，不加载 electron-updater、
+    // 不发起任何网络请求。启动检查只查不下载，结果只写日志 + 更新状态缓存。
+    setImmediate(() => {
+      try {
+        const updates = getUpdater();
+        updates.init();
+        if (!updates.shouldAutoCheck()) return;
+
+        updates.check()
+          .then((snapshot) => {
+            const label = snapshot && snapshot.version ? ` ${snapshot.version}` : '';
+            console.log(`[updater] 启动静默检查完成：${snapshot && snapshot.state}${label}`);
+          })
+          .catch((error) => {
+            // check() 内部已经吞过异常，这里只是最后一道保险。
+            console.warn('[updater] 静默检查未完成（不影响启动）:', error);
+          });
+      } catch (error) {
+        console.warn('[updater] 更新通道初始化失败（不影响启动）:', error);
+      }
+    });
 
     checkUserDataWritable().catch(() => {});
 

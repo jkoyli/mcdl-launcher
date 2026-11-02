@@ -1,14 +1,27 @@
 # MCDL Launcher
 
+> **v0.3.0 · 首个内测包**
+> 当前以 **zip 免安装包**分发；更新方式是**文件覆盖**（解压新版本 → 覆盖到启动器目录），见[更新](#更新)。
+
 Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的无边框窗口（空心囗 / Hollow Frame），
 内置原版下载器 `mcdl`，实例安装、账户与游戏启动均在本仓库内实现，不依赖 JavaFX 或第三方启动器。
 
 | 项目 | 说明 |
 | --- | --- |
-| 平台 | Windows 10 / 11 |
+| 平台 | Windows 10 / 11（x64） |
 | 界面 | Electron 无边框窗口，自绘标题栏 |
 | 下载 | 内置 `mcdl.jar`（MIT） |
 | 进度 | 可安装原版与 Forge / NeoForge / Fabric / Quilt，并能真实启动 |
+| 分发 | zip 免安装 / NSIS 安装包 / portable 单文件 |
+
+## 作者
+
+| 头像 | 姓名 | 角色 |
+| --- | --- | --- |
+| <img src="electron/renderer/assets/author-1.jpg" width="48" height="48" alt="总多离别"> | **总多离别** | 项目作者 · 界面与启动器实现 |
+| <img src="electron/renderer/assets/author-2-deepseek.svg" width="32" height="32" alt="DeepSeek"> | **DeepSeek** | 协作开发 · 代码与文档 |
+
+启动器「设置 → 关于」里也有同样的作者信息。
 
 ## 功能
 
@@ -52,6 +65,19 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
 
 ## 安装与运行
 
+### 方式一：用内测包（推荐给测试者）
+
+1. 下载 `MCDL-Launcher-0.3.0-x64.zip`
+2. 解压到任意目录（不要放进 `C:\Program Files`，避免写入受限）
+3. 双击目录里的 `MCDL Launcher.exe`
+
+程序不会写系统目录：配置、账户、日志都在 `%APPDATA%\mcdl-launcher-electron\`，
+游戏文件默认在 `%APPDATA%\MCDL Launcher\.minecraft`。
+
+> 首次运行会触发 SmartScreen「未知发布者」提示（内测包尚未签名），点「更多信息 → 仍要运行」即可。
+
+### 方式二：从源码运行
+
 ```powershell
 git clone https://github.com/jkoyli/mcdl-launcher.git
 cd mcdl-launcher
@@ -70,6 +96,40 @@ cd mcdl-launcher
 ```powershell
 .\run-electron.ps1 -Dev
 ```
+
+## 更新
+
+当前阶段**没有自动更新**（更新通道的骨架已在代码里，默认关闭；没有配置更新源）。
+更新方式为**文件覆盖式**：
+
+1. 下载新版本的 zip
+2. 解压到一个空目录
+3. 把解压出来的所有文件**复制进原来的启动器目录**，覆盖同名文件
+4. 重新打开 `MCDL Launcher.exe`
+
+需要注意：
+
+- **只覆盖程序文件，不要动 `%APPDATA%\mcdl-launcher-electron\`**（那是你的账户与设置），
+  也不要动 `%APPDATA%\MCDL Launcher\`（那是游戏与实例）。
+- 旧版本残留的多余文件不会自动删除；如果遇到异常，建议删掉旧目录后全新解压一次。
+- 覆盖前建议先关掉启动器，避免 `MCDL Launcher.exe` 被占用导致复制不完整。
+
+## 从源码打包
+
+```powershell
+cd electron
+npm install
+npm run dist          # NSIS 安装包 + portable + zip → ..\dist\
+npm run dist:dir      # 只出目录（最快，用于验证包结构）
+```
+
+可选：把精简版 JRE 一起打进去（没装 Java 的机器也能开箱即用）
+
+```powershell
+npm run fetch:jre     # 下载 Temurin JRE 21 到 electron\jre\
+```
+
+发版、签名、更新源、冒烟清单见 [docs/packaging.md](docs/packaging.md)。
 
 默认使用硬件加速。如果 GPU 子进程崩溃，启动器会记录这次崩溃，并在下次启动时自动改用软件渲染
 （软件模式下会关闭毛玻璃等每帧重算的效果以保证流畅）。需要强制软件渲染时加 `-SoftwareRender`。
@@ -111,8 +171,13 @@ cd mcdl
 ```text
 mcdl-launcher/
 ├── electron/            # Electron 主进程、preload、渲染进程、启动与账户模块
+│   ├── renderer/        # index.html / renderer.js / assets（作者头像等）
+│   ├── build/           # 打包图标（icon.ico / icon.png）
+│   ├── scripts/         # fetch-jre.js（下载内置 JRE）
+│   ├── tests/           # node:test 用例（343 条）
+│   └── electron-builder.yml
 ├── mcdl/                # 内置 MCDL 下载器（Java 源码 + mcdl.jar）
-├── docs/                # 开发文档、排障记录
+├── docs/                # 开发文档、排障记录、打包手册
 │   └── history/         # 重写前的 HMCL 界面控件清单（仅参考）
 ├── run-electron.ps1     # 启动脚本
 ├── 启动.bat             # 双击启动
@@ -124,6 +189,7 @@ mcdl-launcher/
 
 | 文档 | 内容 |
 | --- | --- |
+| [docs/packaging.md](docs/packaging.md) | 打包、发版、更新源、代码签名、冒烟清单 |
 | [docs/development.md](docs/development.md) | 模块划分、启动与账户实现、IPC 通道、数据文件 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 启动失败、无窗口、执行策略等常见问题 |
 | [docs/failure-path-audit.md](docs/failure-path-audit.md) | 失败路径审计：PCL2 / HMCL 历史 bug 的复现判定、修复点与测试清单 |
