@@ -510,7 +510,7 @@ async function listVersions({ source = 'auto' } = {}) {
   return versions;
 }
 
-async function installVersion({ version, gameDir, source = 'auto', jobs = 16, assets = true, onData, signal }) {
+async function installVersion({ version, gameDir, source = 'auto', jobs = 16, assets = true, assetsOnly = false, verify = false, onData, signal }) {
   // 快照/远古版本的 ID 可能包含空格和括号（如 1.14.2 Pre-Release 4）。
   // spawn 使用参数数组，不经过 shell，因此允许这些字符，只排除换行和路径控制字符。
   if (!/^[A-Za-z0-9][A-Za-z0-9 ._()+\-]{0,127}$/.test(String(version || ''))) {
@@ -527,6 +527,10 @@ async function installVersion({ version, gameDir, source = 'auto', jobs = 16, as
     '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16)))
   ];
   if (assets === false) args.push('--no-assets');
+  // 「更新游戏资源文件」走 --assets-only（只对比并补齐 assets，不动 jar / 库）；
+  // --verify 让 mcdl 对已存在的资源做 SHA-1 校验，修掉损坏的文件。
+  if (assetsOnly) args.push('--assets-only');
+  if (verify) args.push('--verify');
 
   await runMcdl(args, {
     signal,

@@ -10,7 +10,9 @@
     "start:local": "electron --no-stdio-init .",
     "dev": "electron --no-stdio-init . --dev",
     "start:troubleshoot": "electron --no-stdio-init --no-sandbox .",
-    "dev:troubleshoot": "electron --no-stdio-init --no-sandbox . --dev"
+    "dev:troubleshoot": "electron --no-stdio-init --no-sandbox . --dev",
+    "test": "node --test --test-isolation=none tests/*.test.js",
+    "test:isolated": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=20"

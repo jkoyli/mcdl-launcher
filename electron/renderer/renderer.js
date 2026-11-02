@@ -12,6 +12,453 @@
   var MAX_SCALE = 0.10;     // 最大额外缩放 10%
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+  // ---------------------------------------------------------
+  // 主题 / 外观：主题模式（跟随系统 / 浅色 / 深色）+ 色彩模式（默认 / 自定义主色）
+  // ---------------------------------------------------------
+  // 生效方式：
+  //   <html data-theme="dark|light">，浅色分支在 index.html 的 <style> 末尾
+  //   （L3.5 段）用一次「反相 + 色相回正」实现，深色是默认、不做任何处理。
+  //   「跟随系统」用 matchMedia('(prefers-color-scheme: dark)') 判定并监听变化。
+  // 持久化：
+  //   主进程的 settings 白名单（DEFAULT_EXTRA_SETTINGS / normalizeExtraSettings）
+  //   不认 themeMode / colorStyle / accentColor，settings:save 会把它们丢掉，
+  //   所以权威存储放在渲染层 localStorage。若将来主进程补上白名单，
+  //   settings:preferences 里出现这三个键，启动时会被采纳并回写本地。
+  // 首屏不闪：
+  //   renderer.js 是 </body> 前的同步脚本，本段在 IIFE 最开头执行，
+  //   data-theme 在首帧（甚至窗口 show 之前）就已就位。
+  // ---------------------------------------------------------
+
+  // [theme-pure-start] —— 纯函数区：不碰 DOM / 存储，可被工具脚本抽出来单测
+  var THEME_DEFAULT_ACCENT = '#9fd0ff';
+  var THEME_MODES = { system: 1, light: 1, dark: 1 };
+  var THEME_COLOR_STYLES = { 'default': 1, custom: 1 };
+
+  /** 归一化 #rgb / #rrggbb；非法值回落到 fallback。 */
+  function themeNormalizeHex(value, fallback) {
+    var text = String(value == null ? '' : value).trim().toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(text)) return text;
+    if (/^#[0-9a-f]{3}$/.test(text)) {
+      return '#' + text.charAt(1) + text.charAt(1) +
+        text.charAt(2) + text.charAt(2) +
+        text.charAt(3) + text.charAt(3);
+    }
+    return fallback;
+  }
+
+  /** 存储 / 主进程给的对象 → 合法状态；坏数据一律回落到默认值。 */
+  function themeParseState(raw) {
+    var fallback = { mode: 'system', colorStyle: 'default', accent: THEME_DEFAULT_ACCENT };
+    if (!raw || typeof raw !== 'object') return fallback;
+    var mode = String(raw.mode || '');
+    var style = String(raw.colorStyle || '');
+    return {
+      mode: THEME_MODES[mode] ? mode : fallback.mode,
+      colorStyle: THEME_COLOR_STYLES[style] ? style : fallback.colorStyle,
+      accent: themeNormalizeHex(raw.accent, fallback.accent)
+    };
+  }
+
+  /** 主题模式 + 系统偏好 → 实际生效主题（'dark' | 'light'）。 */
+  function themeResolve(mode, prefersDark) {
+    if (mode === 'light') return 'light';
+    if (mode === 'dark') return 'dark';
+    return prefersDark ? 'dark' : 'light';
+  }
+
+  function themeHexToRgb(hex) {
+    var value = themeNormalizeHex(hex, THEME_DEFAULT_ACCENT);
+    return {
+      r: parseInt(value.slice(1, 3), 16),
+      g: parseInt(value.slice(3, 5), 16),
+      b: parseInt(value.slice(5, 7), 16)
+    };
+  }
+
+  function themeRgbToHex(rgb) {
+    var clamp = function (n) {
+      var v = Math.round(Number(n) || 0);
+      return v < 0 ? 0 : (v > 255 ? 255 : v);
+    };
+    var part = function (n) {
+      var s = clamp(n).toString(16);
+      return s.length === 1 ? '0' + s : s;
+    };
+    return '#' + part(rgb.r) + part(rgb.g) + part(rgb.b);
+  }
+
+  function themeRgbToHsl(rgb) {
+    var r = (Number(rgb.r) || 0) / 255;
+    var g = (Number(rgb.g) || 0) / 255;
+    var b = (Number(rgb.b) || 0) / 255;
+    var max = Math.max(r, g, b);
+    var min = Math.min(r, g, b);
+    var h = 0;
+    var s = 0;
+    var l = (max + min) / 2;
+    var d = max - min;
+    if (d) {
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h, s: s, l: l };
+  }
+
+  function themeHslToRgb(hsl) {
+    var h = Number(hsl.h) || 0;
+    var s = Number(hsl.s) || 0;
+    var l = Number(hsl.l) || 0;
+    var to255 = function (v) {
+      var n = Math.round(v * 255);
+      return n < 0 ? 0 : (n > 255 ? 255 : n);
+    };
+    if (!s) {
+      var gray = to255(l);
+      return { r: gray, g: gray, b: gray };
+    }
+    var hue2rgb = function (p, q, t) {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    return {
+      r: to255(hue2rgb(p, q, h + 1 / 3)),
+      g: to255(hue2rgb(p, q, h)),
+      b: to255(hue2rgb(p, q, h - 1 / 3))
+    };
+  }
+
+  /** CSS filter 的 hue-rotate 矩阵（sRGB 域，和浏览器同一套系数）。 */
+  function themeHueRotate(rgb, degrees) {
+    var angle = (Number(degrees) || 0) * Math.PI / 180;
+    var cos = Math.cos(angle);
+    var sin = Math.sin(angle);
+    var r = (Number(rgb.r) || 0) / 255;
+    var g = (Number(rgb.g) || 0) / 255;
+    var b = (Number(rgb.b) || 0) / 255;
+    var nr = (0.213 + 0.787 * cos - 0.213 * sin) * r +
+      (0.715 - 0.715 * cos - 0.715 * sin) * g +
+      (0.072 - 0.072 * cos + 0.928 * sin) * b;
+    var ng = (0.213 - 0.213 * cos + 0.143 * sin) * r +
+      (0.715 + 0.285 * cos + 0.140 * sin) * g +
+      (0.072 - 0.072 * cos - 0.283 * sin) * b;
+    var nb = (0.213 - 0.213 * cos - 0.787 * sin) * r +
+      (0.715 - 0.715 * cos + 0.715 * sin) * g +
+      (0.072 + 0.928 * cos + 0.072 * sin) * b;
+    var to255 = function (v) {
+      var n = Math.round(v * 255);
+      return n < 0 ? 0 : (n > 255 ? 255 : n);
+    };
+    return { r: to255(nr), g: to255(ng), b: to255(nb) };
+  }
+
+  /**
+   * 浅色是把整页反相 + 色相回正画出来的（见 index.html 的 L3.5 段）：
+   * 变量喂进去的颜色会被反相，所以这里给「同色相、足够亮」的那一档，
+   * 反相之后正好落成深一档的同色相主色（亮底上不刺眼）。
+   * 深色保持用户原色，一个通道都不改。
+   */
+  function themeLightFeed(accent) {
+    var hsl = themeRgbToHsl(themeHexToRgb(accent));
+    return themeRgbToHex(themeHslToRgb({
+      h: hsl.h,
+      s: Math.min(hsl.s, 0.95),
+      l: Math.max(hsl.l, 0.78)
+    }));
+  }
+
+  /** 浅色反相后的实际观感（只用于导出快照 / 报告，不参与渲染）。 */
+  function themeLightDisplay(rgb) {
+    return themeHueRotate({ r: 255 - rgb.r, g: 255 - rgb.g, b: 255 - rgb.b }, 180);
+  }
+
+  /** 落到 CSS 变量的值：--accent = #hex，--accent-rgb = "r, g, b"。 */
+  function themeAccentVars(accent, resolved) {
+    var source = themeNormalizeHex(accent, THEME_DEFAULT_ACCENT);
+    if (resolved !== 'light') {
+      var rgb = themeHexToRgb(source);
+      return {
+        accent: source,
+        rgb: rgb.r + ', ' + rgb.g + ', ' + rgb.b,
+        target: source
+      };
+    }
+    var feed = themeLightFeed(source);
+    var feedRgb = themeHexToRgb(feed);
+    return {
+      accent: feed,
+      rgb: feedRgb.r + ', ' + feedRgb.g + ', ' + feedRgb.b,
+      target: themeRgbToHex(themeLightDisplay(feedRgb))
+    };
+  }
+  // [theme-pure-end]
+
+  var THEME_STORAGE_KEY = 'mcdl.theme.v1';
+  var themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  var themeState = themeReadStored() || themeParseState(null);
+  var themeResolved = 'dark';
+  var themeMainSupportsKeys = false;   // 主进程 settings 白名单是否已认这三个键
+
+  var themePane = {
+    mode: document.getElementById('settingsThemeMode'),
+    colorStyle: document.getElementById('settingsColorStyle'),
+    custom: document.getElementById('accentCustomBlock'),
+    color: document.getElementById('settingsAccentColor'),
+    swatches: document.getElementById('settingsAccentSwatches'),
+    value: document.getElementById('settingsAccentValue'),
+    reset: document.getElementById('settingsAccentReset'),
+    badge: document.getElementById('settingsThemeBadge'),
+    exportBtn: document.getElementById('settingsThemeExport'),
+    status: document.getElementById('settingsThemeStatus')
+  };
+
+  function themeReadStored() {
+    try {
+      var raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (!raw) return null;
+      return themeParseState(JSON.parse(raw));
+    } catch (error) {
+      console.warn('[theme] 读取本地主题失败：', error && error.message);
+      return null;
+    }
+  }
+
+  function themeWriteStored() {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(themeState));
+    } catch (error) {
+      console.warn('[theme] 写入本地主题失败：', error && error.message);
+      // 主题已经即时生效了，只是留不住：在面板上直说，别让用户以为存下了。
+      setHint(themePane && themePane.status, '本地存储不可用：重启后主题不保留', 'error');
+    }
+  }
+
+  /** 把状态同步到控件与标题徽标（状态是先决条件，控件可以还没渲染）。 */
+  function themeSyncControls() {
+    if (!themePane) return;
+    if (themePane.mode) themePane.mode.value = themeState.mode;
+    if (themePane.colorStyle) themePane.colorStyle.value = themeState.colorStyle;
+    if (themePane.custom) themePane.custom.hidden = themeState.colorStyle !== 'custom';
+    if (themePane.color) themePane.color.value = themeState.accent;
+    if (themePane.value) themePane.value.textContent = themeState.accent.toUpperCase();
+    if (themePane.swatches) {
+      var buttons = themePane.swatches.querySelectorAll('[data-accent]');
+      for (var i = 0; i < buttons.length; i += 1) {
+        var pressed = themeNormalizeHex(buttons[i].getAttribute('data-accent'), '') === themeState.accent;
+        buttons[i].setAttribute('aria-pressed', pressed ? 'true' : 'false');
+      }
+    }
+    if (themePane.badge) {
+      var resolvedText = themeResolved === 'dark' ? '深色' : '浅色';
+      themePane.badge.textContent = themeState.mode === 'system'
+        ? '跟随系统 · ' + resolvedText
+        : resolvedText;
+    }
+  }
+
+  /** 套用主题：data-theme + 主色变量 + 控件同步。任何时候调用都是幂等的。 */
+  function themeApply() {
+    var prefersDark = themeMedia ? Boolean(themeMedia.matches) : true;
+    themeResolved = themeResolve(themeState.mode, prefersDark);
+    var root = document.documentElement;
+    if (root && root.getAttribute('data-theme') !== themeResolved) {
+      root.setAttribute('data-theme', themeResolved);
+    }
+    if (root && root.style) {
+      if (themeState.colorStyle === 'custom') {
+        var vars = themeAccentVars(themeState.accent, themeResolved);
+        root.style.setProperty('--accent', vars.accent);
+        root.style.setProperty('--accent-rgb', vars.rgb);
+      } else {
+        // 默认色彩：交回 :root 的默认值（浅色下由反相自然得到深一档的蓝）
+        root.style.removeProperty('--accent');
+        root.style.removeProperty('--accent-rgb');
+      }
+    }
+    themeSyncControls();
+  }
+
+  /** 持久化：localStorage 是权威；主进程认这三个键时才额外写 settings。 */
+  function themePersist() {
+    themeWriteStored();
+    if (!themeMainSupportsKeys) return;
+    var api = window.launcherAPI;
+    if (!api || typeof api.saveSettings !== 'function') return;
+    api.saveSettings({
+      themeMode: themeState.mode,
+      colorStyle: themeState.colorStyle,
+      accentColor: themeState.accent
+    }).catch(function (error) {
+      console.warn('[theme] settings:save 未接受主题键：', error && error.message);
+    });
+  }
+
+  /**
+   * 主进程偏好里若已有主题键（白名单将来补上），以它为准并回写本地。
+   * 现在这三个键不在白名单里，所以这一步是空操作。
+   */
+  function themeAdoptPreferences(prefs) {
+    if (!prefs || typeof prefs !== 'object') return;
+    var hasKeys = Object.prototype.hasOwnProperty.call(prefs, 'themeMode') ||
+      Object.prototype.hasOwnProperty.call(prefs, 'colorStyle') ||
+      Object.prototype.hasOwnProperty.call(prefs, 'accentColor');
+    themeMainSupportsKeys = hasKeys;
+    if (!hasKeys) return;
+    themeState = themeParseState({
+      mode: prefs.themeMode,
+      colorStyle: prefs.colorStyle,
+      accent: prefs.accentColor
+    });
+    themeApply();
+    themeWriteStored();
+  }
+
+  function themeExportSnapshot() {
+    var root = document.documentElement;
+    var style = root ? window.getComputedStyle(root) : null;
+    var accentVars = themeAccentVars(themeState.accent, themeResolved);
+    var readVar = function (name) {
+      return style ? String(style.getPropertyValue(name) || '').trim() : '';
+    };
+    return {
+      name: 'MCDL Launcher · Hollow Frame theme',
+      format: 'mcdl-theme',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      theme: {
+        mode: themeState.mode,
+        resolved: themeResolved
+      },
+      color: {
+        style: themeState.colorStyle,
+        accent: accentVars.target,      // 屏幕上实际看到的颜色
+        accentCss: accentVars.accent    // 写进 --accent 的值（浅色是反相前的）
+      },
+      filter: themeResolved === 'light' ? 'invert(1) hue-rotate(180deg)' : 'none',
+      cssVariables: {
+        '--ink': readVar('--ink'),
+        '--muted': readVar('--muted'),
+        '--faint': readVar('--faint'),
+        '--hairline': readVar('--hairline'),
+        '--accent': readVar('--accent'),
+        '--accent-rgb': readVar('--accent-rgb')
+      }
+    };
+  }
+
+  function themeExport() {
+    var json;
+    try {
+      json = JSON.stringify(themeExportSnapshot(), null, 2);
+    } catch (error) {
+      setHint(themePane && themePane.status, '导出失败：' + (error && error.message), 'error');
+      return;
+    }
+    try {
+      var blob = new Blob([json], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'mcdl-theme-' + themeResolved + '.json';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      setHint(themePane && themePane.status, '已生成 JSON 快照（系统下载 / 另存为）', 'ok');
+    } catch (error) {
+      setHint(themePane && themePane.status, '导出失败：' + (error && error.message), 'error');
+    }
+  }
+
+  function themePickAccent(accent) {
+    themeState.accent = themeNormalizeHex(accent, THEME_DEFAULT_ACCENT);
+    themeState.colorStyle = 'custom';
+    themeApply();
+    themePersist();
+  }
+
+  function themeBindControls() {
+    if (!themePane) return;
+
+    if (themePane.mode) {
+      themePane.mode.addEventListener('change', function () {
+        themeState.mode = THEME_MODES[themePane.mode.value] ? themePane.mode.value : 'system';
+        themeApply();
+        themePersist();
+      });
+    }
+
+    if (themePane.colorStyle) {
+      themePane.colorStyle.addEventListener('change', function () {
+        themeState.colorStyle = THEME_COLOR_STYLES[themePane.colorStyle.value]
+          ? themePane.colorStyle.value
+          : 'default';
+        themeApply();
+        themePersist();
+      });
+    }
+
+    if (themePane.color) {
+      // 拖取色器时只预览不写盘；松手（change）才持久化
+      themePane.color.addEventListener('input', function () {
+        themeState.accent = themeNormalizeHex(themePane.color.value, THEME_DEFAULT_ACCENT);
+        themeApply();
+      });
+      themePane.color.addEventListener('change', function () {
+        themeState.accent = themeNormalizeHex(themePane.color.value, THEME_DEFAULT_ACCENT);
+        themeApply();
+        themePersist();
+      });
+    }
+
+    if (themePane.swatches) {
+      themePane.swatches.addEventListener('click', function (event) {
+        var node = event.target && event.target.closest ? event.target.closest('[data-accent]') : null;
+        if (!node) return;
+        themePickAccent(node.getAttribute('data-accent'));
+      });
+    }
+
+    if (themePane.reset) {
+      themePane.reset.addEventListener('click', function () {
+        themeState.accent = THEME_DEFAULT_ACCENT;
+        themeState.colorStyle = 'default';
+        themeApply();
+        themePersist();
+      });
+    }
+
+    if (themePane.exportBtn) {
+      themePane.exportBtn.addEventListener('click', themeExport);
+    }
+  }
+
+  function themeOnSystemChange() {
+    if (themeState.mode !== 'system') return;
+    themeApply();
+  }
+
+  if (themeMedia) {
+    if (typeof themeMedia.addEventListener === 'function') {
+      themeMedia.addEventListener('change', themeOnSystemChange);
+    } else if (typeof themeMedia.addListener === 'function') {
+      themeMedia.addListener(themeOnSystemChange);   // 老 Chromium 兜底
+    }
+  }
+
+  // 立即套用：同步脚本在首帧前执行，主题在这里就位，不会闪。
+  themeApply();
+  themeBindControls();
+
   var cta = document.getElementById('cta');
   var ctaBox = document.getElementById('ctaBox');
   var label = cta.querySelector('.label');
@@ -104,9 +551,10 @@
       }
 
       if (action === 'help') {
+        // 对照 ui-tree-controls.html 的 [titlebar]：帮助按钮 = 打开日志文件夹。
         var api = window.launcherAPI;
         if (api && typeof api.openLogFolder === 'function') {
-          Promise.resolve(api.openLogFolder()).catch(function (error) {
+          Promise.resolve(api.openLogFolder('app')).catch(function (error) {
             console.error('[help] failed to open log folder:', error);
           });
         }
@@ -361,8 +809,13 @@
   var createSubmitLabel = createSubmit ? createSubmit.querySelector('span:first-child') : null;
   var scanInstancesBtn = document.getElementById('scanInstancesBtn');
   var scanInstancesStatus = document.getElementById('scanInstancesStatus');
+  var scanCacheClearBtn = document.getElementById('scanCacheClear');
+  var scanCacheClearLabel = scanCacheClearBtn ? scanCacheClearBtn.querySelector('span') : null;
   var gameDirPath = document.getElementById('gameDirPath');
   var scanInProgress = false;
+  // 扫描缓存条数（<userData>/scanned-game-dirs.json）；0 表示「清理缓存」不可用。
+  var scanCacheCount = 0;
+  var scanCacheClearBusy = false;
   // 加载器版本下拉的状态；提前声明，避免初始化阶段的同步渲染读到 undefined
   var loaderVersionState = { loader: '', mcVersion: '', entries: [], loading: false, error: '' };
   var instancesRailBtn = document.getElementById('instancesRailBtn');
@@ -472,6 +925,130 @@
         ? '已缓存 ' + cached + ' 个其他启动器位置'
         : '';
     }
+  }
+
+  /**
+   * 把扫描缓存条数同步到「清理缓存」按钮：文案带数字，0 条时禁用。
+   */
+  function applyScanCacheCount(count) {
+    scanCacheCount = Math.max(0, Number(count) || 0);
+    if (scanCacheClearLabel) {
+      scanCacheClearLabel.textContent = scanCacheCount > 0
+        ? '清理缓存 (' + scanCacheCount + ')'
+        : '清理缓存';
+    }
+    if (!scanCacheClearBtn) return;
+    scanCacheClearBtn.disabled = scanCacheClearBusy || scanCacheCount === 0;
+    scanCacheClearBtn.title = scanCacheClearBusy
+      ? '正在清理扫描缓存…'
+      : (scanCacheCount > 0
+        ? '清理 ' + scanCacheCount + ' 条扫描缓存记录（不删除任何游戏文件）'
+        : '没有扫描缓存');
+  }
+
+  /**
+   * 从主进程读回扫描缓存条数；失败时保持现状，不影响实例列表本身。
+   */
+  function refreshScanCacheMeta() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getScanCache !== 'function') {
+      applyScanCacheCount(0);
+      return Promise.resolve(0);
+    }
+
+    return api.getScanCache()
+      .then(function (state) {
+        var dirs = state && Array.isArray(state.dirs) ? state.dirs : [];
+        applyScanCacheCount(dirs.length);
+        return dirs.length;
+      })
+      .catch(function (error) {
+        console.warn('[instances] read scan cache failed:', error);
+        return scanCacheCount;
+      });
+  }
+
+  /**
+   * 清空扫描缓存 → 刷新实例列表 → 在状态行回显结果。
+   * 只动扫描记录，不删任何游戏文件。
+   */
+  function clearScanCache() {
+    if (scanCacheClearBusy || scanCacheCount === 0) return;
+
+    // 与「扫描实例」互斥：扫描会回写缓存，同时跑会让按钮条数与文件内容对不上。
+    if (scanInProgress) {
+      if (scanInstancesStatus) scanInstancesStatus.textContent = '正在扫描其他启动器位置，请稍候…';
+      return;
+    }
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.clearScanCache !== 'function') {
+      if (scanInstancesStatus) scanInstancesStatus.textContent = '主进程桥接不可用，无法清理缓存';
+      return;
+    }
+
+    askConfirm(
+      '清理扫描缓存？\n' +
+        '只会移除「扫描其他启动器」留下的 ' + scanCacheCount + ' 条目录记录，' +
+        '不会删除任何游戏文件。\n' +
+        '清理后这些外部目录里的实例会从列表里消失（目录本身仍在磁盘上，重新扫描可以找回）。',
+      function () {
+        scanCacheClearBusy = true;
+        applyScanCacheCount(scanCacheCount);
+        if (scanInstancesStatus) scanInstancesStatus.textContent = '正在清理扫描缓存…';
+
+        // 记住当前选中项，刷新列表后如果它还在就保持选中。
+        var keepId = selectedInstanceId;
+
+        api.clearScanCache()
+          .then(function (result) {
+            var removed = result && Number(result.removed) > 0 ? Number(result.removed) : 0;
+            scanCacheClearBusy = false;
+            applyScanCacheCount(0);
+
+            if (scanInstancesStatus) {
+              scanInstancesStatus.textContent = removed > 0
+                ? '已清理 ' + removed + ' 个扫描缓存目录'
+                : '扫描缓存本来就是空的';
+            }
+
+            if (typeof api.getInstanceInfo !== 'function') return null;
+            return api.getInstanceInfo().then(function (snapshot) {
+              instanceLoadState = 'ready';
+              instanceLoadError = '';
+              updateScanMeta(snapshot);
+              updateInstanceUI(snapshot);
+              if (keepId && INSTANCES.some(function (item) { return item.id === keepId; })) {
+                selectInstance(keepId);
+              }
+              // 缓存清掉后，正打开着的详情页可能指向已经不存在的实例：退回实例列表。
+              if (activePanel === 'detail' && detailInstanceId && !instanceById(detailInstanceId)) {
+                detailInstanceId = null;
+                showPanel('instances');
+                renderInstancePanel();
+              }
+              // updateScanMeta 会用缓存条数覆盖状态行，这里把清理结果补回去。
+              if (scanInstancesStatus && removed > 0) {
+                scanInstancesStatus.textContent = '已清理 ' + removed + ' 个扫描缓存目录';
+              }
+              return null;
+            });
+          })
+          .catch(function (error) {
+            scanCacheClearBusy = false;
+            applyScanCacheCount(scanCacheCount);
+            console.error('[instances] clear scan cache failed:', error);
+            if (scanInstancesStatus) {
+              scanInstancesStatus.textContent = '清理缓存失败：' + (error && error.message ? error.message : error);
+            }
+          });
+      },
+      '清理缓存'
+    );
+  }
+
+  if (scanCacheClearBtn) {
+    scanCacheClearBtn.addEventListener('click', clearScanCache);
   }
 
   function buildInstanceEmptyState() {
@@ -789,6 +1366,8 @@
     INSTANCES = [];
     selectedInstanceId = null;
     renderInstances();
+    // 「清理缓存」按钮的可用状态跟着缓存条数走，与实例扫描并行读取。
+    refreshScanCacheMeta();
 
     var api = window.launcherAPI;
     if (!api || typeof api.getInstanceInfo !== 'function') {
@@ -818,6 +1397,12 @@
   function scanOtherInstances() {
     if (scanInProgress) return;
 
+    // 清理缓存进行中时不扫描，避免两边同时改写 scanned-game-dirs.json。
+    if (scanCacheClearBusy) {
+      if (scanInstancesStatus) scanInstancesStatus.textContent = '正在清理扫描缓存，请稍候…';
+      return;
+    }
+
     var api = window.launcherAPI;
     if (!api || typeof api.scanOtherInstances !== 'function') {
       if (scanInstancesStatus) scanInstancesStatus.textContent = '主进程桥接不可用，无法扫描';
@@ -837,6 +1422,8 @@
         instanceLoadError = '';
         updateInstanceUI(snapshot);
         updateScanMeta(snapshot);
+        // 扫描会往缓存里合并目录，条数要跟着涨。
+        refreshScanCacheMeta();
 
         var cached = Array.isArray(snapshot.cachedDirs) ? snapshot.cachedDirs.length : 0;
         var newly = Number(snapshot.newlyScanned) || 0;
@@ -862,9 +1449,11 @@
       });
   }
 
-  if (scanInstancesBtn) {
-    scanInstancesBtn.addEventListener('click', scanOtherInstances);
-  }
+  // 实例列表工具栏：计数 + 「扫描实例」按钮（计数文案仍由 renderInstancePanel 写）。
+  var instancesToolbar = createToolbar({
+    actions: [{ el: scanInstancesBtn, onClick: scanOtherInstances }],
+    countEl: document.getElementById('instancePanelCount')
+  });
 
   // 暴露给 Java 后端桥接；Electron / Tauri 宿主也可直接调用。
   window.updateInstanceUI = updateInstanceUI;
@@ -1544,6 +2133,7 @@
   var settingsJavaScan = document.getElementById('settingsJavaScan');
   var settingsJavaPick = document.getElementById('settingsJavaPick');
   var settingsJavaInstall = document.getElementById('settingsJavaInstall');
+  var settingsJavaReset = document.getElementById('settingsJavaReset');
   var settingsJavaStatus = document.getElementById('settingsJavaStatus');
   var settingsLanguage = document.getElementById('settingsLanguage');
   var settingsAprilFools = document.getElementById('settingsAprilFools');
@@ -1564,6 +2154,8 @@
   var selectedAccountId = null;
   var settingsLoaded = false;
   var settingsCache = null;
+  /** 最近一次 settings:get 拿到的 Java 扫描结果，用于复位后原地重画下拉。 */
+  var settingsJavaRuntimes = [];
   var settingsTab = 'game';
 
   /** 提示行：tone = 'error' | 'ok' | 省略 */
@@ -1795,6 +2387,155 @@
     };
   }
 
+  /**
+   * 列表页工具栏基座：搜索框 + 下拉筛选 + 动作按钮 + 计数，一处接线。
+   *
+   *   var toolbar = createToolbar({
+   *     search: searchInput,                 // 可选：搜索输入
+   *     liveSearch: true,                    // false = 输入不触发，只认 Enter / 按钮
+   *     enterSearch: false,                  // true = 回车也触发 onChange
+   *     filters: [{ el: typeSelect, name: 'type' }],  // 可选：下拉筛选
+   *     actions: [{ el: refreshBtn, onClick: function () {}, when: function () {} }],
+   *     countEl: countNode,
+   *     onChange: function (state) {},        // state = { query, filters: { ... } }
+   *     debounce: 180
+   *   });
+   *   toolbar.getState() / toolbar.setCount(n, suffix) / toolbar.setBusy(bool) / toolbar.reset()
+   *
+   * 只负责接线，不动 DOM 结构与样式类名；防抖传 0 时同步触发，
+   * 和手写的 addEventListener('input' / 'change') 完全等价。
+   */
+  function createToolbar(options) {
+    var opts = options || {};
+    var searchEl = opts.search || null;
+    var countEl = opts.countEl || null;
+    var debounceMs = typeof opts.debounce === 'number' ? Math.max(0, opts.debounce) : 180;
+    var timer = null;
+    var busy = false;
+
+    // 兼容两种写法：裸节点，或 { el, name, value, when }。
+    var filters = (opts.filters || []).map(function (entry) {
+      if (!entry) return null;
+      var el = entry.el !== undefined ? entry.el : entry;
+      if (!el) return null;
+      return {
+        el: el,
+        name: entry.name || el.id || '',
+        // 记下初始值，reset() 时回到这里。
+        initial: entry.value !== undefined ? entry.value : el.value,
+        when: typeof entry.when === 'function' ? entry.when : null
+      };
+    }).filter(Boolean);
+
+    var actions = (opts.actions || []).map(function (entry) {
+      if (!entry) return null;
+      var el = entry.el !== undefined ? entry.el : entry;
+      if (!el) return null;
+      return {
+        el: el,
+        onClick: typeof entry.onClick === 'function' ? entry.onClick : null,
+        when: typeof entry.when === 'function' ? entry.when : null,
+        busyClass: entry.busyClass,
+        disableWhenBusy: Boolean(entry.disableWhenBusy)
+      };
+    }).filter(Boolean);
+
+    function readState() {
+      var state = { query: '', filters: {} };
+      if (searchEl && typeof searchEl.value === 'string') state.query = searchEl.value;
+      filters.forEach(function (filter) {
+        state.filters[filter.name] = filter.el.value;
+      });
+      return state;
+    }
+
+    function emit() {
+      if (typeof opts.onChange === 'function') opts.onChange(readState());
+    }
+
+    function schedule() {
+      // 0 = 同步，跟原来的内联监听一帧不差。
+      if (!debounceMs) {
+        emit();
+        return;
+      }
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        emit();
+      }, debounceMs);
+    }
+
+    if (searchEl) {
+      if (opts.liveSearch !== false) {
+        searchEl.addEventListener('input', schedule);
+      }
+      if (opts.enterSearch) {
+        searchEl.addEventListener('keydown', function (event) {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          emit(); // 回车立即触发，不吃防抖
+        });
+      }
+    }
+
+    filters.forEach(function (filter) {
+      filter.el.addEventListener('change', function () {
+        if (filter.when && !filter.when(readState())) return;
+        schedule();
+      });
+    });
+
+    actions.forEach(function (action) {
+      action.el.addEventListener('click', function () {
+        if (action.when && !action.when(readState())) return;
+        if (action.onClick) action.onClick(readState());
+      });
+    });
+
+    function getState() {
+      return readState();
+    }
+
+    function setCount(value, suffix) {
+      if (!countEl) return;
+      countEl.textContent = suffix ? String(value) + suffix : String(value);
+    }
+
+    function setBusy(next) {
+      busy = Boolean(next);
+      actions.forEach(function (action) {
+        var cls = action.busyClass === undefined
+          ? (opts.busyClass === null ? '' : (opts.busyClass || 'is-busy'))
+          : action.busyClass;
+        if (cls) action.el.classList.toggle(cls, busy);
+        if (action.disableWhenBusy) action.el.disabled = busy;
+      });
+    }
+
+    function reset(config) {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (searchEl) searchEl.value = '';
+      filters.forEach(function (filter) {
+        filter.el.value = filter.initial;
+      });
+      if (!(config && config.silent)) emit();
+      return readState();
+    }
+
+    return {
+      getState: getState,
+      setCount: setCount,
+      setBusy: setBusy,
+      reset: reset,
+      search: searchEl,
+      filters: filters.map(function (filter) { return filter.el; })
+    };
+  }
+
   function openAccountError(error, node) {
     var message = describeLaunchError(error);
     setHint(node, message, 'error');
@@ -1919,7 +2660,15 @@
     install: document.getElementById('dlgInstall'),
     packFiles: document.getElementById('dlgPackFiles'),
     addon: document.getElementById('dlgAddon'),
-    task: document.getElementById('dlgTask')
+    task: document.getElementById('dlgTask'),
+    log: document.getElementById('dlgLog'),
+    dump: document.getElementById('dlgDump'),
+    crash: document.getElementById('dlgCrash'),
+    gameCrash: document.getElementById('dlgGameCrash'),
+    shot: document.getElementById('dlgShot'),
+    javaDownload: document.getElementById('dlgJavaDownload'),
+    nbt: document.getElementById('dlgNbt'),
+    export: document.getElementById('dlgExport')
   };
   var openDialogName = null;
   var dialogReturnFocus = null;
@@ -1959,6 +2708,8 @@
     // 安装 / 解压期间不允许把弹窗关掉，避免状态错乱。
     if (openDialogName === 'install' && installBusy) return;
     if (openDialogName === 'addon' && addonDialog.busy) return;
+    // 导出向导打包期间不允许关闭：关掉就看不到进度 / 错误了。
+    if (openDialogName === 'export' && exportWizard.busy) return;
     // 任务跑着的时候只能通过「取消任务」结束，不能直接把进度框关掉。
     if (openDialogName === 'task' && taskDialogState && !taskDialogState.settled) return;
 
@@ -2280,6 +3031,473 @@
   if (taskCloseBtn) {
     taskCloseBtn.addEventListener('click', function () {
       closeDialog();
+    });
+  }
+
+  // ---------------- 日志窗口（L5，对照 LogWindow.java 的 5 个按钮） ----------------
+
+  var LOG_MAX_LINES = 4000;
+  var LOG_POLL_MS = 1500;
+
+  var logPane = {
+    view: document.getElementById('logView'),
+    autoScroll: document.getElementById('logAutoScroll'),
+    autoText: document.getElementById('logAutoScrollText'),
+    exportBtn: document.getElementById('logExport'),
+    stopBtn: document.getElementById('logStop'),
+    dumpBtn: document.getElementById('logDump'),
+    clearBtn: document.getElementById('logClear'),
+    openFolder: document.getElementById('logOpenFolder'),
+    openAppFolder: document.getElementById('logOpenAppFolder'),
+    fileLabel: document.getElementById('logFileLabel'),
+    stateLabel: document.getElementById('logStateLabel'),
+    status: document.getElementById('logStatus')
+  };
+
+  var logState = {
+    autoScroll: true,
+    file: '',
+    instanceId: '',
+    launchId: '',
+    active: false,
+    timer: 0,
+    loading: false
+  };
+
+  function logNow() {
+    var now = new Date();
+    var pad = function (value) { return String(value).padStart(2, '0'); };
+    return pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+  }
+
+  /** 只保留最近 N 行：日志窗口开一整天也不会把 DOM 撑爆。 */
+  function appendLogText(text) {
+    if (!logPane.view || !text) return;
+    var value = logPane.view.textContent + String(text);
+    var lines = value.split('\n');
+    if (lines.length > LOG_MAX_LINES) value = lines.slice(lines.length - LOG_MAX_LINES).join('\n');
+    logPane.view.textContent = value;
+    if (logState.autoScroll) logPane.view.scrollTop = logPane.view.scrollHeight;
+  }
+
+  function appendLiveLog(stream, text) {
+    if (!text) return;
+    var label = stream === 'err' ? '[err]' : (stream === 'sys' ? '[sys]' : '[out]');
+    appendLogText('[' + logNow() + ']' + label + ' ' + String(text));
+  }
+
+  function setLogAutoScroll(enabled) {
+    logState.autoScroll = Boolean(enabled);
+    if (logPane.autoScroll) logPane.autoScroll.setAttribute('aria-checked', logState.autoScroll ? 'true' : 'false');
+    if (logPane.autoText) logPane.autoText.textContent = logState.autoScroll ? '自动滚动' : '已停止滚动';
+    if (logState.autoScroll && logPane.view) logPane.view.scrollTop = logPane.view.scrollHeight;
+  }
+
+  function setLogStateLabel(text, tone) {
+    if (!logPane.stateLabel) return;
+    logPane.stateLabel.textContent = text || '—';
+    logPane.stateLabel.classList.toggle('is-error', tone === 'error');
+    logPane.stateLabel.classList.toggle('is-ok', tone === 'ok');
+  }
+
+  function logDefaultName() {
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    return 'mcdl-launcher-' + stamp + '.log';
+  }
+
+  function refreshLogActiveState() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.getActiveLaunches !== 'function') return;
+
+    api.getActiveLaunches()
+      .then(function (list) {
+        var active = (list || [])[0] || null;
+        logState.active = Boolean(active);
+        logState.launchId = active ? active.launchId : '';
+        if (logPane.stopBtn) logPane.stopBtn.disabled = !active;
+        if (active) {
+          setLogStateLabel('游戏运行中 · PID ' + (active.pid || '-'), 'ok');
+        } else if (openDialogName === 'log') {
+          setLogStateLabel('没有正在运行的游戏');
+        }
+      })
+      .catch(function () {
+        // 读不到活动进程时保持原状
+      });
+  }
+
+  function openLogWindow(options) {
+    var opts = options || {};
+    var api = window.launcherAPI;
+    if (!api || typeof api.getLogSnapshot !== 'function') return;
+
+    logState.instanceId = opts.instanceId || detailInstanceId || (getSelectedInstance() || {}).id || '';
+    logState.file = '';
+    logState.launchId = '';
+    logState.active = false;
+    logState.loading = true;
+
+    if (logPane.view) logPane.view.textContent = '';
+    if (logPane.fileLabel) logPane.fileLabel.textContent = '正在读取日志…';
+    setLogStateLabel('—');
+    setHint(logPane.status, '');
+    setLogAutoScroll(true);
+    openDialog('log', opts.trigger);
+
+    api.getLogSnapshot({ instanceId: logState.instanceId })
+      .then(function (snapshot) {
+        logState.loading = false;
+        if (!snapshot) return;
+        logState.file = snapshot.file || '';
+        if (logPane.fileLabel) {
+          logPane.fileLabel.textContent = logState.file || '还没有启动日志（先启动一次游戏）';
+        }
+        if (snapshot.text) appendLogText(snapshot.text);
+        if (snapshot.truncated) appendLogText('…（只显示日志尾部）\n');
+        setLogStateLabel(snapshot.active ? '游戏运行中' : '没有正在运行的游戏', snapshot.active ? 'ok' : '');
+        refreshLogActiveState();
+      })
+      .catch(function (error) {
+        logState.loading = false;
+        setHint(logPane.status, describeLaunchError(error), 'error');
+      });
+  }
+
+  // 日志开着的时候定期同步"是否还在运行"：只有 output 事件判断不了进程状态。
+  function tickLogWindow() {
+    if (openDialogName !== 'log' || logState.loading) return;
+    refreshLogActiveState();
+  }
+
+  logState.timer = window.setInterval(tickLogWindow, LOG_POLL_MS);
+
+  if (logPane.autoScroll) {
+    logPane.autoScroll.addEventListener('click', function () {
+      setLogAutoScroll(!logState.autoScroll);
+    });
+  }
+
+  if (logPane.clearBtn) {
+    logPane.clearBtn.addEventListener('click', function () {
+      if (logPane.view) logPane.view.textContent = '';
+      setHint(logPane.status, '已清除视图（日志文件没有删除）', 'ok');
+    });
+  }
+
+  if (logPane.exportBtn) {
+    logPane.exportBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.exportLog !== 'function') return;
+      var text = logPane.view ? logPane.view.textContent : '';
+      if (!text) {
+        setHint(logPane.status, '日志还是空的，没有可导出的内容', 'error');
+        return;
+      }
+      setHint(logPane.status, '正在导出…');
+      api.exportLog({ text: text, defaultName: logDefaultName() })
+        .then(function (result) {
+          if (!result) {
+            setHint(logPane.status, '已取消');
+            return;
+          }
+          setHint(logPane.status, '已导出：' + result.file, 'ok');
+        })
+        .catch(function (error) {
+          setHint(logPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (logPane.stopBtn) {
+    logPane.stopBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.stopLaunch !== 'function') return;
+      if (!logState.launchId) {
+        setHint(logPane.status, '没有正在运行的游戏进程', 'error');
+        return;
+      }
+      setHint(logPane.status, '正在结束游戏进程…');
+      api.stopLaunch(logState.launchId)
+        .then(function (ok) {
+          setHint(logPane.status, ok ? '已发送结束信号' : '进程可能已经退出', ok ? 'ok' : 'error');
+          refreshLogActiveState();
+        })
+        .catch(function (error) {
+          setHint(logPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (logPane.dumpBtn) {
+    logPane.dumpBtn.addEventListener('click', function () {
+      openDumpDialog(logState.launchId);
+    });
+  }
+
+  if (logPane.openFolder) {
+    logPane.openFolder.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openGameLogFolder !== 'function') return;
+      api.openGameLogFolder({ instanceId: logState.instanceId })
+        .then(function (result) {
+          setHint(logPane.status, '已打开 ' + (result && result.path ? result.path : '日志文件夹'), 'ok');
+        })
+        .catch(function (error) {
+          setHint(logPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (logPane.openAppFolder) {
+    logPane.openAppFolder.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openLogFolder !== 'function') return;
+      api.openLogFolder('app')
+        .then(function (result) {
+          setHint(logPane.status, '已打开 ' + (result && result.path ? result.path : '启动器日志'), 'ok');
+        })
+        .catch(function (error) {
+          setHint(logPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  // ---------------- 游戏运行栈 ----------------
+
+  var dumpPane = {
+    meta: document.getElementById('dumpMeta'),
+    text: document.getElementById('dumpText'),
+    status: document.getElementById('dumpStatus'),
+    copy: document.getElementById('dumpCopy')
+  };
+
+  function openDumpDialog(launchId) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.exportThreadDump !== 'function') return;
+
+    openDialog('dump');
+    if (dumpPane.meta) dumpPane.meta.textContent = '正在读取运行栈…';
+    if (dumpPane.text) dumpPane.text.value = '';
+    setHint(dumpPane.status, '');
+
+    api.exportThreadDump({ launchId: launchId || logState.launchId })
+      .then(function (result) {
+        if (!result) return;
+        if (dumpPane.meta) {
+          dumpPane.meta.textContent = result.active
+            ? (result.source === 'jstack' ? '来源：jstack（PID ' + (result.pid || '-') + '）' : '来源：启动器侧信息（没有可用的 jstack）')
+            : '当前没有运行中的游戏，下面是最近一次启动日志的尾部';
+        }
+        if (dumpPane.text) dumpPane.text.value = result.text || '';
+        setHint(dumpPane.status, '需要的话点「复制」贴给开发者', 'ok');
+      })
+      .catch(function (error) {
+        if (dumpPane.meta) dumpPane.meta.textContent = '读取失败';
+        setHint(dumpPane.status, describeLaunchError(error), 'error');
+      });
+  }
+
+  if (dumpPane.copy) {
+    dumpPane.copy.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      var text = dumpPane.text ? dumpPane.text.value : '';
+      if (!text) {
+        setHint(dumpPane.status, '没有可复制的内容', 'error');
+        return;
+      }
+      if (!api || typeof api.copyText !== 'function') {
+        setHint(dumpPane.status, '主进程桥接不可用，无法复制', 'error');
+        return;
+      }
+      api.copyText(text)
+        .then(function () { setHint(dumpPane.status, '已复制到剪贴板', 'ok'); })
+        .catch(function (error) { setHint(dumpPane.status, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  // ---------------- 崩溃窗口（L5，对照 CrashWindow.java） ----------------
+
+  var crashPane = {
+    trace: document.getElementById('crashTrace'),
+    meta: document.getElementById('crashMeta'),
+    title: document.getElementById('crashTitleText'),
+    status: document.getElementById('crashStatus'),
+    openLogs: document.getElementById('crashOpenLogs'),
+    copy: document.getElementById('crashCopy')
+  };
+
+  var crashState = { message: '', at: 0, source: '' };
+
+  function openCrashWindow(payload) {
+    var data = payload || {};
+    crashState = {
+      message: String(data.message || '未知错误'),
+      at: Number(data.at) || Date.now(),
+      source: String(data.source || 'renderer')
+    };
+
+    if (crashPane.trace) crashPane.trace.textContent = crashState.message;
+    if (crashPane.meta) {
+      crashPane.meta.textContent = '来源 ' + crashState.source + ' · ' + new Date(crashState.at).toLocaleString() +
+        (data.logFile ? ' · 日志 ' + data.logFile : '');
+    }
+    if (crashPane.title) crashPane.title.textContent = '启动器遇到了一个未处理的错误';
+    setHint(crashPane.status, '');
+
+    // 已经打开时不再重复播放入场动画，只更新内容。
+    if (openDialogName === 'crash') return;
+    openDialog('crash');
+  }
+
+  window.addEventListener('error', function (event) {
+    // 资源加载失败（img / link）没有 error 对象，不当成崩溃。
+    if (!event || (!event.error && !event.message)) return;
+    openCrashWindow({
+      source: 'renderer',
+      message: (event.error && (event.error.stack || event.error.message)) || event.message,
+      at: Date.now()
+    });
+  });
+
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event && event.reason;
+    openCrashWindow({
+      source: 'renderer-rejection',
+      message: (reason && (reason.stack || reason.message)) || String(reason || '未处理的 Promise 拒绝'),
+      at: Date.now()
+    });
+  });
+
+  if (crashPane.openLogs) {
+    crashPane.openLogs.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openLogFolder !== 'function') return;
+      api.openLogFolder('app')
+        .then(function () { setHint(crashPane.status, '已打开启动器日志文件夹', 'ok'); })
+        .catch(function (error) { setHint(crashPane.status, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  if (crashPane.copy) {
+    crashPane.copy.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.copyText !== 'function') return;
+      api.copyText(crashState.message || '')
+        .then(function () { setHint(crashPane.status, '已复制到剪贴板', 'ok'); })
+        .catch(function (error) { setHint(crashPane.status, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  // ---------------- 游戏崩溃窗口（L5，对照 GameCrashWindow.java 的 3 个按钮） ----------------
+
+  var gameCrashPane = {
+    headline: document.getElementById('gameCrashHeadline'),
+    meta: document.getElementById('gameCrashMeta'),
+    hint: document.getElementById('gameCrashHint'),
+    report: document.getElementById('gameCrashReport'),
+    status: document.getElementById('gameCrashStatus'),
+    exportBtn: document.getElementById('gameCrashExport'),
+    logsBtn: document.getElementById('gameCrashLogs'),
+    helpBtn: document.getElementById('gameCrashHelp')
+  };
+
+  var gameCrashState = null;
+
+  function formatUptime(ms) {
+    var total = Math.max(0, Math.round(Number(ms) || 0) / 1000);
+    var minutes = Math.floor(total / 60);
+    var seconds = Math.round(total % 60);
+    if (minutes > 0) return minutes + ' 分 ' + seconds + ' 秒';
+    return seconds + ' 秒';
+  }
+
+  function openGameCrashWindow(payload) {
+    var data = payload || {};
+    var instance = instanceById(data.instanceId) || getSelectedInstance();
+    gameCrashState = {
+      instanceId: instance ? instance.id : data.instanceId || '',
+      crashReport: data.crashReport || '',
+      logFile: data.logFile || ''
+    };
+
+    if (gameCrashPane.headline) {
+      gameCrashPane.headline.textContent = '游戏异常退出（退出码 ' + (data.code === undefined || data.code === null ? '?' : data.code) + '）';
+    }
+    if (gameCrashPane.meta) {
+      var parts = [];
+      if (instance) parts.push(instanceLabel(instance));
+      if (data.versionId) parts.push(data.versionId);
+      if (data.uptimeMs) parts.push('运行 ' + formatUptime(data.uptimeMs));
+      if (data.logFile) parts.push(data.logFile);
+      gameCrashPane.meta.textContent = parts.join(' · ') || '—';
+    }
+    if (gameCrashPane.report) {
+      gameCrashPane.report.textContent = data.crashReport
+        ? '崩溃报告：' + data.crashReport
+        : '（这次退出没有生成崩溃报告）';
+    }
+    setHint(gameCrashPane.status, '');
+
+    if (openDialogName !== 'gameCrash') openDialog('gameCrash');
+
+    // 没有崩溃报告时补一段日志尾部，窗口本身也要能看到"为什么崩"。
+    var api = window.launcherAPI;
+    if (api && typeof api.getLogSnapshot === 'function') {
+      api.getLogSnapshot({ instanceId: gameCrashState.instanceId })
+        .then(function (snapshot) {
+          if (!snapshot || !snapshot.text || openDialogName !== 'gameCrash') return;
+          var tail = String(snapshot.text).split(/\r?\n/).slice(-18).join('\n');
+          if (gameCrashPane.report) {
+            gameCrashPane.report.textContent = (data.crashReport ? '崩溃报告：' + data.crashReport + '\n\n' : '') +
+              '日志尾部：\n' + tail;
+          }
+        })
+        .catch(function () {});
+    }
+  }
+
+  if (gameCrashPane.exportBtn) {
+    gameCrashPane.exportBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.exportCrashInfo !== 'function') return;
+      setHint(gameCrashPane.status, '正在整理崩溃信息…');
+      api.exportCrashInfo(gameCrashState || {})
+        .then(function (result) {
+          if (!result) {
+            setHint(gameCrashPane.status, '已取消');
+            return;
+          }
+          setHint(gameCrashPane.status, '已导出：' + result.file, 'ok');
+        })
+        .catch(function (error) {
+          setHint(gameCrashPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (gameCrashPane.logsBtn) {
+    gameCrashPane.logsBtn.addEventListener('click', function () {
+      var instanceId = gameCrashState ? gameCrashState.instanceId : '';
+      closeDialog();
+      openLogWindow({ instanceId: instanceId });
+    });
+  }
+
+  if (gameCrashPane.helpBtn) {
+    gameCrashPane.helpBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openExternal !== 'function') return;
+      api.openExternal('https://github.com/jkoyli/mcdl-launcher/blob/main/docs/troubleshooting.md')
+        .catch(function (error) {
+          setHint(gameCrashPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  // 主进程侧的未捕获异常：渲染进程还活着就弹崩溃窗口。
+  if (window.launcherAPI && typeof window.launcherAPI.onLauncherCrash === 'function') {
+    window.launcherAPI.onLauncherCrash(function (payload) {
+      openCrashWindow(payload);
     });
   }
 
@@ -3269,7 +4487,51 @@
   // ---------------------------------------------------------
   // 设置面板：内存 / Java / 窗口尺寸 / 额外 JVM 参数
   // ---------------------------------------------------------
+
+  /**
+   * 判断某个 javaPath 是否在扫描结果里。
+   * Windows 路径大小写/斜杠可能不一致（主进程会把 javaPath 换成 realpath），
+   * 这里做归一化后再比，避免把「同一个 JDK」误判成失效。
+   */
+  function javaPathInRuntimes(javaPath, runtimes) {
+    var normalize = function (value) {
+      return String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    };
+    var wanted = normalize(javaPath);
+    if (!wanted) return false;
+    return (runtimes || []).some(function (runtime) {
+      return Boolean(runtime) && normalize(runtime.path) === wanted;
+    });
+  }
+
+  /** 空 javaPath = 自动选择（正常）；非空但扫描不到 = 失效（JDK 被卸载/移动/被拒）。 */
+  function javaPathUnavailable(javaPath, runtimes) {
+    var target = String(javaPath || '').trim();
+    return Boolean(target) && !javaPathInRuntimes(target, runtimes);
+  }
+
+  /** 「恢复默认」按钮：已是自动选择时置灰；javaPath 失效时高亮，标题说明原因。 */
+  function syncJavaResetState(javaPath) {
+    if (!settingsJavaReset) return;
+    var target = String(javaPath || '').trim();
+    var unavailable = javaPathUnavailable(target, settingsJavaRuntimes);
+    settingsJavaReset.disabled = !target;
+    settingsJavaReset.classList.toggle('is-attention', unavailable);
+    if (!target) {
+      settingsJavaReset.title = '当前已经是自动选择（按版本要求）';
+    } else if (unavailable) {
+      settingsJavaReset.title = '当前选中的 Java 不在扫描结果里（可能已被卸载或移动），点这里改回自动选择（按版本要求）';
+    } else {
+      settingsJavaReset.title = '改回自动选择（按版本要求）';
+    }
+  }
+
   function fillJavaOptions(runtimes, currentPath) {
+    settingsJavaRuntimes = Array.isArray(runtimes) ? runtimes.slice() : [];
+    if (settingsJavaCount) {
+      settingsJavaCount.textContent = settingsJavaRuntimes.length + ' 个';
+    }
+    syncJavaResetState(currentPath);
     if (!settingsJava) return;
     settingsJava.innerHTML = '';
 
@@ -3325,9 +4587,7 @@
     if (settingsDownloadSource) settingsDownloadSource.value = settings.downloadSource || 'auto';
     if (settingsAddonSource) settingsAddonSource.value = settings.addonSource || 'modrinth';
 
-    if (settingsJavaCount) {
-      settingsJavaCount.textContent = (runtimes ? runtimes.length : 0) + ' 个';
-    }
+    renderPresets(settings);
     applyAnimationPreference(settings);
     // settings:get 比 wallpaper:list 慢（要扫 Java），只用它同步一次控件显示值；
     // 图层与列表以壁纸面板自己的那份数据为准，已经同步过就不再覆盖。
@@ -3354,9 +4614,18 @@
             ((data && data.defaultMemoryMb) || '-') + ' MB';
         }
         if (settingsJavaStatus) {
-          settingsJavaStatus.textContent = count
-            ? '已扫描到 ' + count + ' 个运行时'
-            : '没有扫描到 Java，可以手动安装后重新扫描';
+          var javaPath = (settingsCache && settingsCache.javaPath) || '';
+          if (javaPathUnavailable(javaPath, data && data.javaRuntimes)) {
+            settingsJavaStatus.title = '设置里的 Java 路径：' + javaPath;
+            setHint(settingsJavaStatus,
+              '已选中的 Java 不在扫描结果里（可能已被卸载或移动），启动会失败；点「恢复默认」改回自动选择（按版本要求）。',
+              'error');
+          } else {
+            settingsJavaStatus.title = '';
+            setHint(settingsJavaStatus, count
+              ? '已扫描到 ' + count + ' 个运行时'
+              : '没有扫描到 Java，可以手动安装后重新扫描');
+          }
         }
         settingsLoaded = true;
       })
@@ -3388,6 +4657,353 @@
         setHint(statusNode, describeLaunchError(error), 'error');
         return null;
       });
+  }
+
+  // ---------------------------------------------------------
+  // 设置：游戏设置预设 / 安装 Java / NBT 编辑器
+  // ---------------------------------------------------------
+
+  var settingsPreset = document.getElementById('settingsPreset');
+  var settingsPresetNew = document.getElementById('settingsPresetNew');
+  var settingsPresetApply = document.getElementById('settingsPresetApply');
+  var settingsPresetDelete = document.getElementById('settingsPresetDelete');
+
+  var SETTING_PRESETS = [];
+
+  function presetById(id) {
+    for (var i = 0; i < SETTING_PRESETS.length; i += 1) {
+      if (SETTING_PRESETS[i].id === id) return SETTING_PRESETS[i];
+    }
+    return null;
+  }
+
+  function renderPresets(settings) {
+    SETTING_PRESETS = (settings && Array.isArray(settings.presets)) ? settings.presets.slice() : [];
+    if (!settingsPreset) return;
+
+    var current = settingsPreset.value;
+    settingsPreset.innerHTML = '';
+
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = SETTING_PRESETS.length ? '（未选择预设）' : '（还没有预设）';
+    settingsPreset.appendChild(none);
+
+    SETTING_PRESETS.forEach(function (preset) {
+      var option = document.createElement('option');
+      option.value = preset.id;
+      option.textContent = preset.name + (preset.memoryMb ? ' · ' + preset.memoryMb + ' MB' : '');
+      settingsPreset.appendChild(option);
+    });
+
+    settingsPreset.value = presetById(current) ? current : '';
+    if (settingsPresetApply) settingsPresetApply.disabled = !settingsPreset.value;
+    if (settingsPresetDelete) settingsPresetDelete.disabled = !settingsPreset.value;
+  }
+
+  function presetValuesFromForm() {
+    var values = {};
+    var memory = Number(settingsMemory ? settingsMemory.value : '');
+    if (Number.isFinite(memory) && memory >= 512) values.memoryMb = Math.round(memory);
+    var width = Number(settingsWidth ? settingsWidth.value : '');
+    if (Number.isFinite(width) && width >= 320) values.width = Math.round(width);
+    var height = Number(settingsHeight ? settingsHeight.value : '');
+    if (Number.isFinite(height) && height >= 320) values.height = Math.round(height);
+    if (settingsJvmArgs && settingsJvmArgs.value.trim()) values.jvmArgs = settingsJvmArgs.value.trim();
+    if (settingsIsolation && settingsIsolation.value) values.gameIsolation = settingsIsolation.value;
+    return values;
+  }
+
+  function savePresetList(list, okText) {
+    renderPresets({ presets: list });
+    return saveSettingsPatch({ presets: list }, settingsStatus).then(function (saved) {
+      if (saved) renderPresets(saved);
+      if (saved) setHint(settingsStatus, okText || '预设已保存', 'ok');
+      return saved;
+    });
+  }
+
+  if (settingsPreset) {
+    settingsPreset.addEventListener('change', function () {
+      if (settingsPresetApply) settingsPresetApply.disabled = !settingsPreset.value;
+      if (settingsPresetDelete) settingsPresetDelete.disabled = !settingsPreset.value;
+    });
+  }
+
+  if (settingsPresetNew) {
+    settingsPresetNew.addEventListener('click', function () {
+      var values = presetValuesFromForm();
+      askPrompt({
+        title: '新建预设',
+        text: '会把当前这一套内存 / 窗口 / JVM 参数 / 隔离策略存成预设，之后可以一键套用。',
+        label: '预设名称',
+        value: '预设 ' + (SETTING_PRESETS.length + 1),
+        placeholder: '例如 4G · 1080p',
+        okText: '新建',
+        maxLength: 40
+      }).then(function (name) {
+        if (!name) return;
+        var preset = { id: 'preset-' + Date.now().toString(36), name: name };
+        for (var key in values) {
+          if (Object.prototype.hasOwnProperty.call(values, key)) preset[key] = values[key];
+        }
+        var list = SETTING_PRESETS.concat([preset]);
+        if (list.length > 50) {
+          setHint(settingsStatus, '预设最多 50 个', 'error');
+          return;
+        }
+        return savePresetList(list, '已新建预设「' + name + '」').then(function (saved) {
+          if (!saved || !settingsPreset) return;
+          settingsPreset.value = preset.id;
+          // renderPresets 是按"当前选中"决定按钮可用性的；新建后要手动同步一次。
+          if (settingsPresetApply) settingsPresetApply.disabled = false;
+          if (settingsPresetDelete) settingsPresetDelete.disabled = false;
+        });
+      });
+    });
+  }
+
+  if (settingsPresetApply) {
+    settingsPresetApply.addEventListener('click', function () {
+      var preset = presetById(settingsPreset ? settingsPreset.value : '');
+      if (!preset) {
+        setHint(settingsStatus, '先选一个预设', 'error');
+        return;
+      }
+
+      if (settingsMemory) settingsMemory.value = preset.memoryMb || '';
+      if (settingsWidth) settingsWidth.value = preset.width || '';
+      if (settingsHeight) settingsHeight.value = preset.height || '';
+      if (settingsJvmArgs) settingsJvmArgs.value = preset.jvmArgs || '';
+      if (settingsIsolation) settingsIsolation.value = preset.gameIsolation || 'auto';
+
+      // 套用后直接保存，避免「界面变了但没生效」。
+      if (settingsForm && typeof settingsForm.requestSubmit === 'function') {
+        settingsForm.requestSubmit();
+      }
+      setHint(settingsStatus, '已应用预设「' + preset.name + '」', 'ok');
+    });
+  }
+
+  if (settingsPresetDelete) {
+    settingsPresetDelete.addEventListener('click', function () {
+      var preset = presetById(settingsPreset ? settingsPreset.value : '');
+      if (!preset) return;
+
+      askConfirm('删除预设「' + preset.name + '」？不会改动当前设置。', function () {
+        var list = SETTING_PRESETS.filter(function (item) { return item.id !== preset.id; });
+        savePresetList(list, '已删除预设「' + preset.name + '」');
+      }, '删除');
+    });
+  }
+
+  // ---------------- 安装 Java（Adoptium） ----------------
+
+  var javaDownloadVersion = document.getElementById('javaDownloadVersion');
+  var javaDownloadConfirm = document.getElementById('javaDownloadConfirm');
+  var javaDownloadStatus = document.getElementById('javaDownloadStatus');
+  var javaDownloadHint = document.getElementById('javaDownloadHint');
+  var javaDownloadBusy = false;
+
+  if (settingsJavaInstall) {
+    settingsJavaInstall.addEventListener('click', function () {
+      if (javaDownloadBusy) return;
+      javaDownloadBusy = false;
+      setHint(javaDownloadStatus, '');
+      openDialog('javaDownload');
+    });
+  }
+
+  if (javaDownloadVersion) {
+    javaDownloadVersion.addEventListener('change', function () {
+      if (javaDownloadHint) {
+        javaDownloadHint.textContent = '将下载 Java ' + javaDownloadVersion.value + '（约 180 MB），装好后自动登记并选中。';
+      }
+    });
+  }
+
+  if (javaDownloadConfirm) {
+    javaDownloadConfirm.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.installJava !== 'function') {
+        setHint(javaDownloadStatus, '主进程桥接不可用，无法安装 Java', 'error');
+        return;
+      }
+
+      var major = Number(javaDownloadVersion ? javaDownloadVersion.value : 21) || 21;
+      closeDialog();
+      javaDownloadBusy = true;
+      setHint(settingsJavaStatus, '正在准备下载 Java ' + major + '…');
+
+      runTask({
+        title: '安装 Java',
+        status: '正在连接 Adoptium…',
+        cancelable: true,
+        doneText: 'Java 已安装',
+        run: function (ctx) {
+          return api.installJava({ major: major, taskId: ctx.taskId })
+            .then(function (result) {
+              if (!result) return null;
+              return saveSettingsPatch({ javaPath: result.path }, settingsJavaStatus)
+                .then(function () {
+                  settingsLoaded = false;
+                  loadSettings();
+                  return result;
+                });
+            });
+        }
+      })
+        .then(function (result) {
+          javaDownloadBusy = false;
+          if (!result) return;
+          setHint(settingsJavaStatus, '已安装并选中 Java ' + (result.info ? result.info.major : major) + '：' + result.path, 'ok');
+        })
+        .catch(function (error) {
+          javaDownloadBusy = false;
+          setHint(settingsJavaStatus, '安装 Java 失败：' + describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (window.launcherAPI && typeof window.launcherAPI.onJavaInstallProgress === 'function') {
+    window.launcherAPI.onJavaInstallProgress(function (payload) {
+      if (!payload || !payload.message) return;
+      noteActiveTask(payload.message);
+      if (taskDialogState && !taskDialogState.settled) return;
+      setHint(settingsJavaStatus, payload.message);
+    });
+  }
+
+  // ---------------- NBT 编辑器 ----------------
+
+  var nbtPane = {
+    open: document.getElementById('settingsNbtOpen'),
+    status: document.getElementById('settingsNbtStatus'),
+    fileName: document.getElementById('nbtFileName'),
+    fileMeta: document.getElementById('nbtFileMeta'),
+    rows: document.getElementById('nbtRows'),
+    save: document.getElementById('nbtSave'),
+    dialogStatus: document.getElementById('nbtStatus')
+  };
+
+  var nbtState = { token: '', file: '', rows: [], busy: false };
+
+  function renderNbtRows(data) {
+    if (!nbtPane.rows) return;
+    nbtPane.rows.innerHTML = '';
+
+    (data.rows || []).forEach(function (row) {
+      var tr = document.createElement('tr');
+      if (!row.editable) tr.className = 'nbt-row--compound';
+
+      var pathCell = document.createElement('td');
+      pathCell.className = 'nbt-path';
+      var indent = '';
+      for (var i = 0; i < Math.min(8, row.depth || 0); i += 1) indent += '  ';
+      pathCell.textContent = indent + row.path.join('.');
+      tr.appendChild(pathCell);
+
+      var typeCell = document.createElement('td');
+      typeCell.className = 'nbt-type';
+      typeCell.textContent = row.type;
+      tr.appendChild(typeCell);
+
+      var valueCell = document.createElement('td');
+      if (row.editable) {
+        var input = document.createElement('input');
+        input.className = 'nbt-input';
+        input.type = 'text';
+        input.value = row.value;
+        input.setAttribute('data-nbt-index', String(nbtState.rows.length));
+        valueCell.appendChild(input);
+        nbtState.rows.push({
+          path: row.path,
+          type: row.type,
+          original: row.value,
+          input: input
+        });
+      } else {
+        var span = document.createElement('span');
+        span.className = 'nbt-value';
+        span.textContent = row.value;
+        valueCell.appendChild(span);
+      }
+      tr.appendChild(valueCell);
+
+      nbtPane.rows.appendChild(tr);
+    });
+  }
+
+  if (nbtPane.open) {
+    nbtPane.open.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.pickNbtFile !== 'function') {
+        setHint(nbtPane.status, '主进程桥接不可用，无法打开 NBT 编辑器', 'error');
+        return;
+      }
+
+      setHint(nbtPane.status, '正在读取…');
+      api.pickNbtFile()
+        .then(function (data) {
+          if (!data) {
+            setHint(nbtPane.status, '已取消');
+            return;
+          }
+
+          nbtState = { token: data.token, file: data.file, rows: [], busy: false };
+          if (nbtPane.fileName) nbtPane.fileName.textContent = data.file;
+          if (nbtPane.fileMeta) {
+            nbtPane.fileMeta.textContent = '根节点 ' + (data.name || '—') + ' · ' +
+              formatSize(data.size) + (data.truncated ? ' · 内容过多，只显示前 4000 行' : '');
+          }
+          setHint(nbtPane.dialogStatus, '');
+          renderNbtRows(data);
+          openDialog('nbt');
+          setHint(nbtPane.status, '已读取 ' + data.file, 'ok');
+        })
+        .catch(function (error) {
+          setHint(nbtPane.status, describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (nbtPane.save) {
+    nbtPane.save.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.saveNbtEdits !== 'function' || nbtState.busy) return;
+
+      var edits = [];
+      nbtState.rows.forEach(function (row) {
+        if (!row.input) return;
+        if (row.input.value !== row.original) {
+          edits.push({ path: row.path, value: row.input.value });
+        }
+      });
+
+      if (edits.length === 0) {
+        setHint(nbtPane.dialogStatus, '没有改动需要保存', 'error');
+        return;
+      }
+
+      nbtState.busy = true;
+      setHint(nbtPane.dialogStatus, '正在写回…');
+
+      api.saveNbtEdits({ token: nbtState.token, edits: edits })
+        .then(function (result) {
+          nbtState.busy = false;
+          if (!result) return;
+          // 写回成功：把输入框的"原值"更新掉，避免再点保存时重复提交。
+          nbtState.rows.forEach(function (row) {
+            if (row.input) row.original = row.input.value;
+          });
+          setHint(nbtPane.dialogStatus, '已保存 ' + result.applied.length + ' 个字段（备份为 .bak）', 'ok');
+          setHint(nbtPane.status, '已保存 ' + result.applied.length + ' 个字段', 'ok');
+        })
+        .catch(function (error) {
+          nbtState.busy = false;
+          setHint(nbtPane.dialogStatus, describeLaunchError(error), 'error');
+        });
+    });
   }
 
   // ---------------------------------------------------------
@@ -4180,7 +5796,30 @@
 
   if (settingsJava) {
     settingsJava.addEventListener('change', function () {
-      saveSettingsPatch({ javaPath: settingsJava.value }, settingsJavaStatus);
+      var picked = settingsJava.value || '';
+      saveSettingsPatch({ javaPath: picked }, settingsJavaStatus)
+        .then(function (saved) {
+          if (!saved) return;
+          // 主进程会回写 realpath；用它的结果同步按钮状态，避免和下拉不一致。
+          syncJavaResetState(saved.javaPath || '');
+        });
+    });
+  }
+
+  // 恢复默认：只清全局 javaPath（空 = 自动选择），不碰实例级的「手动指定 Java」。
+  if (settingsJavaReset) {
+    settingsJavaReset.addEventListener('click', function () {
+      var currentPath = String((settingsCache && settingsCache.javaPath) || '').trim();
+      if (!currentPath) return;
+
+      saveSettingsPatch({ javaPath: '' }, settingsJavaStatus)
+        .then(function (saved) {
+          if (!saved) return;
+          // 原地重画：不重新走一遍扫描，避免把刚写下的提示覆盖成「已扫描到 N 个」。
+          fillJavaOptions(settingsJavaRuntimes, '');
+          if (settingsJavaStatus) settingsJavaStatus.title = '';
+          setHint(settingsJavaStatus, '已恢复为自动选择（按版本要求）', 'ok');
+        });
     });
   }
 
@@ -4388,7 +6027,7 @@
     { action: 'icon', label: '更换图标' },
     { action: 'duplicate', label: '复制游戏实例' },
     { action: 'delete', label: '删除该实例', danger: true },
-    { action: 'export', label: '导出整合包', disabled: true, hint: '导出整合包待接入' },
+    { action: 'export', label: '导出整合包' },
     { action: 'folder', label: '实例运行文件夹' }
   ];
 
@@ -4451,8 +6090,7 @@
     var rows = document.getElementById('instanceRows');
     if (!rows) return;
 
-    var count = document.getElementById('instancePanelCount');
-    if (count) count.textContent = String(INSTANCES.length);
+    if (instancesToolbar) instancesToolbar.setCount(INSTANCES.length);
 
     // 名字 / 图标变了也要重建，所以签名里带上这两项。
     var signature = INSTANCES.map(function (item) {
@@ -4665,6 +6303,11 @@
       return;
     }
 
+    if (action === 'export') {
+      openExportWizard(instance.id);
+      return;
+    }
+
     if (action === 'folder') {
       var api = window.launcherAPI;
       if (!api || typeof api.openInstanceFolder !== 'function') return;
@@ -4694,6 +6337,8 @@
             (test ? '测试启动 ' : '已启动 ') + (result.versionId || '') + ' · PID ' + (result.pid || '-'),
             false
           );
+          // 「测试游戏」的语义就是"启动并看日志"：直接打开日志窗口。
+          if (test) openLogWindow({ instanceId: instance.id });
         }
       })
       .catch(function (error) {
@@ -4862,6 +6507,371 @@
       if (!instance) return;
       closeDialog();
       confirmRemoveInstance(instance);
+    });
+  }
+
+  var instanceExportBtn = document.getElementById('instanceExport');
+  if (instanceExportBtn) {
+    instanceExportBtn.addEventListener('click', function () {
+      var instance = instanceById(dialogInstanceId);
+      if (!instance) return;
+      closeDialog();
+      openExportWizard(instance.id);
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 导出整合包向导（对照 export/ModpackTypeSelectionPage + ModpackFileSelectionPage + ModpackInfoPage）
+  // ---------------------------------------------------------
+
+  var exportPane = {
+    dots: document.querySelectorAll('[data-export-step-dot]'),
+    panels: document.querySelectorAll('[data-export-panel]'),
+    types: document.getElementById('exportTypes'),
+    typeHint: document.getElementById('exportTypeHint'),
+    files: document.getElementById('exportFiles'),
+    fileSummary: document.getElementById('exportFileSummary'),
+    selectAll: document.getElementById('exportSelectAll'),
+    name: document.getElementById('exportName'),
+    version: document.getElementById('exportVersion'),
+    author: document.getElementById('exportAuthor'),
+    summary: document.getElementById('exportSummary'),
+    server: document.getElementById('exportServer'),
+    forceUpdate: document.getElementById('exportForceUpdate'),
+    includeLauncher: document.getElementById('exportIncludeLauncher'),
+    noRemoteMatch: document.getElementById('exportNoRemoteMatch'),
+    skipCurseforge: document.getElementById('exportSkipCurseforge'),
+    infoHint: document.getElementById('exportInfoHint'),
+    status: document.getElementById('exportStatus'),
+    prev: document.getElementById('exportPrev'),
+    next: document.getElementById('exportNext'),
+    start: document.getElementById('exportStart')
+  };
+
+  var EXPORT_STEPS = ['type', 'files', 'info'];
+
+  var exportWizard = {
+    instanceId: '',
+    scan: null,
+    step: 'type',
+    format: 'curseforge',
+    selection: {},
+    busy: false,
+    loaded: false
+  };
+
+  function setExportStep(step) {
+    var next = EXPORT_STEPS.indexOf(step) >= 0 ? step : 'type';
+    exportWizard.step = next;
+
+    Array.prototype.forEach.call(exportPane.dots, function (dot) {
+      var value = dot.getAttribute('data-export-step-dot');
+      var index = EXPORT_STEPS.indexOf(value);
+      var current = EXPORT_STEPS.indexOf(next);
+      dot.classList.toggle('is-active', value === next);
+      dot.classList.toggle('is-done', index >= 0 && index < current);
+    });
+
+    Array.prototype.forEach.call(exportPane.panels, function (panel) {
+      panel.hidden = panel.getAttribute('data-export-panel') !== next;
+    });
+
+    if (exportPane.prev) exportPane.prev.hidden = next === 'type';
+    if (exportPane.next) exportPane.next.hidden = next === 'info';
+    if (exportPane.start) exportPane.start.hidden = next !== 'info';
+  }
+
+  function setExportBusy(busy) {
+    exportWizard.busy = Boolean(busy);
+    [exportPane.next, exportPane.start, exportPane.prev, exportPane.selectAll].forEach(function (node) {
+      if (!node) return;
+      node.disabled = Boolean(busy);
+    });
+    if (exportPane.types) {
+      Array.prototype.forEach.call(exportPane.types.querySelectorAll('button'), function (button) {
+        button.disabled = Boolean(busy);
+      });
+    }
+  }
+
+  function setExportFormat(format) {
+    exportWizard.format = format === 'modrinth' ? 'modrinth' : 'curseforge';
+    if (exportPane.types) {
+      Array.prototype.forEach.call(exportPane.types.querySelectorAll('[data-export-format]'), function (button) {
+        var active = button.getAttribute('data-export-format') === exportWizard.format;
+        button.classList.toggle('is-selected', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+    if (exportPane.typeHint) {
+      exportPane.typeHint.textContent = exportWizard.format === 'modrinth'
+        ? '当前：Modrinth 格式（modrinth.index.json + overrides/）'
+        : '当前：CurseForge 格式（manifest.json + overrides/）';
+    }
+  }
+
+  function selectedExportCategories() {
+    return (exportWizard.scan && exportWizard.scan.categories || []).filter(function (category) {
+      return exportWizard.selection[category.key] && category.files.length > 0;
+    });
+  }
+
+  function updateExportSummary() {
+    var categories = selectedExportCategories();
+    var files = 0;
+    var bytes = 0;
+    categories.forEach(function (category) {
+      files += category.files.length;
+      bytes += category.total;
+    });
+
+    if (exportPane.fileSummary) {
+      exportPane.fileSummary.textContent = files
+        ? '已选 ' + categories.length + ' 个文件夹 · ' + files + ' 个文件 · ' + formatBytes(bytes)
+        : '还没有选择任何内容';
+    }
+  }
+
+  function renderExportFiles() {
+    if (!exportPane.files) return;
+    exportPane.files.innerHTML = '';
+
+    var categories = (exportWizard.scan && exportWizard.scan.categories) || [];
+    if (categories.length === 0) {
+      var empty = document.createElement('span');
+      empty.className = 'export-file is-empty';
+      empty.textContent = '这个实例里没有可导出的内容';
+      exportPane.files.appendChild(empty);
+      return;
+    }
+
+    categories.forEach(function (category) {
+      var label = document.createElement('label');
+      label.className = 'export-file' + (category.files.length ? '' : ' is-empty');
+
+      var check = document.createElement('input');
+      check.type = 'checkbox';
+      check.setAttribute('data-export-category', category.key);
+      check.checked = Boolean(exportWizard.selection[category.key]);
+      check.disabled = category.files.length === 0 || exportWizard.busy;
+
+      var text = document.createElement('span');
+      text.textContent = category.label + '（' + category.files.length + '）';
+
+      var size = document.createElement('em');
+      size.textContent = category.totalLabel;
+
+      label.appendChild(check);
+      label.appendChild(text);
+      label.appendChild(size);
+      exportPane.files.appendChild(label);
+    });
+  }
+
+  function fillExportServers() {
+    if (!exportPane.server) return;
+    var current = exportPane.server.value;
+    exportPane.server.innerHTML = '';
+
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = '不指定';
+    exportPane.server.appendChild(none);
+
+    (SERVERS || []).forEach(function (server) {
+      var option = document.createElement('option');
+      option.value = server.apiRoot || server.id;
+      option.textContent = server.name || server.apiRoot || '认证服务器';
+      exportPane.server.appendChild(option);
+    });
+
+    exportPane.server.value = current || '';
+  }
+
+  function resetExportWizard(scan) {
+    exportWizard.scan = scan || null;
+    exportWizard.step = 'type';
+    exportWizard.format = 'curseforge';
+    exportWizard.selection = {};
+
+    ((scan && scan.categories) || []).forEach(function (category) {
+      if (category.files.length > 0 && category.defaultOn) exportWizard.selection[category.key] = true;
+    });
+
+    if (exportPane.name) exportPane.name.value = (scan && scan.name) || '';
+    if (exportPane.version) exportPane.version.value = (scan && scan.suggestedVersion) || '1.0.0';
+    var account = selectedAccount();
+    if (exportPane.author) exportPane.author.value = account ? account.name : '';
+    if (exportPane.summary) exportPane.summary.value = '';
+    if (exportPane.forceUpdate) exportPane.forceUpdate.checked = false;
+    if (exportPane.includeLauncher) exportPane.includeLauncher.checked = false;
+    if (exportPane.noRemoteMatch) exportPane.noRemoteMatch.checked = false;
+    if (exportPane.skipCurseforge) exportPane.skipCurseforge.checked = false;
+
+    if (exportPane.infoHint) {
+      exportPane.infoHint.textContent = scan
+        ? `Minecraft ${scan.versionName || '—'} · ${scan.loaderLabel || 'Vanilla'}${scan.loaderVersion ? ' ' + scan.loaderVersion : ''} · 共 ${scan.totalFiles} 个文件（${formatBytes(scan.totalBytes)}）`
+        : '—';
+    }
+
+    fillExportServers();
+    setExportFormat('curseforge');
+    renderExportFiles();
+    updateExportSummary();
+    setExportStep('type');
+    setExportBusy(false);
+    setHint(exportPane.status, '');
+  }
+
+  function openExportWizard(instanceId) {
+    var api = window.launcherAPI;
+    var instance = instanceById(instanceId);
+    if (!api || !instance || typeof api.scanModpack !== 'function') {
+      setInstancePanelStatus('主进程桥接不可用，无法导出', 'error');
+      return;
+    }
+
+    exportWizard.instanceId = instance.id;
+    exportWizard.loaded = false;
+    resetExportWizard(null);
+    setHint(exportPane.status, '正在扫描实例文件…');
+    openDialog('export');
+
+    api.scanModpack({ instanceId: instance.id })
+      .then(function (scan) {
+        if (!scan || exportWizard.instanceId !== instance.id) return;
+        exportWizard.loaded = true;
+        resetExportWizard(scan);
+        setHint(exportPane.status, '', '');
+      })
+      .catch(function (error) {
+        setHint(exportPane.status, describeLaunchError(error), 'error');
+      });
+  }
+
+  if (exportPane.types) {
+    exportPane.types.addEventListener('click', function (event) {
+      var button = event.target && event.target.closest ? event.target.closest('[data-export-format]') : null;
+      if (!button || exportWizard.busy) return;
+      setExportFormat(button.getAttribute('data-export-format'));
+    });
+  }
+
+  if (exportPane.files) {
+    exportPane.files.addEventListener('change', function (event) {
+      var check = event.target;
+      if (!check || !check.getAttribute) return;
+      var key = check.getAttribute('data-export-category');
+      if (!key) return;
+      exportWizard.selection[key] = Boolean(check.checked);
+      updateExportSummary();
+    });
+  }
+
+  if (exportPane.selectAll) {
+    exportPane.selectAll.addEventListener('click', function () {
+      if (exportWizard.busy) return;
+      var categories = (exportWizard.scan && exportWizard.scan.categories) || [];
+      var allOn = categories.every(function (category) {
+        return category.files.length === 0 || exportWizard.selection[category.key];
+      });
+      categories.forEach(function (category) {
+        if (category.files.length > 0) exportWizard.selection[category.key] = !allOn;
+      });
+      renderExportFiles();
+      updateExportSummary();
+    });
+  }
+
+  if (exportPane.prev) {
+    exportPane.prev.addEventListener('click', function () {
+      if (exportWizard.busy) return;
+      var index = EXPORT_STEPS.indexOf(exportWizard.step);
+      setExportStep(EXPORT_STEPS[Math.max(0, index - 1)]);
+    });
+  }
+
+  if (exportPane.next) {
+    exportPane.next.addEventListener('click', function () {
+      if (exportWizard.busy) return;
+      if (!exportWizard.loaded) {
+        setHint(exportPane.status, '还在扫描实例文件，请稍等…');
+        return;
+      }
+      if (exportWizard.step === 'files' && selectedExportCategories().length === 0) {
+        setHint(exportPane.status, '至少勾选一个包含文件的文件夹', 'error');
+        return;
+      }
+      setHint(exportPane.status, '');
+      var index = EXPORT_STEPS.indexOf(exportWizard.step);
+      setExportStep(EXPORT_STEPS[Math.min(EXPORT_STEPS.length - 1, index + 1)]);
+    });
+  }
+
+  if (exportPane.start) {
+    exportPane.start.addEventListener('click', function () {
+      submitExport();
+    });
+  }
+
+  function submitExport() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.exportModpack !== 'function') return;
+    if (exportWizard.busy) return;
+
+    if (!exportWizard.loaded) {
+      setHint(exportPane.status, '还在扫描实例文件，请稍等…');
+      return;
+    }
+
+    var selection = selectedExportCategories().map(function (category) { return category.key; });
+    if (selection.length === 0) {
+      setHint(exportPane.status, '至少勾选一个包含文件的文件夹', 'error');
+      return;
+    }
+
+    setExportBusy(true);
+    setHint(exportPane.status, '正在准备导出…');
+
+    api.exportModpack({
+      instanceId: exportWizard.instanceId,
+      format: exportWizard.format,
+      selection: selection,
+      meta: {
+        name: exportPane.name ? exportPane.name.value.trim() : '',
+        version: exportPane.version ? exportPane.version.value.trim() : '',
+        author: exportPane.author ? exportPane.author.value.trim() : '',
+        summary: exportPane.summary ? exportPane.summary.value.trim() : ''
+      },
+      options: {
+        server: exportPane.server ? exportPane.server.value : '',
+        forceUpdate: Boolean(exportPane.forceUpdate && exportPane.forceUpdate.checked),
+        includeLauncher: Boolean(exportPane.includeLauncher && exportPane.includeLauncher.checked),
+        noRemoteMatch: Boolean(exportPane.noRemoteMatch && exportPane.noRemoteMatch.checked),
+        skipCurseforge: Boolean(exportPane.skipCurseforge && exportPane.skipCurseforge.checked)
+      }
+    })
+      .then(function (result) {
+        setExportBusy(false);
+        if (!result) {
+          setHint(exportPane.status, '已取消');
+          return;
+        }
+        setHint(exportPane.status, '已导出 ' + result.fileCount + ' 个文件 · ' + formatBytes(result.size) + ' · ' + result.file, 'ok');
+        window.setTimeout(function () {
+          if (openDialogName === 'export') closeDialog();
+        }, 1600);
+      })
+      .catch(function (error) {
+        setExportBusy(false);
+        setHint(exportPane.status, describeLaunchError(error), 'error');
+      });
+  }
+
+  if (window.launcherAPI && typeof window.launcherAPI.onModpackExportProgress === 'function') {
+    window.launcherAPI.onModpackExportProgress(function (payload) {
+      if (!payload || !payload.message) return;
+      if (openDialogName === 'export') setHint(exportPane.status, payload.message);
     });
   }
 
@@ -5232,6 +7242,10 @@
         openWorldList();
         return;
       }
+      if (tab === 'screenshots') {
+        loadScreenshots();
+        return;
+      }
 
       var kind = TAB_CONTENT_KIND[tab];
       if (kind) loadInstanceContent(kind);
@@ -5241,6 +7255,482 @@
   function setDetailTab(tab) {
     detailTab = tab || 'game';
     detailTabs.set(detailTab);
+  }
+
+  // ---------------- 详情页导航项：更新整合包 / 浏览 / 管理 ----------------
+
+  /**
+   * 详情页左侧的弹出菜单（浏览 / 管理）。
+   * 复用 .ctx-menu 的外观，但条目由调用方给，动作也由调用方处理。
+   */
+  var detailPopup = null;
+
+  function closeDetailPopup() {
+    if (!detailPopup) return;
+    detailPopup.remove();
+    detailPopup = null;
+  }
+
+  function openDetailPopup(anchor, items, handler) {
+    closeDetailPopup();
+    closeInstanceMenu();
+    closeAccountMenu();
+
+    if (!anchor || !items || items.length === 0) return;
+
+    var menu = document.createElement('div');
+    menu.className = 'account-menu ctx-menu';
+    menu.setAttribute('role', 'menu');
+
+    items.forEach(function (item) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.setAttribute('data-detail-popup-action', item.action);
+      button.textContent = item.label;
+      if (item.danger) button.classList.add('is-danger');
+      if (item.disabled) {
+        button.disabled = true;
+        button.title = item.hint || '暂不可用';
+      }
+      menu.appendChild(button);
+    });
+
+    document.body.appendChild(menu);
+
+    var rect = anchor.getBoundingClientRect();
+    var menuRect = menu.getBoundingClientRect();
+    var top = rect.bottom + 6;
+    if (top + menuRect.height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - menuRect.height - 6);
+    }
+    menu.style.top = Math.round(top) + 'px';
+    menu.style.left = Math.round(Math.min(rect.left, window.innerWidth - menuRect.width - 12)) + 'px';
+
+    menu.addEventListener('click', function (event) {
+      var button = event.target && event.target.closest
+        ? event.target.closest('[data-detail-popup-action]')
+        : null;
+      if (!button || button.disabled) return;
+      var action = button.getAttribute('data-detail-popup-action');
+      closeDetailPopup();
+      if (typeof handler === 'function') handler(action);
+    });
+
+    detailPopup = menu;
+    var first = menu.querySelector('button:not([disabled])');
+    if (first) first.focus();
+  }
+
+  document.addEventListener('click', function (event) {
+    if (!detailPopup) return;
+    if (event.target.closest && (event.target.closest('.ctx-menu') || event.target.closest('#detailBrowse') || event.target.closest('#detailManage'))) return;
+    closeDetailPopup();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !detailPopup) return;
+    event.stopPropagation();
+    closeDetailPopup();
+  }, true);
+
+  var detailBrowseBtn = document.getElementById('detailBrowse');
+  if (detailBrowseBtn) {
+    detailBrowseBtn.addEventListener('click', function () {
+      var items = Array.prototype.map.call(document.querySelectorAll('[data-detail-folder]'), function (button) {
+        return {
+          action: 'folder:' + button.getAttribute('data-detail-folder'),
+          label: String(button.textContent || '').trim()
+        };
+      });
+      openDetailPopup(detailBrowseBtn, items, function (action) {
+        var kind = action.slice('folder:'.length);
+        var chip = document.querySelector('[data-detail-folder="' + kind + '"]');
+        if (chip) chip.click();
+      });
+    });
+  }
+
+  /**
+   * 「管理」菜单的 5 项（对照 GameInstancePage.java:394-399）。
+   * 截图管理 = 切到第 7 个页签；其余 4 项走 instances:maintenance。
+   */
+  var DETAIL_MANAGE_ITEMS = [
+    { action: 'screenshots', label: '截图管理' },
+    { action: 'log', label: '查看日志（清单外新增）' },
+    { action: 'redownload-assets', label: '更新游戏资源文件' },
+    { action: 'remove-assets', label: '删除所有游戏资源文件', danger: true },
+    { action: 'remove-libraries', label: '删除所有库文件', danger: true },
+    { action: 'clean', label: '清理游戏文件夹', danger: true }
+  ];
+
+  var MAINTENANCE_CONFIRM = {
+    'remove-assets': {
+      title: '删除所有游戏资源文件？',
+      text: '会删除游戏目录下的 assets（声音 / 语言 / 贴图）。之后启动游戏会重新下载，期间游戏可能没有声音或文字。',
+      ok: '删除'
+    },
+    'remove-libraries': {
+      title: '删除所有库文件？',
+      text: '会删除游戏目录下的 libraries。之后必须重新安装任一实例才能启动，请确认没有正在运行的游戏。',
+      ok: '删除'
+    },
+    clean: {
+      title: '清理游戏文件夹？',
+      text: '会清空 logs / crash-reports，并删除实例目录里解压出的 natives 与安装断点状态。不会动模组、存档与配置。',
+      ok: '清理'
+    }
+  };
+
+  function runMaintenance(action) {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.runInstanceMaintenance !== 'function') {
+      setDetailStatus('主进程桥接不可用，无法执行维护操作', 'error');
+      return;
+    }
+
+    if (action === 'redownload-assets') {
+      runTask({
+        title: '更新游戏资源文件',
+        status: '正在对比资源文件…',
+        cancelable: true,
+        run: function (ctx) {
+          return api.runInstanceMaintenance({
+            instanceId: instance.id,
+            action: action,
+            taskId: ctx.taskId
+          });
+        }
+      }).then(function (result) {
+        if (!result) return;
+        setDetailStatus(result.message || '资源文件已更新', 'ok');
+      }).catch(function (error) {
+        setDetailStatus(describeLaunchError(error), 'error');
+      });
+      return;
+    }
+
+    var confirm = MAINTENANCE_CONFIRM[action];
+    if (!confirm) return;
+
+    askConfirm(confirm.text, function () {
+      setDetailStatus('正在执行：' + confirm.title.replace('？', ''));
+      api.runInstanceMaintenance({ instanceId: instance.id, action: action })
+        .then(function (result) {
+          if (!result) return;
+          var removed = (result.removed || []).join('、');
+          setDetailStatus(
+            removed
+              ? '已清理：' + removed + '（释放 ' + result.freedLabel + '）'
+              : '没有需要清理的内容',
+            'ok'
+          );
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
+    }, confirm.ok);
+  }
+
+  var detailManageBtn = document.getElementById('detailManage');
+  if (detailManageBtn) {
+    detailManageBtn.addEventListener('click', function () {
+      openDetailPopup(detailManageBtn, DETAIL_MANAGE_ITEMS, function (action) {
+        if (action === 'screenshots') {
+          setDetailTab('screenshots');
+          return;
+        }
+        if (action === 'log') {
+          openLogWindow({ instanceId: detailInstanceId });
+          return;
+        }
+        runMaintenance(action);
+      });
+    });
+  }
+
+  // ---------------- 导航项：更新整合包 ----------------
+
+  var detailUpdatePackBtn = document.getElementById('detailUpdatePack');
+  if (detailUpdatePackBtn) {
+    detailUpdatePackBtn.addEventListener('click', function () {
+      updateModpackFlow();
+    });
+  }
+
+  var detailTestLaunchBtn = document.getElementById('detailTestLaunch');
+  if (detailTestLaunchBtn) {
+    detailTestLaunchBtn.addEventListener('click', function () {
+      var instance = detailInstance();
+      if (instance) launchInstanceFlow(instance, true);
+    });
+  }
+
+  function updateModpackFlow() {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance) return;
+
+    if (typeof api.pickModpack !== 'function' || typeof api.installModpack !== 'function' || typeof api.mergeModpack !== 'function') {
+      setDetailStatus('主进程桥接不可用，无法更新整合包', 'error');
+      return;
+    }
+
+    askConfirm(
+      '用新版整合包更新「' + instanceLabel(instance) + '」？\n' +
+      '新包里同名的文件会覆盖旧文件，存档、截图以及新包里没有的配置会保留；更新前建议先备份。',
+      function () {
+        api.pickModpack()
+          .then(function (info) {
+            if (!info) return null;
+
+            var staging = 'update-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 5);
+
+            return runTask({
+              title: '更新整合包',
+              status: '正在安装到临时实例…',
+              cancelable: true,
+              run: function (ctx) {
+                return api.installModpack({
+                  token: info.token,
+                  gameDir: instance.gameDir,
+                  name: staging,
+                  taskId: ctx.taskId
+                }).then(function (installed) {
+                  ctx.progress('正在合并到「' + instanceLabel(instance) + '」…', 85);
+                  return api.mergeModpack({
+                    instanceId: instance.id,
+                    stagingName: (installed && installed.instanceId) || staging
+                  });
+                });
+              }
+            });
+          })
+          .then(function (merged) {
+            if (!merged) return;
+            if (merged.snapshot) updateInstanceUI(merged.snapshot);
+            renderDetailHeader();
+            setDetailStatus(
+              '已更新：覆盖 ' + merged.files + ' 个文件' ,
+              'ok'
+            );
+          })
+          .catch(function (error) {
+            setDetailStatus(describeLaunchError(error), 'error');
+          });
+      },
+      '开始更新'
+    );
+  }
+
+  // ---------------- 页签：截图（第 7 个页签） ----------------
+
+  var shotPane = {
+    grid: document.getElementById('shotGrid'),
+    search: document.getElementById('shotSearch'),
+    count: document.getElementById('shotCount'),
+    status: document.getElementById('shotStatus'),
+    refresh: document.getElementById('shotRefresh'),
+    openFolder: document.getElementById('shotOpenFolder')
+  };
+
+  var shotState = {
+    instanceId: '',
+    entries: [],
+    filter: '',
+    skipped: 0,
+    loaded: false
+  };
+
+  var shotDialogState = null;
+
+  function shotLabel(entry) {
+    return String((entry && entry.name) || '').replace(/\.[^.]+$/, '');
+  }
+
+  function filteredScreenshots() {
+    var keyword = shotState.filter.trim().toLowerCase();
+    if (!keyword) return shotState.entries;
+    return shotState.entries.filter(function (entry) {
+      return String(entry.name).toLowerCase().indexOf(keyword) >= 0;
+    });
+  }
+
+  function renderScreenshotGrid() {
+    if (!shotPane.grid) return;
+
+    var list = filteredScreenshots();
+    shotPane.grid.innerHTML = '';
+
+    if (shotPane.count) {
+      shotPane.count.textContent = shotState.filter
+        ? '匹配 ' + list.length + ' / 共 ' + shotState.entries.length
+        : '共 ' + shotState.entries.length;
+    }
+
+    if (list.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'content-empty';
+      empty.textContent = shotState.loaded
+        ? (shotState.entries.length ? '没有匹配的截图' : '这个实例还没有截图；在游戏里按 F2 截图后会出现在这里')
+        : '正在读取截图…';
+      shotPane.grid.appendChild(empty);
+      return;
+    }
+
+    list.forEach(function (entry) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'shot-card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('data-shot-name', entry.name);
+      card.title = entry.name;
+
+      var img = document.createElement('img');
+      img.src = entry.dataUrl;
+      img.alt = shotLabel(entry);
+      img.loading = 'lazy';
+      card.appendChild(img);
+
+      var meta = document.createElement('span');
+      meta.className = 'shot-card__meta';
+      var name = document.createElement('b');
+      name.textContent = shotLabel(entry);
+      var size = document.createElement('span');
+      size.textContent = formatSize(entry.size);
+      meta.appendChild(name);
+      meta.appendChild(size);
+      card.appendChild(meta);
+
+      shotPane.grid.appendChild(card);
+    });
+  }
+
+  function loadScreenshots() {
+    var api = window.launcherAPI;
+    var instance = detailInstance();
+    if (!api || !instance || typeof api.listScreenshots !== 'function') return;
+
+    shotState.instanceId = instance.id;
+    shotState.loaded = false;
+    setHint(shotPane.status, '正在读取截图…');
+    renderScreenshotGrid();
+
+    api.listScreenshots({ instanceId: instance.id })
+      .then(function (result) {
+        if (!result || detailInstanceId !== instance.id) return;
+        shotState.entries = result.entries || [];
+        shotState.skipped = result.skipped || 0;
+        shotState.loaded = true;
+        renderScreenshotGrid();
+        setHint(
+          shotPane.status,
+          result.exists
+            ? (shotState.entries.length
+              ? '共 ' + shotState.entries.length + ' 张' + (shotState.skipped ? '（' + shotState.skipped + ' 张过大已跳过）' : '') + ' · ' + result.root
+              : '还没有截图 · ' + result.root)
+            : '截图目录还不存在 · ' + result.root
+        );
+      })
+      .catch(function (error) {
+        shotState.loaded = true;
+        renderScreenshotGrid();
+        setHint(shotPane.status, describeLaunchError(error), 'error');
+      });
+  }
+
+  function findScreenshot(name) {
+    for (var i = 0; i < shotState.entries.length; i += 1) {
+      if (shotState.entries[i].name === name) return shotState.entries[i];
+    }
+    return null;
+  }
+
+  function openShotDialog(entry) {
+    if (!entry) return;
+    shotDialogState = entry;
+
+    var image = document.getElementById('shotImage');
+    var meta = document.getElementById('shotMeta');
+    if (image) image.src = entry.dataUrl;
+    if (meta) {
+      meta.textContent = entry.name + ' · ' + formatSize(entry.size) + ' · ' +
+        formatDate(entry.modifiedAt);
+    }
+    setHint(document.getElementById('shotDialogStatus'), '');
+    openDialog('shot');
+  }
+
+  if (shotPane.grid) {
+    shotPane.grid.addEventListener('click', function (event) {
+      var card = event.target && event.target.closest ? event.target.closest('[data-shot-name]') : null;
+      if (!card) return;
+      openShotDialog(findScreenshot(card.getAttribute('data-shot-name')));
+    });
+  }
+
+  if (shotPane.search) {
+    shotPane.search.addEventListener('input', function () {
+      shotState.filter = shotPane.search.value || '';
+      renderScreenshotGrid();
+    });
+  }
+
+  if (shotPane.refresh) {
+    shotPane.refresh.addEventListener('click', function () {
+      loadScreenshots();
+    });
+  }
+
+  if (shotPane.openFolder) {
+    shotPane.openFolder.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance || typeof api.openInstanceContentFolder !== 'function') return;
+      api.openInstanceContentFolder({ instanceId: instance.id, kind: 'screenshots' })
+        .then(function (result) { setHint(shotPane.status, '已打开 ' + (result && result.path ? result.path : '截图文件夹'), 'ok'); })
+        .catch(function (error) { setHint(shotPane.status, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  var shotDialogStatus = document.getElementById('shotDialogStatus');
+  var shotConfirmBtn = document.getElementById('shotConfirm');
+  if (shotConfirmBtn) {
+    shotConfirmBtn.addEventListener('click', function () {
+      closeDialog();
+    });
+  }
+
+  var shotCopyBtn = document.getElementById('shotCopy');
+  if (shotCopyBtn) {
+    shotCopyBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance || !shotDialogState) return;
+      api.copyScreenshot({ instanceId: instance.id, path: shotDialogState.path })
+        .then(function () { setHint(shotDialogStatus, '已复制到剪贴板', 'ok'); })
+        .catch(function (error) { setHint(shotDialogStatus, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  var shotWallBtn = document.getElementById('shotSetWallpaper');
+  if (shotWallBtn) {
+    shotWallBtn.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      var instance = detailInstance();
+      if (!api || !instance || !shotDialogState) return;
+      setHint(shotDialogStatus, '正在设为启动器背景…');
+      api.setScreenshotWallpaper({ instanceId: instance.id, path: shotDialogState.path })
+        .then(function (result) {
+          if (!result) return;
+          wallAcknowledge(result);
+          setHint(shotDialogStatus, '已设为启动器背景（外观 → 壁纸模式已切到自定义）', 'ok');
+        })
+        .catch(function (error) {
+          setHint(shotDialogStatus, describeLaunchError(error), 'error');
+        });
+    });
   }
 
   // ---------------- 页签：游戏设置（实例级） ----------------
@@ -6143,7 +8633,7 @@
 
     if (worlds.length === 0) {
       renderWorldEmpty(worldState.list.length === 0 ? '这个实例还没有世界。' : '没有匹配的世界。');
-      if (worldCount) worldCount.textContent = String(worldState.list.length);
+      if (worldToolbar) worldToolbar.setCount(worldState.list.length);
       return;
     }
 
@@ -6214,7 +8704,7 @@
     });
 
     worldList.appendChild(fragment);
-    if (worldCount) worldCount.textContent = String(worlds.length);
+    if (worldToolbar) worldToolbar.setCount(worlds.length);
   }
 
   function loadWorlds() {
@@ -6757,18 +9247,17 @@
 
   // ---- 世界：事件 ----
 
-  if (worldSearch) {
-    worldSearch.addEventListener('input', function () {
-      worldState.query = worldSearch.value;
+  // 世界列表工具栏：搜索（即时过滤）+ 刷新 + 计数。
+  var worldToolbar = createToolbar({
+    search: worldSearch,
+    actions: [{ el: worldRefresh, onClick: loadWorlds }],
+    countEl: worldCount,
+    debounce: 0,
+    onChange: function (state) {
+      worldState.query = state.query;
       renderWorldList();
-    });
-  }
-
-  if (worldRefresh) {
-    worldRefresh.addEventListener('click', function () {
-      loadWorlds();
-    });
-  }
+    }
+  });
 
   if (worldOpenFolder) {
     worldOpenFolder.addEventListener('click', function () {
@@ -7273,12 +9762,41 @@
       if (!payload) return;
       if (payload.phase === 'starting') {
         setLaunchNote('正在准备 ' + (payload.versionId || '实例') + ' …', false);
+        if (openDialogName === 'log') {
+          // 新的一次启动：清空上一次的输出，等 spawned 把新日志路径补上。
+          logState.file = '';
+          logState.launchId = '';
+          logState.active = true;
+          if (logPane.view) logPane.view.textContent = '';
+          if (logPane.stopBtn) logPane.stopBtn.disabled = false;
+          setLogStateLabel('正在启动…', 'ok');
+          setHint(logPane.status, '');
+        }
       } else if (payload.phase === 'spawned') {
         setLaunchNote('游戏已启动 · PID ' + (payload.pid || '-'), false);
+        if (openDialogName === 'log') {
+          logState.file = payload.logFile || '';
+          logState.launchId = payload.launchId || '';
+          logState.active = true;
+          if (logPane.fileLabel) logPane.fileLabel.textContent = logState.file || '（启动器没有返回日志路径）';
+          if (logPane.stopBtn) logPane.stopBtn.disabled = false;
+          setLogStateLabel('游戏运行中 · PID ' + (payload.pid || '-'), 'ok');
+        }
+      } else if (payload.phase === 'output') {
+        // 日志窗口开着就实时续上（启动器不写第二份流，界面直接吃同一份输出）。
+        if (openDialogName === 'log') appendLiveLog(payload.stream, payload.text);
       } else if (payload.phase === 'error') {
         setLaunchNote(describeLaunchError({ message: payload.message }), true);
       } else if (payload.phase === 'exit') {
         setLaunchNote('游戏已退出（code ' + payload.code + '）', payload.code !== 0);
+        if (openDialogName === 'log') {
+          appendLiveLog('sys', '进程结束 code=' + payload.code + ' signal=' + (payload.signal || '-') + '\n');
+          refreshLogActiveState();
+        }
+        // 手动结束（停止按钮）不算崩溃；非 0 退出码才弹游戏崩溃窗口。
+        if (!payload.stopped && Number(payload.code) !== 0) {
+          openGameCrashWindow(payload);
+        }
       }
     });
   }
@@ -7726,14 +10244,14 @@
     }
 
     downloadLoading = true;
-    if (downloadRefresh) downloadRefresh.classList.add('is-busy');
+    if (downloadToolbar) downloadToolbar.setBusy(true);
     setDownloadStatus(force ? '正在刷新版本列表…' : '正在从 mcdl 读取版本列表…');
     renderDownloadVersions();
 
     api.getVersionCatalog({ force: Boolean(force) })
       .then(function (data) {
         downloadLoading = false;
-        if (downloadRefresh) downloadRefresh.classList.remove('is-busy');
+        if (downloadToolbar) downloadToolbar.setBusy(false);
         if (!data || !Array.isArray(data.versions) || data.versions.length === 0) {
           throw new Error('mcdl 返回的版本列表为空');
         }
@@ -7745,7 +10263,7 @@
       })
       .catch(function (error) {
         downloadLoading = false;
-        if (downloadRefresh) downloadRefresh.classList.remove('is-busy');
+        if (downloadToolbar) downloadToolbar.setBusy(false);
         downloadCatalog = null;
         renderDownloadVersions();
         console.error('[downloads] failed to load versions:', error);
@@ -8220,23 +10738,18 @@
     });
   }
 
-  if (downloadSearch) {
-    downloadSearch.addEventListener('input', function () {
+  // 游戏版本工具栏：搜索（即时过滤）+ 版本类型 + 刷新 + 计数。
+  // 刷新按钮的 is-busy 由 loadDownloadCatalog 通过 setBusy 统一控制。
+  var downloadToolbar = createToolbar({
+    search: downloadSearch,
+    filters: [{ el: downloadType, name: 'type' }],
+    actions: [{ el: downloadRefresh, onClick: function () { loadDownloadCatalog(true); } }],
+    countEl: downloadCount,
+    debounce: 0,
+    onChange: function () {
       renderDownloadVersions();
-    });
-  }
-
-  if (downloadType) {
-    downloadType.addEventListener('change', function () {
-      renderDownloadVersions();
-    });
-  }
-
-  if (downloadRefresh) {
-    downloadRefresh.addEventListener('click', function () {
-      loadDownloadCatalog(true);
-    });
-  }
+    }
+  });
 
   if (downloadVersions) {
     downloadVersions.addEventListener('click', function (event) {
@@ -8895,30 +11408,29 @@
 
   // ---- 内容页签事件 ----
 
-  Array.prototype.forEach.call(document.querySelectorAll('[data-addon-search]'), function (button) {
-    button.addEventListener('click', function () {
-      var kind = button.getAttribute('data-addon-search');
-      if (ADDON_PAGES[kind]) searchAddons(kind);
-    });
-  });
-
+  // 模组 / 资源包 / 光影 三套同构工具栏：搜索框只在回车或点「搜索」时触发，
+  // 三个下拉（版本 / 排序 / 加载器）一变更就搜。资源包和光影没有加载器下拉，
+  // filters 里的空节点会被基座跳过。
   ADDON_KINDS.forEach(function (kind) {
     var page = ADDON_PAGES[kind];
     if (!page) return;
 
-    if (page.search) {
-      page.search.addEventListener('keydown', function (event) {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
-        searchAddons(kind);
-      });
-    }
-
-    [page.version, page.sort, page.loader].forEach(function (select) {
-      if (!select) return;
-      select.addEventListener('change', function () {
-        searchAddons(kind);
-      });
+    page.toolbar = createToolbar({
+      search: page.search,
+      liveSearch: false,
+      enterSearch: true,
+      filters: [
+        { el: page.version, name: 'version' },
+        { el: page.sort, name: 'sort' },
+        { el: page.loader, name: 'loader' }
+      ],
+      actions: [{
+        el: document.querySelector('[data-addon-search="' + kind + '"]'),
+        onClick: function () { searchAddons(kind); }
+      }],
+      countEl: page.count,
+      debounce: 0,
+      onChange: function () { searchAddons(kind); }
     });
 
     if (page.grid) {
@@ -8977,6 +11489,9 @@
     window.launcherAPI.getPreferences()
       .then(function (prefs) {
         applyAnimationPreference(prefs);
+        // 主进程 settings 若已认 themeMode / colorStyle / accentColor（见 themePersist
+        // 的说明），这里以它为准；否则 themeAdoptPreferences 是空操作。
+        themeAdoptPreferences(prefs);
       })
       .catch(function (error) {
         console.warn('[settings] could not load preferences:', error);

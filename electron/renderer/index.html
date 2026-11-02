@@ -47,6 +47,9 @@
     --faint: rgba(199, 212, 230, .34);
     --hairline: rgba(255, 255, 255, .34);
     --accent: #9fd0ff;
+    /* 强调色的 RGB 三通道：样式里 250+ 处 rgba(var(--accent-rgb), α) 都走这个变量，
+       色彩模式（自定义主色）因此只需改 --accent / --accent-rgb 两个变量。 */
+    --accent-rgb: 159, 208, 255;
   }
 
   html, body {
@@ -200,7 +203,7 @@
   }
 
   .window-btn:focus-visible {
-    outline: 1px dashed rgba(159, 208, 255, .8);
+    outline: 1px dashed rgba(var(--accent-rgb), .8);
     outline-offset: 2px;
   }
 
@@ -271,16 +274,16 @@
     padding-left: 10px;
     border-radius: 999px;
     color: #f2f7ff;
-    border-color: rgba(159, 208, 255, .62);
+    border-color: rgba(var(--accent-rgb), .62);
     background: rgba(18, 28, 43, .94);
     outline: none;
   }
 
   .rail-btn.is-active {
     color: #eaf5ff;
-    border-color: rgba(159, 208, 255, .58);
+    border-color: rgba(var(--accent-rgb), .58);
     background:
-      linear-gradient(145deg, rgba(159, 208, 255, .16), rgba(91, 116, 227, .08)),
+      linear-gradient(145deg, rgba(var(--accent-rgb), .16), rgba(91, 116, 227, .08)),
       rgba(9, 13, 20, .86);
   }
 
@@ -293,7 +296,7 @@
     height: 16px;
     transform: translateY(-50%);
     background: var(--accent);
-    box-shadow: 0 0 9px rgba(159, 208, 255, .7);
+    box-shadow: 0 0 9px rgba(var(--accent-rgb), .7);
   }
 
   /* 尚未接入的导航项：保持可见但不可点击，避免假按钮 */
@@ -309,7 +312,7 @@
     padding-left: 0;
     border-radius: 999px;
     color: inherit;
-    border-color: rgba(159, 208, 255, .18);
+    border-color: rgba(var(--accent-rgb), .18);
     background: rgba(9, 13, 20, .5);
   }
 
@@ -320,7 +323,7 @@
     place-items: center;
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, .22);
-    background: linear-gradient(145deg, rgba(159, 208, 255, .42), rgba(91, 116, 227, .22));
+    background: linear-gradient(145deg, rgba(var(--accent-rgb), .42), rgba(91, 116, 227, .22));
     color: #eaf4ff;
     font-size: 7px;
     font-weight: 700;
@@ -384,7 +387,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: rgba(159, 208, 255, .72);
+    color: rgba(var(--accent-rgb), .72);
   }
 
   .top-status__dot {
@@ -416,7 +419,7 @@
     place-items: center;
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, .22);
-    background: linear-gradient(145deg, rgba(159, 208, 255, .42), rgba(91, 116, 227, .22));
+    background: linear-gradient(145deg, rgba(var(--accent-rgb), .42), rgba(91, 116, 227, .22));
     color: #eaf4ff;
     font-size: 7px;
     font-weight: 700;
@@ -445,7 +448,7 @@
   }
 
   .top-settings:focus-visible {
-    outline: 1px dashed rgba(159, 208, 255, .7);
+    outline: 1px dashed rgba(var(--accent-rgb), .7);
     outline-offset: 2px;
   }
 
@@ -594,7 +597,7 @@
   }
 
   .frame-label__value {
-    color: rgba(159, 208, 255, .46);
+    color: rgba(var(--accent-rgb), .46);
   }
 
   /* ---------------------------------------------------------
@@ -802,12 +805,12 @@
     height: 4px;
     background: var(--accent);
     border-radius: 50%;
-    box-shadow: 0 0 8px rgba(159, 208, 255, .75);
+    box-shadow: 0 0 8px rgba(var(--accent-rgb), .75);
   }
 
   .stage-eyebrow__index {
     margin-left: auto;
-    color: rgba(159, 208, 255, .38);
+    color: rgba(var(--accent-rgb), .38);
     letter-spacing: .16em;
   }
 
@@ -899,7 +902,7 @@
     top: 50%;
     width: min(31vw, 360px);
     aspect-ratio: 1;
-    border: 1px solid rgba(159, 208, 255, .13);
+    border: 1px solid rgba(var(--accent-rgb), .13);
     border-radius: 50%;
     transform: translate(-50%, -50%) rotateX(68deg) rotateZ(-14deg);
     animation: orbit-spin 26s linear infinite;
@@ -1038,7 +1041,7 @@
     font-weight: 500;
     letter-spacing: .18em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .7);
+    color: rgba(var(--accent-rgb), .7);
   }
 
   .stage-meta {
@@ -1069,7 +1072,7 @@
     align-items: center;
     gap: 9px;
     border: 0;
-    border-bottom: 1px solid rgba(159, 208, 255, .22);
+    border-bottom: 1px solid rgba(var(--accent-rgb), .22);
     background: transparent;
     color: rgba(214, 231, 249, .6);
     font-family: inherit;
@@ -1084,14 +1087,14 @@
   }
 
   .stage-link span {
-    color: rgba(159, 208, 255, .68);
+    color: rgba(var(--accent-rgb), .68);
     font-size: 11px;
   }
 
   .stage-link:hover,
   .stage-link:focus-visible {
     color: #f2f7ff;
-    border-color: rgba(159, 208, 255, .6);
+    border-color: rgba(var(--accent-rgb), .6);
     outline: none;
   }
 
@@ -1121,7 +1124,7 @@
   }
 
   .news-head__count {
-    color: rgba(159, 208, 255, .38);
+    color: rgba(var(--accent-rgb), .38);
     letter-spacing: .14em;
   }
 
@@ -1143,7 +1146,7 @@
     line-height: 1;
     font-weight: 600;
     letter-spacing: .12em;
-    color: rgba(159, 208, 255, .455);
+    color: rgba(var(--accent-rgb), .455);
   }
 
   .news-item h3 {
@@ -1169,7 +1172,7 @@
     padding: 0;
     border: 0;
     background: none;
-    color: rgba(159, 208, 255, .55);
+    color: rgba(var(--accent-rgb), .55);
     font-family: inherit;
     font-size: 8px;
     font-weight: 600;
@@ -1239,7 +1242,7 @@
     right: 13px;
     width: 1px;
     height: 18px;
-    background: rgba(159, 208, 255, .45);
+    background: rgba(var(--accent-rgb), .45);
     box-shadow: 7px 0 0 rgba(255, 255, 255, .09);
     pointer-events: none;
   }
@@ -1248,7 +1251,7 @@
     right: auto;
     left: 13px;
     background: rgba(255, 255, 255, .18);
-    box-shadow: 7px 0 0 rgba(159, 208, 255, .25);
+    box-shadow: 7px 0 0 rgba(var(--accent-rgb), .25);
   }
 
   .console-head {
@@ -1265,7 +1268,7 @@
   }
 
   .console-head span:last-child {
-    color: rgba(159, 208, 255, .4);
+    color: rgba(var(--accent-rgb), .4);
     letter-spacing: .14em;
   }
 
@@ -1356,11 +1359,11 @@
 
   .instance-item:hover {
     color: #fff;
-    background: linear-gradient(90deg, rgba(159, 208, 255, .055), transparent 82%);
+    background: linear-gradient(90deg, rgba(var(--accent-rgb), .055), transparent 82%);
   }
 
   .instance-item:focus-visible {
-    outline: 1px dashed rgba(159, 208, 255, .62);
+    outline: 1px dashed rgba(var(--accent-rgb), .62);
     outline-offset: 1px;
   }
 
@@ -1410,13 +1413,13 @@
 
   .instance-item.is-active {
     color: #fff;
-    background: linear-gradient(90deg, rgba(159, 208, 255, .08), transparent 88%);
+    background: linear-gradient(90deg, rgba(var(--accent-rgb), .08), transparent 88%);
   }
 
   .instance-item.is-active .instance-item__dot {
-    border-color: rgba(159, 208, 255, .88);
+    border-color: rgba(var(--accent-rgb), .88);
     background: var(--accent);
-    box-shadow: 0 0 9px rgba(159, 208, 255, .85);
+    box-shadow: 0 0 9px rgba(var(--accent-rgb), .85);
   }
 
   .instance-item.is-active::before {
@@ -1427,8 +1430,8 @@
     width: 2px;
     height: 19px;
     transform: translateY(-50%);
-    background: rgba(159, 208, 255, .85);
-    box-shadow: 0 0 10px rgba(159, 208, 255, .6);
+    background: rgba(var(--accent-rgb), .85);
+    box-shadow: 0 0 10px rgba(var(--accent-rgb), .6);
   }
 
   .config-current {
@@ -1451,7 +1454,7 @@
     font-weight: 600;
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .58);
+    color: rgba(var(--accent-rgb), .58);
   }
 
   .config-grid {
@@ -1514,7 +1517,7 @@
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    color: rgba(159, 208, 255, .68);
+    color: rgba(var(--accent-rgb), .68);
   }
 
   .signal i {
@@ -1522,7 +1525,7 @@
     height: 4px;
     border-radius: 50%;
     background: var(--accent);
-    box-shadow: 0 0 7px rgba(159, 208, 255, .8);
+    box-shadow: 0 0 7px rgba(var(--accent-rgb), .8);
   }
 
   .console-card.is-flash {
@@ -1530,7 +1533,7 @@
   }
 
   @keyframes console-flash {
-    0% { border-color: rgba(159, 208, 255, .58); box-shadow: 0 0 0 1px rgba(159, 208, 255, .12), 0 22px 54px rgba(0, 0, 0, .3); }
+    0% { border-color: rgba(var(--accent-rgb), .58); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .12), 0 22px 54px rgba(0, 0, 0, .3); }
     100% { border-color: rgba(255, 255, 255, .19); }
   }
 
@@ -1731,7 +1734,7 @@
 
   .focus-ring {
     position: absolute; inset: -8px;
-    border: 1px dashed rgba(159,208,255,.68);
+    border: 1px dashed rgba(var(--accent-rgb),.68);
     border-radius: 12px;
     opacity: 0; transition: opacity .1s linear;
     pointer-events: none;
@@ -2156,8 +2159,8 @@
   .create-back:hover,
   .create-back:focus-visible {
     color: #f4faff;
-    border-color: rgba(159, 208, 255, .28);
-    background: rgba(159, 208, 255, .055);
+    border-color: rgba(var(--accent-rgb), .28);
+    background: rgba(var(--accent-rgb), .055);
     box-shadow: 0 0 22px rgba(104, 151, 215, .1);
     transform: translateX(-2px);
     outline: none;
@@ -2169,7 +2172,7 @@
     font-weight: 600;
     letter-spacing: .2em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .36);
+    color: rgba(var(--accent-rgb), .36);
   }
 
   .create-intro {
@@ -2187,7 +2190,7 @@
     font-weight: 600;
     letter-spacing: .24em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .52);
+    color: rgba(var(--accent-rgb), .52);
   }
 
   .create-title {
@@ -2261,9 +2264,9 @@
     width: 68px;
     height: 20px;
     padding: 0 18px 0 7px;
-    border: 1px solid rgba(159, 208, 255, .18);
+    border: 1px solid rgba(var(--accent-rgb), .18);
     border-radius: 2px;
-    background: rgba(159, 208, 255, .025);
+    background: rgba(var(--accent-rgb), .025);
     color: rgba(199, 220, 243, .7);
     font: 600 7px/1 "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     letter-spacing: .06em;
@@ -2279,8 +2282,8 @@
   .create-version-type__select:hover,
   .create-version-type__select:focus {
     color: rgba(246, 251, 255, .92);
-    border-color: rgba(159, 208, 255, .5);
-    background: rgba(159, 208, 255, .055);
+    border-color: rgba(var(--accent-rgb), .5);
+    background: rgba(var(--accent-rgb), .055);
     box-shadow: 0 0 18px rgba(94, 142, 207, .11);
   }
 
@@ -2295,8 +2298,8 @@
     top: 50%;
     width: 5px;
     height: 5px;
-    border-right: 1px solid rgba(159, 208, 255, .55);
-    border-bottom: 1px solid rgba(159, 208, 255, .55);
+    border-right: 1px solid rgba(var(--accent-rgb), .55);
+    border-bottom: 1px solid rgba(var(--accent-rgb), .55);
     transform: translateY(-65%) rotate(45deg);
     pointer-events: none;
   }
@@ -2346,19 +2349,19 @@
   }
 
   .create-control:hover {
-    border-color: rgba(159, 208, 255, .34);
-    background-color: rgba(159, 208, 255, .035);
+    border-color: rgba(var(--accent-rgb), .34);
+    background-color: rgba(var(--accent-rgb), .035);
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .045),
+      0 0 0 1px rgba(var(--accent-rgb), .045),
       0 0 22px rgba(94, 142, 207, .08);
   }
 
   .create-control:focus,
   .create-control:focus-visible {
-    border-color: rgba(159, 208, 255, .58);
-    background-color: rgba(159, 208, 255, .045);
+    border-color: rgba(var(--accent-rgb), .58);
+    background-color: rgba(var(--accent-rgb), .045);
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .12),
+      0 0 0 1px rgba(var(--accent-rgb), .12),
       0 0 28px rgba(94, 142, 207, .14);
   }
 
@@ -2385,7 +2388,7 @@
 
   .create-control:hover + .create-select-arrow,
   .create-control:focus + .create-select-arrow {
-    border-color: rgba(159, 208, 255, .72);
+    border-color: rgba(var(--accent-rgb), .72);
   }
 
   .create-actions {
@@ -2403,7 +2406,7 @@
     align-items: center;
     gap: 12px;
     padding: 13px 19px;
-    border: 1px solid rgba(159, 208, 255, .32);
+    border: 1px solid rgba(var(--accent-rgb), .32);
     border-radius: 3px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .025)),
@@ -2419,7 +2422,7 @@
     text-transform: uppercase;
     cursor: pointer;
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .035),
+      0 0 0 1px rgba(var(--accent-rgb), .035),
       0 0 24px rgba(94, 142, 207, .08);
     transition:
       border-color 160ms linear,
@@ -2429,17 +2432,17 @@
   }
 
   .create-submit span:last-child {
-    color: rgba(159, 208, 255, .72);
+    color: rgba(var(--accent-rgb), .72);
     font-size: 12px;
     letter-spacing: 0;
   }
 
   .create-submit:hover,
   .create-submit:focus-visible {
-    border-color: rgba(159, 208, 255, .64);
-    background-color: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .64);
+    background-color: rgba(var(--accent-rgb), .06);
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .12),
+      0 0 0 1px rgba(var(--accent-rgb), .12),
       0 0 34px rgba(94, 142, 207, .18);
     transform: translateY(-1px);
     outline: none;
@@ -2510,9 +2513,9 @@
     align-self: flex-start;
     gap: 7px;
     padding: 7px 11px;
-    border: 1px solid rgba(159, 208, 255, .26);
+    border: 1px solid rgba(var(--accent-rgb), .26);
     border-radius: 3px;
-    background: rgba(159, 208, 255, .035);
+    background: rgba(var(--accent-rgb), .035);
     color: rgba(235, 246, 255, .78);
     font-family: inherit;
     font-size: 8px;
@@ -2542,8 +2545,8 @@
   .scan-instances__btn:hover,
   .scan-instances__btn:focus-visible {
     color: #fff;
-    border-color: rgba(159, 208, 255, .58);
-    background: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .58);
+    background: rgba(var(--accent-rgb), .06);
     box-shadow: 0 0 22px rgba(94, 142, 207, .14);
     transform: translateY(-1px);
     outline: none;
@@ -2554,6 +2557,11 @@
     cursor: wait;
     transform: none;
     box-shadow: none;
+  }
+
+  /* 「清理缓存」置灰是常态（没有缓存），不是进行中，指针别显示 wait */
+  #scanCacheClear:disabled {
+    cursor: not-allowed;
   }
 
   .scan-instances__hint {
@@ -2567,7 +2575,7 @@
     font-size: 7px;
     line-height: 1.5;
     letter-spacing: .04em;
-    color: rgba(159, 208, 255, .58);
+    color: rgba(var(--accent-rgb), .58);
   }
 
   .scan-instances__status:empty {
@@ -2627,14 +2635,14 @@
     font-size: 6.5px;
     font-weight: 400;
     letter-spacing: .02em;
-    color: rgba(159, 208, 255, .28);
+    color: rgba(var(--accent-rgb), .28);
   }
 
   .quick-action:hover,
   .quick-action:focus-visible {
     color: rgba(246, 251, 255, .92);
-    border-color: rgba(159, 208, 255, .3);
-    background: rgba(159, 208, 255, .045);
+    border-color: rgba(var(--accent-rgb), .3);
+    background: rgba(var(--accent-rgb), .045);
     box-shadow: 0 0 20px rgba(94, 142, 207, .1);
     transform: translateY(-1px);
     outline: none;
@@ -2776,7 +2784,7 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .18) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .18) transparent;
   }
 
   .instance-list::-webkit-scrollbar {
@@ -2784,7 +2792,7 @@
   }
 
   .instance-list::-webkit-scrollbar-thumb {
-    background: rgba(159, 208, 255, .18);
+    background: rgba(var(--accent-rgb), .18);
     border-radius: 4px;
   }
 
@@ -2813,9 +2821,9 @@
     align-self: flex-start;
     margin-top: 5px;
     padding: 8px 11px;
-    border: 1px solid rgba(159, 208, 255, .26);
+    border: 1px solid rgba(var(--accent-rgb), .26);
     border-radius: 3px;
-    background: rgba(159, 208, 255, .035);
+    background: rgba(var(--accent-rgb), .035);
     color: rgba(235, 246, 255, .76);
     font-family: inherit;
     font-size: 8px;
@@ -2830,7 +2838,7 @@
   .instance-empty__cta:hover,
   .instance-empty__cta:focus-visible {
     color: #fff;
-    border-color: rgba(159, 208, 255, .58);
+    border-color: rgba(var(--accent-rgb), .58);
     box-shadow: 0 0 22px rgba(94, 142, 207, .14);
     outline: none;
   }
@@ -2878,7 +2886,7 @@
     left: -40%;
     width: 40%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(159, 208, 255, .85), transparent);
+    background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), .85), transparent);
     animation: install-sweep 1.4s linear infinite;
   }
 
@@ -2952,7 +2960,7 @@
     padding-left: clamp(22px, 2.6vw, 40px);
     border-left: 1px solid rgba(255, 255, 255, .09);
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   /* 账户面板：卡片式排布，整块靠右，与左侧的大标题形成呼吸感 */
@@ -2987,7 +2995,7 @@
     justify-items: center;
     gap: 9px;
     padding: 10px 10px 12px;
-    border: 1px solid rgba(159, 208, 255, .13);
+    border: 1px solid rgba(var(--accent-rgb), .13);
     border-radius: 7px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(255, 255, 255, .008)),
@@ -3005,7 +3013,7 @@
   .account-tile:hover,
   .account-tile:focus-visible {
     transform: translateY(-3px);
-    border-color: rgba(159, 208, 255, .38);
+    border-color: rgba(var(--accent-rgb), .38);
     box-shadow:
       0 14px 30px rgba(0, 0, 0, .4),
       0 0 26px rgba(110, 160, 230, .14);
@@ -3013,12 +3021,12 @@
   }
 
   .account-tile.is-selected {
-    border-color: rgba(159, 208, 255, .6);
+    border-color: rgba(var(--accent-rgb), .6);
     background:
-      linear-gradient(180deg, rgba(159, 208, 255, .1), rgba(159, 208, 255, .015)),
+      linear-gradient(180deg, rgba(var(--accent-rgb), .1), rgba(var(--accent-rgb), .015)),
       rgba(10, 17, 28, .34);
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .12),
+      0 0 0 1px rgba(var(--accent-rgb), .12),
       0 0 28px rgba(110, 160, 230, .22),
       0 16px 34px rgba(0, 0, 0, .42);
   }
@@ -3060,7 +3068,7 @@
     top: 6px;
     z-index: 3;
     padding: 3px 6px;
-    border: 1px solid rgba(159, 208, 255, .3);
+    border: 1px solid rgba(var(--accent-rgb), .3);
     border-radius: 3px;
     background: rgba(6, 11, 18, .82);
     color: rgba(214, 231, 249, .88);
@@ -3107,7 +3115,7 @@
     background:
       radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, .1), transparent 55%),
       radial-gradient(130% 130% at 50% 100%, rgba(0, 0, 0, .45), transparent 62%);
-    box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .1);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .1);
   }
 
   /* 当前账号：右下角绿点 + 发光边框 */
@@ -3152,7 +3160,7 @@
     height: 20px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .22);
+    border: 1px solid rgba(var(--accent-rgb), .22);
     border-radius: 4px;
     background: rgba(8, 13, 21, .78);
     color: rgba(213, 228, 245, .7);
@@ -3178,8 +3186,8 @@
   .account-tile__menu:hover,
   .account-tile__menu:focus-visible {
     color: #f7fbff;
-    border-color: rgba(159, 208, 255, .55);
-    background: rgba(159, 208, 255, .14);
+    border-color: rgba(var(--accent-rgb), .55);
+    background: rgba(var(--accent-rgb), .14);
     outline: none;
     opacity: 1;
   }
@@ -3265,8 +3273,8 @@
   }
 
   .settings-tab.is-active {
-    border-color: rgba(159, 208, 255, .34);
-    background: rgba(159, 208, 255, .1);
+    border-color: rgba(var(--accent-rgb), .34);
+    background: rgba(var(--accent-rgb), .1);
     color: #f4faff;
   }
 
@@ -3276,7 +3284,7 @@
     overflow-x: hidden;
     padding-right: 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .22) transparent;
   }
 
   .settings-pane[hidden] {
@@ -3341,7 +3349,7 @@
 
   .settings-check input {
     margin-top: 2px;
-    accent-color: #8fc6ff;
+    accent-color: var(--accent);
   }
 
   .settings-note {
@@ -3357,7 +3365,7 @@
     display: grid;
     gap: 5px;
     padding: 10px 12px;
-    border: 1px dashed rgba(159, 208, 255, .16);
+    border: 1px dashed rgba(var(--accent-rgb), .16);
     border-radius: 5px;
     background: rgba(255, 255, 255, .012);
   }
@@ -3367,7 +3375,7 @@
     font-weight: 600;
     letter-spacing: .1em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .58);
+    color: rgba(var(--accent-rgb), .58);
   }
 
   .settings-todo span {
@@ -3429,7 +3437,7 @@
     white-space: nowrap;
     font-size: 8.5px;
     letter-spacing: .04em;
-    color: rgba(159, 208, 255, .68);
+    color: rgba(var(--accent-rgb), .68);
   }
 
   .settings-line__chevron {
@@ -3525,8 +3533,8 @@
   }
 
   .line-switch input:checked + .line-switch__track {
-    border-color: rgba(159, 208, 255, .5);
-    background: rgba(159, 208, 255, .3);
+    border-color: rgba(var(--accent-rgb), .5);
+    background: rgba(var(--accent-rgb), .3);
   }
 
   .line-switch input:checked + .line-switch__track::after {
@@ -3535,7 +3543,7 @@
   }
 
   .line-switch input:focus-visible + .line-switch__track {
-    outline: 1px dashed rgba(159, 208, 255, .6);
+    outline: 1px dashed rgba(var(--accent-rgb), .6);
     outline-offset: 2px;
   }
 
@@ -3567,7 +3575,7 @@
     border: 1px solid rgba(207, 230, 255, .9);
     border-radius: 50%;
     background: #0d131c;
-    box-shadow: 0 0 6px rgba(159, 208, 255, .45);
+    box-shadow: 0 0 6px rgba(var(--accent-rgb), .45);
     appearance: none;
     -webkit-appearance: none;
   }
@@ -3619,13 +3627,13 @@
 
   .wall-card:hover,
   .wall-card:focus-visible {
-    border-color: rgba(159, 208, 255, .42);
+    border-color: rgba(var(--accent-rgb), .42);
     outline: none;
   }
 
   .wall-card.is-active {
-    border-color: rgba(159, 208, 255, .62);
-    box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .22);
+    border-color: rgba(var(--accent-rgb), .62);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .22);
   }
 
   .wall-card.is-missing {
@@ -3645,7 +3653,7 @@
     display: grid;
     place-items: center;
     font-size: 15px;
-    color: rgba(159, 208, 255, .7);
+    color: rgba(var(--accent-rgb), .7);
   }
 
   .wall-card__name {
@@ -3675,7 +3683,7 @@
     background: rgba(6, 10, 16, .72);
     font-size: 7px;
     letter-spacing: .08em;
-    color: rgba(159, 208, 255, .9);
+    color: rgba(var(--accent-rgb), .9);
   }
 
   .wall-card__del {
@@ -3747,7 +3755,7 @@
     gap: 12px;
     min-height: 156px;
     padding: 22px 14px 20px;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 7px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .01)),
@@ -3767,11 +3775,11 @@
   .account-action:hover,
   .account-action:focus-visible {
     transform: translateY(-5px);
-    border-color: rgba(159, 208, 255, .46);
+    border-color: rgba(var(--accent-rgb), .46);
     box-shadow:
       0 20px 44px rgba(0, 0, 0, .45),
       0 0 34px rgba(110, 160, 230, .2),
-      inset 0 0 30px rgba(159, 208, 255, .05);
+      inset 0 0 30px rgba(var(--accent-rgb), .05);
     outline: none;
   }
 
@@ -3784,9 +3792,9 @@
     place-items: center;
     width: 44px;
     height: 44px;
-    border: 1px solid rgba(159, 208, 255, .2);
+    border: 1px solid rgba(var(--accent-rgb), .2);
     border-radius: 50%;
-    background: radial-gradient(circle at 50% 32%, rgba(159, 208, 255, .14), rgba(159, 208, 255, .03));
+    background: radial-gradient(circle at 50% 32%, rgba(var(--accent-rgb), .14), rgba(var(--accent-rgb), .03));
     color: rgba(214, 233, 252, .9);
     box-shadow: 0 0 22px rgba(94, 142, 207, .12);
     transition:
@@ -3797,11 +3805,11 @@
 
   .account-action:hover .account-action__icon,
   .account-action:focus-visible .account-action__icon {
-    border-color: rgba(159, 208, 255, .5);
+    border-color: rgba(var(--accent-rgb), .5);
     color: #f4faff;
     box-shadow:
       0 0 30px rgba(120, 170, 240, .34),
-      inset 0 0 18px rgba(159, 208, 255, .1);
+      inset 0 0 18px rgba(var(--accent-rgb), .1);
   }
 
   .account-action__icon svg {
@@ -3856,7 +3864,7 @@
     padding-left: clamp(22px, 2.6vw, 40px);
     border-left: 1px solid rgba(255, 255, 255, .09);
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   .ilist-actions .account-action {
@@ -3898,9 +3906,9 @@
     align-items: center;
     gap: 11px;
     padding: 9px 11px;
-    border: 1px solid rgba(159, 208, 255, .14);
+    border: 1px solid rgba(var(--accent-rgb), .14);
     border-radius: 4px;
-    background: rgba(159, 208, 255, .022);
+    background: rgba(var(--accent-rgb), .022);
     cursor: pointer;
     text-align: left;
     color: inherit;
@@ -3912,14 +3920,14 @@
 
   .ilist-row:hover,
   .ilist-row:focus-visible {
-    border-color: rgba(159, 208, 255, .4);
-    background: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .4);
+    background: rgba(var(--accent-rgb), .06);
     outline: none;
   }
 
   .ilist-row.is-selected {
-    border-color: rgba(159, 208, 255, .5);
-    background: rgba(159, 208, 255, .085);
+    border-color: rgba(var(--accent-rgb), .5);
+    background: rgba(var(--accent-rgb), .085);
     box-shadow: 0 0 22px rgba(94, 142, 207, .14);
   }
 
@@ -3929,9 +3937,9 @@
     height: 30px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .2);
+    border: 1px solid rgba(var(--accent-rgb), .2);
     border-radius: 4px;
-    background: radial-gradient(circle at 50% 30%, rgba(159, 208, 255, .16), rgba(159, 208, 255, .03));
+    background: radial-gradient(circle at 50% 30%, rgba(var(--accent-rgb), .16), rgba(var(--accent-rgb), .03));
     color: #e8f2ff;
     font-size: 12px;
     letter-spacing: .02em;
@@ -3992,9 +4000,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding: 3px 8px;
-    border: 1px solid rgba(159, 208, 255, .13);
+    border: 1px solid rgba(var(--accent-rgb), .13);
     border-radius: 999px;
-    background: rgba(159, 208, 255, .04);
+    background: rgba(var(--accent-rgb), .04);
     font-family: inherit;
     font-size: 8px;
     font-weight: 500;
@@ -4025,7 +4033,7 @@
   .ilist-row__menu {
     flex: 0 0 auto;
     padding: 5px 8px;
-    border: 1px solid rgba(159, 208, 255, .2);
+    border: 1px solid rgba(var(--accent-rgb), .2);
     border-radius: 2px;
     background: transparent;
     color: rgba(213, 228, 245, .66);
@@ -4040,8 +4048,8 @@
   .ilist-row__menu:hover,
   .ilist-row__menu:focus-visible {
     color: #f4faff;
-    border-color: rgba(159, 208, 255, .46);
-    background: rgba(159, 208, 255, .07);
+    border-color: rgba(var(--accent-rgb), .46);
+    background: rgba(var(--accent-rgb), .07);
     outline: none;
   }
 
@@ -4095,8 +4103,8 @@
   }
 
   @keyframes form-flash {
-    0% { box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .5); }
-    100% { box-shadow: inset 0 0 0 1px rgba(159, 208, 255, 0); }
+    0% { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .5); }
+    100% { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0); }
   }
 
   .ilist-new {
@@ -4104,7 +4112,7 @@
     align-items: center;
     gap: 9px;
     padding: 10px 15px;
-    border: 1px solid rgba(159, 208, 255, .32);
+    border: 1px solid rgba(var(--accent-rgb), .32);
     border-radius: 3px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02)),
@@ -4125,7 +4133,7 @@
 
   .ilist-new:hover,
   .ilist-new:focus-visible {
-    border-color: rgba(159, 208, 255, .64);
+    border-color: rgba(var(--accent-rgb), .64);
     box-shadow: 0 0 26px rgba(94, 142, 207, .2);
     outline: none;
   }
@@ -4160,9 +4168,9 @@
     gap: 10px;
     width: 100%;
     padding: 8px 10px;
-    border: 1px solid rgba(159, 208, 255, .14);
+    border: 1px solid rgba(var(--accent-rgb), .14);
     border-radius: 3px;
-    background: rgba(159, 208, 255, .022);
+    background: rgba(var(--accent-rgb), .022);
     color: inherit;
     text-align: left;
     cursor: pointer;
@@ -4171,14 +4179,14 @@
 
   .gamedir-item:hover,
   .gamedir-item:focus-visible {
-    border-color: rgba(159, 208, 255, .4);
-    background: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .4);
+    background: rgba(var(--accent-rgb), .06);
     outline: none;
   }
 
   .gamedir-item.is-selected {
-    border-color: rgba(159, 208, 255, .5);
-    background: rgba(159, 208, 255, .08);
+    border-color: rgba(var(--accent-rgb), .5);
+    background: rgba(var(--accent-rgb), .08);
   }
 
   .gamedir-item__main {
@@ -4225,7 +4233,7 @@
     width: 36px;
     height: 18px;
     border-radius: 999px;
-    border: 1px solid rgba(159, 208, 255, .28);
+    border: 1px solid rgba(var(--accent-rgb), .28);
     background: rgba(8, 13, 20, .55);
     transition: background-color 160ms linear, border-color 160ms linear;
   }
@@ -4243,7 +4251,7 @@
   }
 
   .switch input:checked + .switch__track {
-    border-color: rgba(159, 208, 255, .62);
+    border-color: rgba(var(--accent-rgb), .62);
     background: rgba(91, 116, 227, .34);
   }
 
@@ -4253,7 +4261,7 @@
   }
 
   .switch input:focus-visible + .switch__track {
-    box-shadow: 0 0 0 2px rgba(159, 208, 255, .26);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .26);
   }
 
   .switch input:disabled + .switch__track {
@@ -4322,7 +4330,7 @@
     overflow-x: hidden;
     padding-right: 2px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   #stageInstanceDetail .detail-foot {
@@ -4336,7 +4344,7 @@
     margin-bottom: 14px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .26);
+    border: 1px solid rgba(var(--accent-rgb), .26);
     border-radius: 10px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .06), rgba(255, 255, 255, .01)),
@@ -4350,7 +4358,7 @@
 
   .detail-icon:hover,
   .detail-icon:focus-visible {
-    border-color: rgba(159, 208, 255, .6);
+    border-color: rgba(var(--accent-rgb), .6);
     box-shadow: 0 0 28px rgba(94, 142, 207, .22);
     outline: none;
   }
@@ -4424,8 +4432,8 @@
   }
 
   .detail-tab[aria-selected="true"] {
-    border-color: rgba(159, 208, 255, .34);
-    background: rgba(159, 208, 255, .1);
+    border-color: rgba(var(--accent-rgb), .34);
+    background: rgba(var(--accent-rgb), .1);
     color: #f4faff;
   }
 
@@ -4438,7 +4446,7 @@
     gap: 10px;
     padding-right: 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   .detail-panel[hidden] {
@@ -4499,9 +4507,9 @@
 
   .detail-chip {
     padding: 6px 10px;
-    border: 1px solid rgba(159, 208, 255, .24);
+    border: 1px solid rgba(var(--accent-rgb), .24);
     border-radius: 999px;
-    background: rgba(159, 208, 255, .055);
+    background: rgba(var(--accent-rgb), .055);
     color: rgba(216, 233, 250, .84);
     font-family: inherit;
     font-size: 8px;
@@ -4513,8 +4521,8 @@
   .detail-chip:hover,
   .detail-chip:focus-visible {
     color: #f4faff;
-    border-color: rgba(159, 208, 255, .46);
-    background: rgba(159, 208, 255, .08);
+    border-color: rgba(var(--accent-rgb), .46);
+    background: rgba(var(--accent-rgb), .08);
     outline: none;
   }
 
@@ -4549,8 +4557,8 @@
   }
 
   .content-search:focus-within {
-    border-color: rgba(159, 208, 255, .5);
-    box-shadow: 0 0 0 1px rgba(159, 208, 255, .1), 0 0 20px rgba(94, 142, 207, .12);
+    border-color: rgba(var(--accent-rgb), .5);
+    box-shadow: 0 0 0 1px rgba(var(--accent-rgb), .1), 0 0 20px rgba(94, 142, 207, .12);
   }
 
   .content-search svg {
@@ -4589,7 +4597,7 @@
     font-size: 7.5px;
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .42);
+    color: rgba(var(--accent-rgb), .42);
   }
 
   .content-actions {
@@ -4619,7 +4627,7 @@
     width: 13px;
     height: 13px;
     margin: 0;
-    border: 1px solid rgba(159, 208, 255, .34);
+    border: 1px solid rgba(var(--accent-rgb), .34);
     border-radius: 2px;
     background: rgba(8, 13, 20, .5);
     cursor: pointer;
@@ -4628,7 +4636,7 @@
 
   .content-select-all input:checked,
   .content-row__check:checked {
-    border-color: rgba(159, 208, 255, .7);
+    border-color: rgba(var(--accent-rgb), .7);
     background: rgba(127, 168, 224, .85);
   }
 
@@ -4669,7 +4677,7 @@
 
   .dialog-btn.is-pending {
     border-style: dashed;
-    border-color: rgba(159, 208, 255, .18);
+    border-color: rgba(var(--accent-rgb), .18);
     color: rgba(199, 212, 230, .35);
   }
 
@@ -4703,7 +4711,7 @@
     overflow-x: hidden;
     padding-right: 2px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   /* 工具栏按钮在窄面板里尽量排成一行 */
@@ -4718,9 +4726,9 @@
     align-items: center;
     gap: 10px;
     padding: 8px 10px;
-    border: 1px solid rgba(159, 208, 255, .14);
+    border: 1px solid rgba(var(--accent-rgb), .14);
     border-radius: 3px;
-    background: rgba(159, 208, 255, .022);
+    background: rgba(var(--accent-rgb), .022);
   }
 
   .content-row.is-disabled {
@@ -4793,7 +4801,7 @@
     aspect-ratio: 1;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 8px;
     background: rgba(9, 15, 24, .45);
     color: #e8f2ff;
@@ -4804,14 +4812,14 @@
 
   .icon-tile:hover,
   .icon-tile:focus-visible {
-    border-color: rgba(159, 208, 255, .5);
+    border-color: rgba(var(--accent-rgb), .5);
     box-shadow: 0 0 22px rgba(94, 142, 207, .18);
     transform: translateY(-2px);
     outline: none;
   }
 
   .icon-tile.is-active {
-    border-color: rgba(159, 208, 255, .7);
+    border-color: rgba(var(--accent-rgb), .7);
     box-shadow: 0 0 24px rgba(94, 142, 207, .3);
   }
 
@@ -4839,7 +4847,7 @@
   .account-section-head span:last-child {
     font-size: 7.5px;
     letter-spacing: .14em;
-    color: rgba(159, 208, 255, .42);
+    color: rgba(var(--accent-rgb), .42);
   }
 
   .account-menu {
@@ -4847,7 +4855,7 @@
     z-index: 40;
     min-width: 136px;
     padding: 4px;
-    border: 1px solid rgba(159, 208, 255, .26);
+    border: 1px solid rgba(var(--accent-rgb), .26);
     border-radius: 3px;
     background: rgba(10, 15, 23, .97);
     box-shadow: 0 12px 30px rgba(0, 0, 0, .5);
@@ -4876,7 +4884,7 @@
 
   .account-menu button:hover,
   .account-menu button:focus-visible {
-    background: rgba(159, 208, 255, .09);
+    background: rgba(var(--accent-rgb), .09);
     color: #f4faff;
     outline: none;
   }
@@ -4917,11 +4925,11 @@
     max-height: 86vh;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    border: 1px solid rgba(159, 208, 255, .22);
+    border: 1px solid rgba(var(--accent-rgb), .22);
     border-radius: 4px;
     background: linear-gradient(180deg, rgba(24, 33, 47, .96), rgba(12, 18, 27, .98));
     box-shadow:
-      0 0 0 1px rgba(159, 208, 255, .05),
+      0 0 0 1px rgba(var(--accent-rgb), .05),
       0 28px 80px rgba(0, 0, 0, .6),
       0 0 60px rgba(80, 124, 190, .12);
     opacity: 0;
@@ -4980,8 +4988,8 @@
   .dialog-x:hover,
   .dialog-x:focus-visible {
     color: #f4faff;
-    border-color: rgba(159, 208, 255, .3);
-    background: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .3);
+    background: rgba(var(--accent-rgb), .06);
     outline: none;
   }
 
@@ -4992,7 +5000,7 @@
     display: grid;
     gap: 12px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .24) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
   }
 
   .dialog-text {
@@ -5038,7 +5046,7 @@
 
   .dialog-btn {
     padding: 9px 15px;
-    border: 1px solid rgba(159, 208, 255, .24);
+    border: 1px solid rgba(var(--accent-rgb), .24);
     border-radius: 3px;
     background: transparent;
     color: rgba(226, 238, 251, .82);
@@ -5059,13 +5067,13 @@
   .dialog-btn:hover,
   .dialog-btn:focus-visible {
     color: #f7fbff;
-    border-color: rgba(159, 208, 255, .52);
-    background: rgba(159, 208, 255, .07);
+    border-color: rgba(var(--accent-rgb), .52);
+    background: rgba(var(--accent-rgb), .07);
     outline: none;
   }
 
   .dialog-btn--primary {
-    border-color: rgba(159, 208, 255, .44);
+    border-color: rgba(var(--accent-rgb), .44);
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02)),
       rgba(91, 116, 227, .14);
@@ -5074,7 +5082,7 @@
 
   .dialog-btn--primary:hover,
   .dialog-btn--primary:focus-visible {
-    border-color: rgba(159, 208, 255, .7);
+    border-color: rgba(var(--accent-rgb), .7);
     box-shadow: 0 0 26px rgba(94, 142, 207, .18);
   }
 
@@ -5105,7 +5113,7 @@
     position: relative;
     height: 4px;
     border-radius: 2px;
-    background: rgba(159, 208, 255, .12);
+    background: rgba(var(--accent-rgb), .12);
     overflow: hidden;
   }
 
@@ -5114,7 +5122,7 @@
     height: 100%;
     width: 0%;
     border-radius: inherit;
-    background: linear-gradient(90deg, rgba(112, 163, 255, .8), rgba(159, 208, 255, .95));
+    background: linear-gradient(90deg, rgba(112, 163, 255, .8), rgba(var(--accent-rgb), .95));
     transition: width 220ms ease;
   }
 
@@ -5165,8 +5173,8 @@
   }
 
   .dialog-tab[aria-selected="true"] {
-    border-color: rgba(159, 208, 255, .34);
-    background: rgba(159, 208, 255, .1);
+    border-color: rgba(var(--accent-rgb), .34);
+    background: rgba(var(--accent-rgb), .1);
     color: #f4faff;
   }
 
@@ -5205,9 +5213,9 @@
     gap: 12px;
     width: 100%;
     padding: 11px 13px;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 4px;
-    background: rgba(159, 208, 255, .035);
+    background: rgba(var(--accent-rgb), .035);
     color: inherit;
     text-align: left;
     cursor: pointer;
@@ -5220,8 +5228,8 @@
 
   .dialog-panel:hover,
   .dialog-panel:focus-visible {
-    border-color: rgba(159, 208, 255, .44);
-    background: rgba(159, 208, 255, .075);
+    border-color: rgba(var(--accent-rgb), .44);
+    background: rgba(var(--accent-rgb), .075);
     box-shadow: 0 0 26px rgba(94, 142, 207, .14);
     transform: translateY(-1px);
     outline: none;
@@ -5251,7 +5259,7 @@
   .dialog-panel__go {
     flex: 0 0 auto;
     font-size: 11px;
-    color: rgba(159, 208, 255, .55);
+    color: rgba(var(--accent-rgb), .55);
   }
 
   /* 添加账户弹窗里的内嵌皮肤行（可点击预览 + 选择 / 取消 + 模型） */
@@ -5272,7 +5280,7 @@
     height: 58px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .18);
+    border: 1px solid rgba(var(--accent-rgb), .18);
     border-radius: 4px;
     background:
       repeating-conic-gradient(rgba(255, 255, 255, .045) 0% 25%, transparent 0% 50%) 50% / 10px 10px,
@@ -5288,7 +5296,7 @@
 
   .offline-skin__preview:hover,
   .offline-skin__preview:focus-visible {
-    border-color: rgba(159, 208, 255, .5);
+    border-color: rgba(var(--accent-rgb), .5);
     box-shadow: 0 0 22px rgba(94, 142, 207, .18);
     color: rgba(230, 242, 255, .9);
     outline: none;
@@ -5368,7 +5376,7 @@
     height: 96px;
     display: grid;
     place-items: center;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 3px;
     background:
       repeating-conic-gradient(rgba(255, 255, 255, .045) 0% 25%, transparent 0% 50%) 50% / 12px 12px,
@@ -5403,28 +5411,28 @@
     font-size: 7.5px;
     letter-spacing: .12em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .42);
+    color: rgba(var(--accent-rgb), .42);
   }
 
   .wizard-path__dot {
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    border: 1px solid rgba(159, 208, 255, .4);
+    border: 1px solid rgba(var(--accent-rgb), .4);
   }
 
   .wizard-path__dot.is-done {
-    background: rgba(159, 208, 255, .75);
-    border-color: rgba(159, 208, 255, .75);
+    background: rgba(var(--accent-rgb), .75);
+    border-color: rgba(var(--accent-rgb), .75);
   }
 
   .server-info {
     display: grid;
     gap: 6px;
     padding: 11px 12px;
-    border: 1px solid rgba(159, 208, 255, .18);
+    border: 1px solid rgba(var(--accent-rgb), .18);
     border-radius: 3px;
-    background: rgba(159, 208, 255, .035);
+    background: rgba(var(--accent-rgb), .035);
   }
 
   .server-info b {
@@ -5506,8 +5514,8 @@
   }
 
   .world-row:hover {
-    border-color: rgba(159, 208, 255, .34);
-    background: rgba(159, 208, 255, .05);
+    border-color: rgba(var(--accent-rgb), .34);
+    background: rgba(var(--accent-rgb), .05);
   }
 
   .world-row__icon {
@@ -5521,7 +5529,7 @@
     background: rgba(255, 255, 255, .05);
     font-size: 8px;
     letter-spacing: .06em;
-    color: rgba(159, 208, 255, .5);
+    color: rgba(var(--accent-rgb), .5);
   }
 
   .world-row__icon img {
@@ -5617,8 +5625,8 @@
   }
 
   .world-switch[aria-checked="true"] {
-    border-color: rgba(159, 208, 255, .55);
-    background: rgba(159, 208, 255, .26);
+    border-color: rgba(var(--accent-rgb), .55);
+    background: rgba(var(--accent-rgb), .26);
   }
 
   .world-switch[aria-checked="true"]::after {
@@ -5627,7 +5635,7 @@
   }
 
   .world-switch:focus-visible {
-    outline: 1px solid rgba(159, 208, 255, .6);
+    outline: 1px solid rgba(var(--accent-rgb), .6);
     outline-offset: 2px;
   }
 
@@ -5740,8 +5748,8 @@
   }
 
   .download-tab.is-active {
-    border-color: rgba(159, 208, 255, .34);
-    background: rgba(159, 208, 255, .1);
+    border-color: rgba(var(--accent-rgb), .34);
+    background: rgba(var(--accent-rgb), .1);
     color: #f4faff;
   }
 
@@ -5791,14 +5799,14 @@
   }
 
   .download-search:hover {
-    border-color: rgba(159, 208, 255, .26);
+    border-color: rgba(var(--accent-rgb), .26);
   }
 
   .download-search:focus,
   .download-search:focus-visible {
     outline: none;
-    border-color: rgba(159, 208, 255, .48);
-    background: rgba(159, 208, 255, .06);
+    border-color: rgba(var(--accent-rgb), .48);
+    background: rgba(var(--accent-rgb), .06);
   }
 
   .download-select-wrap {
@@ -5824,7 +5832,7 @@
   .download-select:focus,
   .download-select:focus-visible {
     outline: none;
-    border-color: rgba(159, 208, 255, .48);
+    border-color: rgba(var(--accent-rgb), .48);
   }
 
   .download-select option {
@@ -5837,7 +5845,7 @@
     align-items: center;
     gap: 7px;
     padding: 8px 12px;
-    border: 1px solid rgba(159, 208, 255, .22);
+    border: 1px solid rgba(var(--accent-rgb), .22);
     border-radius: 3px;
     background: transparent;
     color: rgba(226, 238, 251, .8);
@@ -5859,14 +5867,23 @@
   .download-action:hover:not(:disabled),
   .download-action:focus-visible:not(:disabled) {
     color: #f7fbff;
-    border-color: rgba(159, 208, 255, .52);
-    background: rgba(159, 208, 255, .07);
+    border-color: rgba(var(--accent-rgb), .52);
+    background: rgba(var(--accent-rgb), .07);
     outline: none;
   }
 
   .download-action:disabled {
     opacity: .4;
     cursor: default;
+  }
+
+  /* 「恢复默认」：设置里的 javaPath 失效时高亮，提示一键回到自动选择。 */
+  .download-action.is-attention:not(:disabled),
+  .download-action.is-attention:not(:disabled):hover,
+  .download-action.is-attention:not(:disabled):focus-visible {
+    border-color: rgba(255, 154, 142, .62);
+    background: rgba(255, 154, 142, .09);
+    color: #ffd9d4;
   }
 
   .download-action.is-busy {
@@ -5884,7 +5901,7 @@
     display: grid;
     gap: 3px;
     padding: 9px 11px;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 5px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .008)),
@@ -5902,7 +5919,7 @@
   .latest-card:hover,
   .latest-card:focus-visible {
     transform: translateY(-2px);
-    border-color: rgba(159, 208, 255, .44);
+    border-color: rgba(var(--accent-rgb), .44);
     box-shadow: 0 8px 26px rgba(40, 80, 140, .18);
     outline: none;
   }
@@ -5913,7 +5930,7 @@
     line-height: 1;
     letter-spacing: .22em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .66);
+    color: rgba(var(--accent-rgb), .66);
   }
 
   .latest-card__id {
@@ -5941,14 +5958,14 @@
     overflow-x: hidden;
     padding-right: 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .22) transparent;
   }
 
   .version-card {
     display: grid;
     gap: 4px;
     padding: 8px 10px;
-    border: 1px solid rgba(159, 208, 255, .12);
+    border: 1px solid rgba(var(--accent-rgb), .12);
     border-radius: 5px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
@@ -5966,7 +5983,7 @@
   .version-card:hover,
   .version-card:focus-visible {
     transform: translateY(-2px);
-    border-color: rgba(159, 208, 255, .42);
+    border-color: rgba(var(--accent-rgb), .42);
     box-shadow: 0 8px 22px rgba(40, 80, 140, .16);
     outline: none;
   }
@@ -5994,8 +6011,8 @@
   .version-card__badge {
     padding: 2px 5px;
     border-radius: 2px;
-    background: rgba(159, 208, 255, .1);
-    color: rgba(159, 208, 255, .76);
+    background: rgba(var(--accent-rgb), .1);
+    color: rgba(var(--accent-rgb), .76);
     font-size: 6.5px;
     font-weight: 700;
     letter-spacing: .12em;
@@ -6015,7 +6032,7 @@
     display: grid;
     gap: 6px;
     padding: 18px 16px;
-    border: 1px dashed rgba(159, 208, 255, .16);
+    border: 1px dashed rgba(var(--accent-rgb), .16);
     border-radius: 5px;
     background: rgba(255, 255, 255, .015);
     color: rgba(199, 212, 230, .4);
@@ -6076,7 +6093,7 @@
     display: grid;
     gap: 4px;
     padding: 10px 11px;
-    border: 1px solid rgba(159, 208, 255, .13);
+    border: 1px solid rgba(var(--accent-rgb), .13);
     border-radius: 5px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
@@ -6094,14 +6111,14 @@
   .download-source__card:hover:not(:disabled),
   .download-source__card:focus-visible:not(:disabled) {
     transform: translateY(-2px);
-    border-color: rgba(159, 208, 255, .4);
+    border-color: rgba(var(--accent-rgb), .4);
     outline: none;
   }
 
   .download-source__card.is-active {
-    border-color: rgba(159, 208, 255, .44);
+    border-color: rgba(var(--accent-rgb), .44);
     background:
-      linear-gradient(180deg, rgba(159, 208, 255, .1), rgba(159, 208, 255, .02)),
+      linear-gradient(180deg, rgba(var(--accent-rgb), .1), rgba(var(--accent-rgb), .02)),
       rgba(9, 15, 24, .3);
   }
 
@@ -6222,7 +6239,7 @@
     overflow-x: hidden;
     padding-right: 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .22) transparent;
   }
 
   .addon-card {
@@ -6231,7 +6248,7 @@
     gap: 9px;
     align-items: start;
     padding: 8px 9px;
-    border: 1px solid rgba(159, 208, 255, .12);
+    border: 1px solid rgba(var(--accent-rgb), .12);
     border-radius: 5px;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .006)),
@@ -6249,7 +6266,7 @@
   .addon-card:hover,
   .addon-card:focus-visible {
     transform: translateY(-2px);
-    border-color: rgba(159, 208, 255, .42);
+    border-color: rgba(var(--accent-rgb), .42);
     box-shadow: 0 8px 22px rgba(40, 80, 140, .16);
     outline: none;
   }
@@ -6265,7 +6282,7 @@
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .02em;
-    color: rgba(159, 208, 255, .55);
+    color: rgba(var(--accent-rgb), .55);
   }
 
   .addon-card__icon img {
@@ -6318,12 +6335,12 @@
   .addon-card__tag {
     padding: 1px 4px;
     border-radius: 2px;
-    background: rgba(159, 208, 255, .08);
+    background: rgba(var(--accent-rgb), .08);
     font-size: 6.5px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .6);
+    color: rgba(var(--accent-rgb), .6);
   }
 
   /* 内容下载页（对照 [L4] 内容下载页 / AddonVersion） */
@@ -6340,7 +6357,7 @@
     gap: 4px;
     padding-right: 4px;
     scrollbar-width: thin;
-    scrollbar-color: rgba(159, 208, 255, .22) transparent;
+    scrollbar-color: rgba(var(--accent-rgb), .22) transparent;
   }
 
   .addon-version {
@@ -6361,13 +6378,13 @@
 
   .addon-version:hover,
   .addon-version:focus-visible {
-    border-color: rgba(159, 208, 255, .32);
+    border-color: rgba(var(--accent-rgb), .32);
     outline: none;
   }
 
   .addon-version.is-active {
-    border-color: rgba(159, 208, 255, .5);
-    background: rgba(159, 208, 255, .09);
+    border-color: rgba(var(--accent-rgb), .5);
+    background: rgba(var(--accent-rgb), .09);
   }
 
   .addon-version__main {
@@ -6405,8 +6422,8 @@
   .addon-version__type {
     padding: 1px 4px;
     border-radius: 2px;
-    background: rgba(159, 208, 255, .08);
-    color: rgba(159, 208, 255, .62);
+    background: rgba(var(--accent-rgb), .08);
+    color: rgba(var(--accent-rgb), .62);
     font-size: 6.5px;
     font-weight: 700;
     letter-spacing: .08em;
@@ -6420,9 +6437,9 @@
     justify-content: space-between;
     gap: 10px;
     padding: 10px 12px;
-    border: 1px solid rgba(159, 208, 255, .16);
+    border: 1px solid rgba(var(--accent-rgb), .16);
     border-radius: 5px;
-    background: rgba(159, 208, 255, .045);
+    background: rgba(var(--accent-rgb), .045);
   }
 
   .install-summary__version {
@@ -6437,7 +6454,7 @@
     font-size: 8px;
     letter-spacing: .1em;
     text-transform: uppercase;
-    color: rgba(159, 208, 255, .66);
+    color: rgba(var(--accent-rgb), .66);
     white-space: nowrap;
   }
 
@@ -6485,7 +6502,7 @@
   }
 
   .install-option input {
-    accent-color: #8fc6ff;
+    accent-color: var(--accent);
   }
 
   .pack-file-list {
@@ -6506,6 +6523,490 @@
     scrollbar-width: thin;
   }
 
+
+  /* ---------------------------------------------------------
+     III：日志窗口 / 崩溃窗口 / 游戏崩溃 / 截图 / 导出向导 / NBT
+     --------------------------------------------------------- */
+
+  /* 实例详情左侧的 3 个导航项（更新整合包 / 浏览 / 管理） */
+  .detail-nav {
+    display: grid;
+    gap: 2px;
+    margin-top: 18px;
+    max-width: 280px;
+  }
+
+  .detail-nav__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 2px;
+    border: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    background: transparent;
+    color: rgba(214, 231, 249, .78);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-align: left;
+    cursor: pointer;
+    transition: color 140ms linear;
+  }
+
+  .detail-nav__item:hover,
+  .detail-nav__item:focus-visible {
+    color: #f4faff;
+    outline: none;
+  }
+
+  .detail-nav__arrow {
+    font-size: 11px;
+    color: rgba(var(--accent-rgb), .5);
+  }
+
+  /* 截图页签 */
+  .shot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+
+  .shot-card {
+    position: relative;
+    display: grid;
+    gap: 4px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .2);
+    color: inherit;
+    cursor: pointer;
+    overflow: hidden;
+    font-family: inherit;
+    text-align: left;
+  }
+
+  .shot-card:hover,
+  .shot-card:focus-visible {
+    border-color: rgba(var(--accent-rgb), .5);
+    outline: none;
+  }
+
+  .shot-card img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: rgba(0, 0, 0, .4);
+  }
+
+  .shot-card__meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 4px 6px 6px;
+    font-size: 7.5px;
+    color: rgba(199, 212, 230, .44);
+  }
+
+  .shot-card__meta b {
+    font-weight: 400;
+    color: rgba(214, 231, 249, .72);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shot-view {
+    display: grid;
+    place-items: center;
+    padding: 6px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .28);
+    max-height: 52vh;
+    overflow: auto;
+  }
+
+  .shot-view img {
+    max-width: 100%;
+    max-height: 50vh;
+    display: block;
+  }
+
+  /* 日志窗口 */
+  .log-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .log-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid rgba(var(--accent-rgb), .24);
+    border-radius: 3px;
+    background: rgba(var(--accent-rgb), .04);
+    color: rgba(226, 238, 251, .82);
+    font-family: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 150ms linear, color 150ms linear;
+  }
+
+  .log-toggle__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(199, 212, 230, .3);
+    transition: background-color 160ms linear, box-shadow 160ms linear;
+  }
+
+  .log-toggle[aria-checked="true"] {
+    border-color: rgba(140, 220, 180, .42);
+    color: #eafff4;
+  }
+
+  .log-toggle[aria-checked="true"] .log-toggle__dot {
+    background: rgba(120, 226, 170, .9);
+    box-shadow: 0 0 10px rgba(120, 226, 170, .5);
+  }
+
+  .log-toggle:focus-visible {
+    outline: none;
+    border-color: rgba(var(--accent-rgb), .52);
+  }
+
+  .log-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 7.5px;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .34);
+    overflow-wrap: anywhere;
+  }
+
+  .log-view {
+    margin: 0;
+    padding: 10px 12px;
+    min-height: 240px;
+    max-height: 44vh;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .34);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 8.5px;
+    line-height: 1.6;
+    color: rgba(206, 222, 240, .72);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
+  }
+
+  .log-view .log-line--err { color: rgba(255, 168, 158, .82); }
+  .log-view .log-line--sys { color: rgba(var(--accent-rgb), .6); }
+
+  .log-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  /* 崩溃窗口 / 游戏崩溃窗口 */
+  .crash-trace {
+    margin: 0;
+    padding: 10px 12px;
+    max-height: 38vh;
+    overflow: auto;
+    border: 1px solid rgba(255, 150, 140, .18);
+    border-radius: 4px;
+    background: rgba(30, 10, 12, .34);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 8.5px;
+    line-height: 1.65;
+    color: rgba(255, 196, 188, .8);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .crash-trace--short { max-height: 28vh; }
+
+  .crash-summary { display: grid; gap: 4px; }
+
+  .crash-summary strong {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: .02em;
+    color: #ffe9e5;
+  }
+
+  .crash-summary span {
+    font-size: 8px;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .44);
+    overflow-wrap: anywhere;
+  }
+
+  .dialog--log { width: min(820px, 96vw); }
+  .dialog--xl { width: min(760px, 95vw); }
+
+  /* 导出整合包向导 */
+  .wizard-steps {
+    display: flex;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .wizard-step {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 3px;
+    font-size: 8px;
+    letter-spacing: .1em;
+    text-align: center;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .32);
+  }
+
+  .wizard-step.is-active {
+    border-color: rgba(var(--accent-rgb), .36);
+    background: rgba(var(--accent-rgb), .07);
+    color: #f4faff;
+  }
+
+  .wizard-step.is-done {
+    border-color: rgba(140, 220, 180, .28);
+    color: rgba(176, 232, 203, .7);
+  }
+
+  .wizard-panel { display: grid; gap: 10px; align-content: start; }
+  .wizard-panel[hidden] { display: none; }
+
+  .export-types {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .export-type {
+    display: grid;
+    gap: 5px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, .015);
+    color: rgba(214, 231, 249, .7);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms linear, background-color 150ms linear;
+  }
+
+  .export-type b {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: rgba(226, 238, 251, .86);
+  }
+
+  .export-type span {
+    font-size: 8px;
+    line-height: 1.6;
+    color: rgba(199, 212, 230, .42);
+  }
+
+  .export-type:hover,
+  .export-type:focus-visible {
+    border-color: rgba(var(--accent-rgb), .44);
+    outline: none;
+  }
+
+  .export-type.is-selected {
+    border-color: rgba(var(--accent-rgb), .6);
+    background: rgba(var(--accent-rgb), .08);
+  }
+
+  .export-file-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 8.5px;
+    letter-spacing: .05em;
+    color: rgba(199, 212, 230, .5);
+  }
+
+  .export-files {
+    display: grid;
+    gap: 2px;
+    max-height: 34vh;
+    overflow-y: auto;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .18);
+    scrollbar-width: thin;
+  }
+
+  .export-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 2px;
+    font-size: 8.5px;
+    color: rgba(214, 227, 243, .72);
+    cursor: pointer;
+  }
+
+  .export-file input { accent-color: var(--accent); }
+
+  .export-file em {
+    margin-left: auto;
+    font-style: normal;
+    font-size: 8px;
+    color: rgba(199, 212, 230, .34);
+  }
+
+  .export-file.is-empty,
+  .export-file:disabled {
+    color: rgba(199, 212, 230, .28);
+    cursor: default;
+  }
+
+  .export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+  }
+
+  .export-grid .export-field--wide { grid-column: 1 / -1; }
+
+  .export-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, .05);
+    font-size: 8.5px;
+    line-height: 1.6;
+    color: rgba(214, 227, 243, .7);
+    cursor: pointer;
+  }
+
+  .export-toggle input {
+    margin-top: 2px;
+    accent-color: var(--accent);
+  }
+
+  .export-toggle small {
+    display: block;
+    font-size: 7.5px;
+    color: rgba(199, 212, 230, .34);
+  }
+
+  /* NBT 编辑器 */
+  .nbt-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 8px;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .44);
+    overflow-wrap: anywhere;
+  }
+
+  .nbt-table-wrap {
+    max-height: 48vh;
+    overflow: auto;
+    border: 1px solid rgba(255, 255, 255, .07);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, .2);
+    scrollbar-width: thin;
+  }
+
+  .nbt-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5px;
+  }
+
+  .nbt-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 7px 10px;
+    background: rgba(12, 18, 27, .96);
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+    text-align: left;
+    font-size: 7.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .44);
+  }
+
+  .nbt-table td {
+    padding: 3px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, .035);
+    vertical-align: middle;
+  }
+
+  .nbt-table tr:hover td { background: rgba(var(--accent-rgb), .035); }
+
+  .nbt-path {
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    color: rgba(206, 222, 240, .66);
+    overflow-wrap: anywhere;
+  }
+
+  .nbt-type {
+    white-space: nowrap;
+    font-size: 7.5px;
+    letter-spacing: .06em;
+    color: rgba(var(--accent-rgb), .5);
+  }
+
+  .nbt-input {
+    width: 100%;
+    min-width: 120px;
+    padding: 3px 6px;
+    border: 1px solid rgba(var(--accent-rgb), .18);
+    border-radius: 2px;
+    background: rgba(0, 0, 0, .25);
+    color: #eaf3ff;
+    font-family: inherit;
+    font-size: 8.5px;
+  }
+
+  .nbt-input:focus {
+    border-color: rgba(var(--accent-rgb), .5);
+    outline: none;
+  }
+
+  .nbt-value {
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    color: rgba(214, 227, 243, .6);
+    overflow-wrap: anywhere;
+  }
+
+  /* 游戏设置表单里的「预设」行：跨两列 */
+  #settingsPresetRow {
+    grid-column: 1 / -1;
+    padding: 10px 0 4px;
+  }
 
   @keyframes install-sweep {
     from { left: -40%; }
@@ -6536,6 +7037,126 @@
       opacity: .45;
     }
   }
+  /* ---------------------------------------------------------
+     L3.5 主题：浅色 / 深色 + 主色
+     ---------------------------------------------------------
+     这套皮肤的每个颜色都是按深色底调的（样式里 ~300 处硬编码颜色），
+     逐条写一套浅色覆盖既不可维护，也保证不了对比度。这里用
+     「反相 + 色相回正」得到浅色：
+        filter: invert(1) hue-rotate(180deg)
+     反相把明度翻转、对比度原样保留（反相是双射，明暗对比不变），
+     再转 180° 把色相转回来——蓝的还是蓝、珊瑚的还是珊瑚，只是明暗互换。
+     用户内容（壁纸 / 截图 / 皮肤 / 图标 / 取色器 / 色板）再反相一次抵消，
+     看起来仍是原样。
+     深色是默认：html 上没有 data-theme 或 data-theme="dark" 时不做任何处理，
+     与改动前逐像素一致。
+     --------------------------------------------------------- */
+  html[data-theme="light"] {
+    background: #f4f6fa;
+  }
+
+  html[data-theme="light"] body {
+    filter: invert(1) hue-rotate(180deg);
+    /* 原生控件（select 下拉弹层、滚动条、取色器面板）不参与反相，
+       必须显式声明浅色，否则浅色主题里它们仍是深色。 */
+    color-scheme: light;
+  }
+
+  /* 用户内容抵消反相：图片 / 视频 / 色板。取色器只抵消色块本身，
+     外框和底色跟着主题走（整块抵消会让它保持深色）。 */
+  html[data-theme="light"] img,
+  html[data-theme="light"] video,
+  html[data-theme="light"] .line-swatch {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  html[data-theme="light"] input[type="color"]::-webkit-color-swatch {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  /* 色板整块被抵消了一次，颜色按声明值呈现；浅色下给一圈深边才看得见 */
+  html[data-theme="light"] .line-swatch {
+    border-color: rgba(22, 32, 48, .35);
+  }
+
+  /* 实例列表里的内置方块图标是「内容」而不是主题图形：抵消反相，保持方块本色 */
+  html[data-theme="light"] .ilist-row__avatar svg {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  /* 壁纸本身自带 blur，抵消反相时要把 blur 一并带上 */
+  html[data-theme="light"] #wallOuter > img,
+  html[data-theme="light"] #wallOuter > video {
+    filter: blur(var(--wall-blur)) invert(1) hue-rotate(180deg);
+  }
+
+  html[data-theme="light"] body.is-software #wallOuter > img,
+  html[data-theme="light"] body.is-software #wallOuter > video {
+    filter: invert(1) hue-rotate(180deg);
+  }
+
+  html[data-theme="light"] #wallInnerFill {
+    filter: blur(24px) invert(1) hue-rotate(180deg);
+  }
+
+  html[data-theme="light"] body.is-software #wallInnerFill {
+    filter: blur(10px) invert(1) hue-rotate(180deg);
+  }
+
+  /* 亮色壁纸上原本补的是暗投影；反相会把暗投影变成亮投影，这里给回暗投影 */
+  html[data-theme="light"] body.has-wallpaper .stage-copy,
+  html[data-theme="light"] body.has-wallpaper .stage-eyebrow,
+  html[data-theme="light"] body.has-wallpaper .stage-news,
+  html[data-theme="light"] body.has-wallpaper .create-intro,
+  html[data-theme="light"] body.has-wallpaper .create-head {
+    text-shadow: 0 1px 12px rgba(255, 255, 255, .6);
+  }
+
+  /* 色彩模式：色板 / 取色器（颜色由 --swatch 或用户输入给，不写死） */
+  .line-color {
+    width: 34px;
+    height: 20px;
+    padding: 1px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 3px;
+    background: rgba(10, 15, 23, .55);
+    cursor: pointer;
+  }
+
+  .line-color::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  .line-color::-webkit-color-swatch {
+    border: 0;
+    border-radius: 2px;
+  }
+
+  .line-swatches {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .line-swatch {
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 50%;
+    background: var(--swatch, #9fd0ff);
+    cursor: pointer;
+  }
+
+  .line-swatch[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .45);
+  }
+
+  .line-swatch:focus-visible {
+    outline: none;
+    border-color: rgba(255, 255, 255, .8);
+  }
+
 </style>
 </head>
 <body>
@@ -6770,7 +7391,16 @@
               </svg>
               <span>扫描实例</span>
             </button>
-            <span class="scan-instances__hint">扫描其他启动器实例位置，结果会缓存</span>
+            <button class="scan-instances__btn" id="scanCacheClear" type="button" disabled title="没有扫描缓存">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16"/>
+                <path d="M9.5 7V5.2h5V7"/>
+                <path d="m6.2 7 .9 12.1h9.8L17.8 7"/>
+                <path d="M10.5 10.6v5.6M13.5 10.6v5.6"/>
+              </svg>
+              <span>清理缓存</span>
+            </button>
+            <span class="scan-instances__hint">扫描结果会缓存，可用上方「清理缓存」移除</span>
             <span class="scan-instances__status" id="scanInstancesStatus" role="status" aria-live="polite"></span>
             <span class="scan-instances__path" id="gameDirPath" title=""></span>
           </div>
@@ -6863,6 +7493,27 @@
         <p class="create-kicker">Instance</p>
         <h2 class="create-title" id="detailName">实例</h2>
         <p class="create-desc" id="detailMeta">—</p>
+
+        <!-- [L4] 实例详情的 3 个导航项（对照 GameInstancePage.java:403-410）：
+             更新整合包 / 浏览（文件夹快捷入口）/ 管理（清理与维护） -->
+        <div class="detail-nav" role="group" aria-label="实例导航">
+          <button class="detail-nav__item" id="detailUpdatePack" type="button" data-control-key="instance.update">
+            <span>更新整合包</span>
+            <span class="detail-nav__arrow" aria-hidden="true">↻</span>
+          </button>
+          <button class="detail-nav__item" id="detailTestLaunch" type="button" data-control-key="instance.launch.test">
+            <span>测试游戏</span>
+            <span class="detail-nav__arrow" aria-hidden="true">▷</span>
+          </button>
+          <button class="detail-nav__item" id="detailBrowse" type="button" data-control-key="settings.game.exploration">
+            <span>浏览</span>
+            <span class="detail-nav__arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="detail-nav__item" id="detailManage" type="button" data-control-key="settings.game.management">
+            <span>管理</span>
+            <span class="detail-nav__arrow" aria-hidden="true">›</span>
+          </button>
+        </div>
       </div>
 
       <div class="detail-body">
@@ -6872,6 +7523,7 @@
           <button class="detail-tab" type="button" role="tab" data-detail-tab="mods" data-control-key="mods.manage" aria-selected="false">模组管理</button>
           <button class="detail-tab" type="button" role="tab" data-detail-tab="resourcepacks" data-control-key="resourcepack.manage" aria-selected="false">资源包</button>
           <button class="detail-tab" type="button" role="tab" data-detail-tab="worlds" data-control-key="world.manage" aria-selected="false">世界</button>
+          <button class="detail-tab" type="button" role="tab" data-detail-tab="screenshots" data-control-key="screenshots.manage" aria-selected="false">截图</button>
           <button class="detail-tab" type="button" role="tab" data-detail-tab="schematics" data-control-key="schematics.manage" aria-selected="false">原理图</button>
         </div>
 
@@ -7050,6 +7702,24 @@
               <p class="detail-status" id="worldManageStatus" role="status" aria-live="polite"></p>
             </div>
           </div>
+        </div>
+
+        <div class="detail-panel" data-detail-panel="screenshots" hidden>
+          <div class="content-toolbar">
+            <label class="content-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 5 5"/></svg>
+              <input type="search" id="shotSearch" placeholder="搜索截图…" autocomplete="off">
+            </label>
+            <button class="dialog-btn content-refresh" id="shotRefresh" type="button">刷新</button>
+            <span class="content-count" id="shotCount">0</span>
+          </div>
+
+          <div class="content-actions">
+            <button class="dialog-btn" id="shotOpenFolder" type="button" data-control-key="folder.screenshots">打开截图文件夹</button>
+            <span class="detail-status" id="shotStatus" role="status" aria-live="polite"></span>
+          </div>
+
+          <div class="shot-grid" id="shotGrid" role="list" aria-label="截图列表"></div>
         </div>
 
         <div class="detail-panel" data-detail-panel="schematics" hidden>
@@ -7493,6 +8163,24 @@
                 <input class="create-control" id="settingsJvmArgs" type="text" placeholder="例如：-XX:+UseG1GC -XX:MaxGCPauseMillis=50" autocomplete="off">
               </label>
 
+              <!-- [L5] 游戏设置预设（对照 game/PresetManagementPane.java:65 的「新建预设」） -->
+              <div class="settings-line" id="settingsPresetRow">
+                <span class="settings-line__label">
+                  预设
+                  <span class="settings-line__hint">把当前这一套内存 / 窗口 / JVM / 隔离策略存下来复用</span>
+                </span>
+                <span class="settings-line__control">
+                  <select class="line-select" id="settingsPreset" aria-label="游戏设置预设">
+                    <option value="">（未选择预设）</option>
+                  </select>
+                </span>
+                <div class="settings-line__actions">
+                  <button class="download-action" id="settingsPresetNew" type="button" data-control-key="settings.type.global.preset.create">新建预设</button>
+                  <button class="download-action" id="settingsPresetApply" type="button">应用</button>
+                  <button class="download-action" id="settingsPresetDelete" type="button">删除</button>
+                </div>
+              </div>
+
               <div class="settings-actions">
                 <button class="create-submit" id="settingsSubmit" type="submit">
                   <span>保存设置</span>
@@ -7529,11 +8217,12 @@
                 <button class="download-action" id="settingsJavaPick" type="button" title="选择启动器扫描不到的 JDK（会验证并登记）">
                   选择 Java…
                 </button>
-                <button class="download-action" id="settingsJavaInstall" type="button" disabled title="自动安装 Java 还没接入">安装 Java</button>
+                <button class="download-action" id="settingsJavaInstall" type="button" title="从 Adoptium（Temurin）下载并安装一个 JDK">安装 Java</button>
+                <button class="download-action" id="settingsJavaReset" type="button" disabled title="当前已经是自动选择（按版本要求）">恢复默认</button>
                 <span class="settings-status" id="settingsJavaStatus">—</span>
               </div>
 
-              <p class="settings-note">自动下载 / 恢复 Java 还没接入；先在下方选一个已有运行时，或点「选择 Java…」指定一个 JDK（需要你手动选一次，之后记住指纹）。</p>
+              <p class="settings-note">「安装 Java」会从 Eclipse Adoptium 下载官方 Temurin JDK 到启动器数据目录（约 180 MB），装好后自动登记并选中；不需要管理员权限，也不改系统 PATH。已有运行时可以直接在上面选。</p>
             </div>
           </div>
 
@@ -7565,52 +8254,119 @@
 
               <p class="settings-note">目前只提供简体中文；语言切换需要补齐各页面的文案表。</p>
             </div>
+
+            <!-- [L4] NBT 编辑器（对照 nbt/NBTEditorPage.java 的保存 / 取消） -->
+            <div class="settings-block">
+              <div class="settings-block__head">
+                <span>NBT 编辑器</span>
+                <span>level.dat / .dat · 就地编辑</span>
+              </div>
+
+              <p class="settings-note">
+                选一个 NBT 文件（世界存档的 <code>level.dat</code>、结构文件等），
+                以「路径 / 类型 / 值」的表格展开；只有标量字段可以改，写回前会自动备份成
+                <code>文件.bak</code>，未知字段原样保留。
+              </p>
+
+              <div class="settings-actions">
+                <button class="download-action" id="settingsNbtOpen" type="button" data-control-key="nbt.open">
+                  <span>打开 NBT 编辑器</span>
+                  <span aria-hidden="true">›</span>
+                </button>
+                <span class="settings-status" id="settingsNbtStatus">—</span>
+              </div>
+            </div>
           </div>
 
           <!-- [L3] 个性化（外观）
-               分三层：主题（未接入，控件先按清单占位）→ 背景（本轮实现）→ 窗口（未接入占位）。
-               占位控件用真实控件 + disabled，而不是一段文字：下一层接上时只换成数据源。 -->
+               分三层：主题（主题模式 + 色彩模式已接入；主题包管理仍是占位）
+               → 背景（已实现）→ 窗口（未接入占位）。
+               主题状态存在渲染层 localStorage（主进程 settings 白名单不含这三个键），
+               首帧前同步套用，见 renderer.js 的「主题 / 外观」段落。 -->
           <div class="settings-pane" data-settings-pane="appearance" role="tabpanel" hidden>
 
             <div class="settings-block">
               <div class="settings-block__head">
                 <span>主题 / Theme</span>
-                <span>未接入 · 占位</span>
+                <span id="settingsThemeBadge">跟随系统 · 深色</span>
               </div>
 
               <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">主题</span>
+                <span class="settings-line__label">
+                  主题
+                  <span class="settings-line__hint">主题包 · 暂不支持</span>
+                </span>
                 <span class="settings-line__control">
                   <span class="settings-line__value">默认主题</span>
                   <span class="settings-line__chevron" aria-hidden="true">›</span>
                 </span>
               </div>
 
-              <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">主题模式</span>
+              <div class="settings-line">
+                <span class="settings-line__label">
+                  主题模式
+                  <span class="settings-line__hint">即时生效 · 跟随系统时自动切换</span>
+                </span>
                 <span class="settings-line__control">
-                  <select class="line-select" disabled aria-label="主题模式（未接入）">
-                    <option>跟随系统</option>
-                    <option>浅色</option>
-                    <option>深色</option>
+                  <select class="line-select" id="settingsThemeMode" aria-label="主题模式">
+                    <option value="system">跟随系统</option>
+                    <option value="light">浅色</option>
+                    <option value="dark">深色</option>
                   </select>
                 </span>
               </div>
 
-              <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">色彩模式</span>
+              <div class="settings-line">
+                <span class="settings-line__label">
+                  色彩模式
+                  <span class="settings-line__hint">强调色 / 选中态 / 焦点环</span>
+                </span>
                 <span class="settings-line__control">
-                  <select class="line-select" disabled aria-label="色彩模式（未接入）">
-                    <option>默认</option>
-                    <option>自定义</option>
+                  <select class="line-select" id="settingsColorStyle" aria-label="色彩模式">
+                    <option value="default">默认</option>
+                    <option value="custom">自定义</option>
                   </select>
                 </span>
               </div>
 
+              <div id="accentCustomBlock" hidden>
+                <div class="settings-line">
+                  <span class="settings-line__label">
+                    主色
+                    <span class="settings-line__hint">浅色模式下自动压暗</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <input class="line-color" type="color" id="settingsAccentColor" value="#9fd0ff" aria-label="自定义主色">
+                    <span class="line-swatches" id="settingsAccentSwatches" role="group" aria-label="快捷主色">
+                      <button class="line-swatch" type="button" data-accent="#9fd0ff" style="--swatch:#9fd0ff" aria-label="天蓝" aria-pressed="true"></button>
+                      <button class="line-swatch" type="button" data-accent="#8fe3b0" style="--swatch:#8fe3b0" aria-label="薄荷" aria-pressed="false"></button>
+                      <button class="line-swatch" type="button" data-accent="#ffcf88" style="--swatch:#ffcf88" aria-label="琥珀" aria-pressed="false"></button>
+                      <button class="line-swatch" type="button" data-accent="#ff9c8e" style="--swatch:#ff9c8e" aria-label="珊瑚" aria-pressed="false"></button>
+                      <button class="line-swatch" type="button" data-accent="#c9b6ff" style="--swatch:#c9b6ff" aria-label="霁紫" aria-pressed="false"></button>
+                      <button class="line-swatch" type="button" data-accent="#7fbf9c" style="--swatch:#7fbf9c" aria-label="苔绿" aria-pressed="false"></button>
+                    </span>
+                  </span>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">
+                    当前主色
+                    <span class="settings-line__hint">取自上方色板或取色器</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <span class="settings-line__value" id="settingsAccentValue">#9fd0ff</span>
+                    <button class="download-action" id="settingsAccentReset" type="button">恢复默认</button>
+                  </span>
+                </div>
+              </div>
+
               <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">抗锯齿</span>
+                <span class="settings-line__label">
+                  抗锯齿
+                  <span class="settings-line__hint">暂不支持</span>
+                </span>
                 <span class="settings-line__control">
-                  <select class="line-select" disabled aria-label="字体抗锯齿（未接入）">
+                  <select class="line-select" disabled aria-label="抗锯齿（暂不支持）">
                     <option>跟随系统</option>
                     <option>开</option>
                     <option>关</option>
@@ -7618,10 +8374,13 @@
                 </span>
               </div>
 
-              <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">导出当前主题</span>
+              <div class="settings-line">
+                <span class="settings-line__label">
+                  导出当前主题
+                  <span class="settings-line__hint" id="settingsThemeStatus">把当前变量快照存成 JSON</span>
+                </span>
                 <span class="settings-line__control">
-                  <button class="download-action" type="button" disabled>导出</button>
+                  <button class="download-action" id="settingsThemeExport" type="button">导出</button>
                 </span>
               </div>
 
@@ -7762,24 +8521,30 @@
             <div class="settings-block">
               <div class="settings-block__head">
                 <span>窗口 / Window</span>
-                <span>未接入 · 占位</span>
+                <span>暂不支持</span>
               </div>
 
               <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">标题栏透明</span>
+                <span class="settings-line__label">
+                  标题栏透明
+                  <span class="settings-line__hint">暂不支持</span>
+                </span>
                 <span class="settings-line__control">
                   <label class="line-switch">
-                    <input type="checkbox" disabled aria-label="标题栏透明（未接入）">
+                    <input type="checkbox" disabled aria-label="标题栏透明（暂不支持）">
                     <span class="line-switch__track" aria-hidden="true"></span>
                   </label>
                 </span>
               </div>
 
               <div class="settings-line is-disabled" aria-disabled="true">
-                <span class="settings-line__label">窗口透明</span>
+                <span class="settings-line__label">
+                  窗口透明
+                  <span class="settings-line__hint">暂不支持</span>
+                </span>
                 <span class="settings-line__control">
                   <label class="line-switch">
-                    <input type="checkbox" disabled aria-label="窗口透明（未接入）">
+                    <input type="checkbox" disabled aria-label="窗口透明（暂不支持）">
                     <span class="line-switch__track" aria-hidden="true"></span>
                   </label>
                 </span>
@@ -7860,6 +8625,10 @@
                 <button class="download-action" id="settingsOpenLicense" type="button">
                   <span>开源许可</span>
                   <span aria-hidden="true">↗</span>
+                </button>
+                <!-- 基线 [s-about] 的用户协议入口：暂不单独提供，保留禁用占位 -->
+                <button class="download-action" type="button" disabled title="本项目没有单独的「同意 / 拒绝用户协议」流程">
+                  用户协议
                 </button>
               </div>
 
@@ -8118,7 +8887,7 @@
         <div class="dialog-actions">
           <button class="dialog-btn" id="instanceRenameApply" type="button">重命名…</button>
           <button class="dialog-btn" id="instanceDuplicate" type="button">复制游戏实例</button>
-          <button class="dialog-btn" id="instanceExport" type="button" disabled title="导出整合包待接入">导出整合包</button>
+          <button class="dialog-btn" id="instanceExport" type="button">导出整合包</button>
         </div>
 
         <p class="dialog-status" id="instanceDialogStatus" role="status" aria-live="polite"></p>
@@ -8258,6 +9027,286 @@
       </div>
       <div class="dialog-foot">
         <button class="dialog-btn dialog-btn--primary" type="button" data-dialog-close>确定</button>
+      </div>
+    </section>
+
+    <!-- [L5] 日志窗口（对照 LogWindow.java：自动滚动 / 导出 / 结束游戏进程 / 导出运行栈 / 清除） -->
+    <section class="dialog dialog--log" id="dlgLog" role="dialog" aria-modal="true" aria-labelledby="dlgLogTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgLogTitle">日志</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="log-toolbar">
+          <button class="log-toggle" id="logAutoScroll" type="button" role="switch" aria-checked="true" title="自动滚动到最新一行">
+            <span class="log-toggle__dot" aria-hidden="true"></span>
+            <span id="logAutoScrollText">自动滚动</span>
+          </button>
+          <button class="dialog-btn" id="logExport" type="button">导出</button>
+          <button class="dialog-btn" id="logStop" type="button" disabled title="游戏没在运行时不可用">结束游戏进程</button>
+          <button class="dialog-btn" id="logDump" type="button">导出游戏运行栈</button>
+          <button class="dialog-btn" id="logClear" type="button">清除</button>
+        </div>
+
+        <div class="log-meta">
+          <span id="logFileLabel">未选择日志</span>
+          <span id="logStateLabel">—</span>
+        </div>
+
+        <pre class="log-view" id="logView" tabindex="0"></pre>
+
+        <div class="log-foot">
+          <button class="dialog-btn dialog-btn--tiny" id="logOpenFolder" type="button">打开游戏日志文件夹</button>
+          <p class="dialog-status" id="logStatus" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn dialog-btn--tiny" id="logOpenAppFolder" type="button">启动器日志</button>
+        <button class="dialog-btn dialog-btn--primary" type="button" data-dialog-close>关闭</button>
+      </div>
+    </section>
+
+    <!-- 导出游戏运行栈：文本块 + 复制 -->
+    <section class="dialog dialog--wide" id="dlgDump" role="dialog" aria-modal="true" aria-labelledby="dlgDumpTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgDumpTitle">游戏运行栈</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text" id="dumpMeta">—</p>
+        <textarea class="crash-trace" id="dumpText" rows="16" readonly spellcheck="false"></textarea>
+        <p class="dialog-status" id="dumpStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
+        <button class="dialog-btn dialog-btn--primary" id="dumpCopy" type="button">复制</button>
+      </div>
+    </section>
+
+    <!-- [L5] 崩溃窗口（对照 CrashWindow.java：打开日志文件夹） -->
+    <section class="dialog dialog--wide" id="dlgCrash" role="dialog" aria-modal="true" aria-labelledby="dlgCrashTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgCrashTitle">启动器崩溃</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="crash-summary">
+          <strong id="crashTitleText">启动器遇到了一个未处理的错误</strong>
+          <span id="crashMeta">—</span>
+        </div>
+        <pre class="crash-trace" id="crashTrace"></pre>
+        <p class="dialog-text">日志已经写进启动器数据目录的 <code>logs/</code>，把这段信息和日志一起反馈给开发者最有用。</p>
+        <p class="dialog-status" id="crashStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn dialog-btn--primary" id="crashOpenLogs" type="button" data-control-key="settings.launcher.launcher_log.reveal">打开日志文件夹</button>
+        </div>
+        <button class="dialog-btn" id="crashCopy" type="button">复制错误信息</button>
+        <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
+      </div>
+    </section>
+
+    <!-- [L5] 游戏崩溃窗口（对照 GameCrashWindow.java：导出崩溃信息 / 日志 / 帮助） -->
+    <section class="dialog dialog--wide" id="dlgGameCrash" role="dialog" aria-modal="true" aria-labelledby="dlgGameCrashTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgGameCrashTitle">游戏崩溃</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="crash-summary">
+          <strong id="gameCrashHeadline">游戏异常退出</strong>
+          <span id="gameCrashMeta">—</span>
+        </div>
+        <p class="dialog-text" id="gameCrashHint">可以先导出崩溃信息，或者打开本次启动的日志查看完整堆栈。</p>
+        <pre class="crash-trace crash-trace--short" id="gameCrashReport">（这次退出没有生成崩溃报告）</pre>
+        <p class="dialog-status" id="gameCrashStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn dialog-btn--primary" id="gameCrashExport" type="button" data-control-key="logwindow.export_game_crash_logs">导出游戏崩溃信息</button>
+        </div>
+        <button class="dialog-btn dialog-btn--primary" id="gameCrashLogs" type="button" data-control-key="logwindow.title">日志</button>
+        <button class="dialog-btn dialog-btn--primary" id="gameCrashHelp" type="button" data-control-key="help">帮助</button>
+        <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
+      </div>
+    </section>
+
+    <!-- 截图查看（对照 ScreenshotsPage：设为启动器背景 / 复制 / 确定） -->
+    <section class="dialog dialog--wide" id="dlgShot" role="dialog" aria-modal="true" aria-labelledby="dlgShotTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgShotTitle">截图</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="shot-view"><img id="shotImage" alt="截图预览"></div>
+        <p class="dialog-text" id="shotMeta">—</p>
+        <p class="dialog-status" id="shotDialogStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn" id="shotSetWallpaper" type="button" data-control-key="screenshots.set_as_bg">设为启动器背景</button>
+          <button class="dialog-btn" id="shotCopy" type="button" data-control-key="menu.copy">复制</button>
+        </div>
+        <button class="dialog-btn dialog-btn--primary" id="shotConfirm" type="button" data-control-key="button.ok">确定</button>
+      </div>
+    </section>
+
+    <!-- [L5] Java 下载提示（对照 JavaDownloadDialog.java：下载 / 取消） -->
+    <section class="dialog" id="dlgJavaDownload" role="dialog" aria-modal="true" aria-labelledby="dlgJavaDownloadTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgJavaDownloadTitle">下载 Java</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <p class="dialog-text">
+          启动器需要一份 Java 才能启动游戏。下载会从 Eclipse Adoptium 的官方接口取 Temurin JDK，
+          存到启动器数据目录（不改系统 PATH / JAVA_HOME），装好后自动登记并选中。
+        </p>
+        <label class="create-field" for="javaDownloadVersion">
+          <span class="create-label">Java 主版本</span>
+          <span class="create-control-wrap">
+            <select class="create-control" id="javaDownloadVersion">
+              <option value="17">Java 17（1.17 – 1.20.4）</option>
+              <option value="21" selected>Java 21（1.20.5 起）</option>
+              <option value="8">Java 8（1.12.2 及更早）</option>
+              <option value="25">Java 25（最新）</option>
+            </select>
+            <span class="create-select-arrow" aria-hidden="true"></span>
+          </span>
+        </label>
+        <p class="dialog-text" id="javaDownloadHint">下载包约 180 MB，取决于网络速度；安装完成后会回到 Java 列表。</p>
+        <p class="dialog-status" id="javaDownloadStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close data-control-key="button.cancel">取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="javaDownloadConfirm" type="button" data-control-key="download">下载</button>
+      </div>
+    </section>
+
+    <!-- [L4] NBT 编辑器（保存 / 取消） -->
+    <section class="dialog dialog--xl" id="dlgNbt" role="dialog" aria-modal="true" aria-labelledby="dlgNbtTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgNbtTitle">NBT 编辑器</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="nbt-head">
+          <span id="nbtFileName">未选择文件</span>
+          <span id="nbtFileMeta">—</span>
+        </div>
+        <div class="nbt-table-wrap">
+          <table class="nbt-table">
+            <thead>
+              <tr><th scope="col">路径</th><th scope="col">类型</th><th scope="col">值</th></tr>
+            </thead>
+            <tbody id="nbtRows"></tbody>
+          </table>
+        </div>
+        <p class="detail-note">只列出可编辑的标量字段与容器标题；改动写回前会自动生成 <code>.bak</code> 备份，未知字段原样保留。</p>
+        <p class="dialog-status" id="nbtStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close data-control-key="button.cancel">取消</button>
+        <button class="dialog-btn dialog-btn--primary" id="nbtSave" type="button" data-control-key="button.save">保存</button>
+      </div>
+    </section>
+
+    <!-- [L4] 导出整合包向导（类型 → 文件 → 信息） -->
+    <section class="dialog dialog--xl" id="dlgExport" role="dialog" aria-modal="true" aria-labelledby="dlgExportTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgExportTitle">导出整合包</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <ol class="wizard-steps" id="exportStepBar">
+          <li class="wizard-step is-active" data-export-step-dot="type">1 · 类型</li>
+          <li class="wizard-step" data-export-step-dot="files">2 · 文件</li>
+          <li class="wizard-step" data-export-step-dot="info">3 · 信息</li>
+        </ol>
+
+        <div class="wizard-panel" data-export-panel="type">
+          <p class="dialog-text">选择导出格式。两种格式都会把选中的内容放进 <code>overrides/</code>，这里不生成需要联网比对的文件列表。</p>
+          <div class="export-types" id="exportTypes">
+            <button class="export-type is-selected" type="button" data-export-format="curseforge" data-control-key="modpack.wizard.step.type">
+              <b>CurseForge 格式</b>
+              <span>manifest.json + overrides/，多数第三方启动器与 CurseForge 客户端可识别</span>
+            </button>
+            <button class="export-type" type="button" data-export-format="modrinth" data-control-key="modpack.wizard.step.type">
+              <b>Modrinth 格式</b>
+              <span>modrinth.index.json + overrides/，.mrpack 同源结构</span>
+            </button>
+          </div>
+          <p class="dialog-text" id="exportTypeHint">当前：CurseForge 格式</p>
+        </div>
+
+        <div class="wizard-panel" data-export-panel="files" hidden>
+          <div class="export-file-head">
+            <span>选择要打进整合包的内容</span>
+            <button class="dialog-btn dialog-btn--tiny" id="exportSelectAll" type="button">全选</button>
+          </div>
+          <div class="export-files" id="exportFiles" role="group" aria-label="导出内容"></div>
+          <p class="dialog-text" id="exportFileSummary">—</p>
+        </div>
+
+        <div class="wizard-panel" data-export-panel="info" hidden>
+          <div class="export-grid">
+            <label class="create-field" for="exportName">
+              <span class="create-label">整合包名称</span>
+              <input class="create-control" id="exportName" type="text" maxlength="80" autocomplete="off">
+            </label>
+            <label class="create-field" for="exportVersion">
+              <span class="create-label">版本号</span>
+              <input class="create-control" id="exportVersion" type="text" maxlength="40" autocomplete="off" placeholder="1.0.0">
+            </label>
+            <label class="create-field" for="exportAuthor">
+              <span class="create-label">作者</span>
+              <input class="create-control" id="exportAuthor" type="text" maxlength="80" autocomplete="off" placeholder="选填">
+            </label>
+            <label class="create-field" for="exportServer">
+              <span class="create-label">认证服务器</span>
+              <span class="create-control-wrap">
+                <select class="create-control" id="exportServer" data-control-key="account.injector.server">
+                  <option value="">不指定</option>
+                </select>
+                <span class="create-select-arrow" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="create-field export-field--wide" for="exportSummary">
+              <span class="create-label">简介</span>
+              <input class="create-control" id="exportSummary" type="text" maxlength="200" autocomplete="off" placeholder="选填，会写进清单">
+            </label>
+          </div>
+
+          <div>
+            <label class="export-toggle">
+              <input type="checkbox" id="exportForceUpdate" data-control-key="modpack.wizard.step.initialization.force_update">
+              <span>强制升级整合包至最新版本<small>在清单里标记 forceUpdate；用本启动器更新时忽略旧的断点状态</small></span>
+            </label>
+            <label class="export-toggle">
+              <input type="checkbox" id="exportIncludeLauncher" data-control-key="modpack.wizard.step.initialization.include_launcher">
+              <span>包含启动器<small>额外写入 launcher/README.txt，说明从哪里获取 MCDL Launcher</small></span>
+            </label>
+            <label class="export-toggle">
+              <input type="checkbox" id="exportNoRemoteMatch" data-control-key="modpack.wizard.step.initialization.no_create_remote_files">
+              <span>不匹配远程文件<small>跳过 SHA-1 / SHA-512 计算，导出更快，清单里不带文件哈希</small></span>
+            </label>
+            <label class="export-toggle">
+              <input type="checkbox" id="exportSkipCurseforge" data-control-key="modpack.wizard.step.initialization.skip_curseforge_remote_files">
+              <span>不匹配 CurseForge 远程资源<small>不在清单里写 CurseForge 项目 / 文件编号（本地导出本来就没有）</small></span>
+            </label>
+          </div>
+
+          <p class="dialog-text" id="exportInfoHint">—</p>
+        </div>
+
+        <p class="dialog-status" id="exportStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" data-dialog-close>取消</button>
+        <button class="dialog-btn" id="exportPrev" type="button" hidden>上一步</button>
+        <button class="dialog-btn dialog-btn--primary" id="exportNext" type="button" data-control-key="wizard.next">下一步 ›</button>
+        <button class="dialog-btn dialog-btn--primary" id="exportStart" type="button" hidden data-control-key="modpack.export">导出</button>
       </div>
     </section>
 

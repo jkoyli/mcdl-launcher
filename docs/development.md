@@ -17,15 +17,19 @@
 electron/
 ├── main.js               # 主进程：窗口、IPC 注册、启动协调
 ├── preload.js            # contextBridge 白名单（唯一渲染进程入口）
+├── app-log.js            # 启动器日志落盘：console.* / 崩溃写 <userData>/logs/launcher-*.log
 ├── mcdl-service.js       # 调用 mcdl/mcdl.jar：目录探测、实例扫描、版本列表、安装
 ├── java-runtime.js       # 本机 Java 探测与版本挑选
+├── java-install.js       # 从 Adoptium 下载 / 解压 JDK（安装 Java）
 ├── version-manifest.js   # 版本 JSON 解析：inheritsFrom / rules / classpath / natives
 ├── launch.js             # 真实启动：命令拼接、natives 解压、进程拉起
 ├── accounts.js           # 离线 / 微软 / authlib-injector 账号、认证服务器、离线皮肤
 ├── game-directories.js   # 用户添加的游戏文件夹
 ├── instance-store.js     # 实例级设置 / 图标 / 内容目录与内容管理
 ├── modrinth.js           # Modrinth 客户端：搜索、版本、必需前置、流式下载
+├── modpack-export.js     # 导出整合包：扫描实例文件 + 写 manifest / modrinth.index + zip
 ├── nbt.js                # 最小 NBT 读写（level.dat，全部 12 种 tag + gzip）
+├── nbt-editor.js         # NBT 编辑器：展平可编辑标量、按路径写回、备份 .bak
 ├── worlds.js             # 世界列表 / level.dat 读写 / 导出 / 备份 / 数据包
 ├── renderer/
 │   ├── index.html        # 界面与样式（单文件内联 CSS）
@@ -52,6 +56,8 @@ electron/
 6. 主进程用 `javaw.exe` 拉起进程，stdout/stderr 写入
    `<gameDir>/logs/mcdl-launcher-<时间戳>.log`，并通过 `launcher:launch-progress` 推送阶段：
    `starting` → `spawned` → `output` → `exit`（失败为 `error`）。
+7. `exit` 事件额外带 `stopped`（是否是用户手动结束）、`logFile` 与 `crashReport`
+   （本次启动后新出现的 `<gameDir>/crash-reports/*.txt`）；渲染层据此决定是否弹「游戏崩溃窗口」。
 
 实例查找统一走 `rescanInstances()`（启动器目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器），
 所以从「添加游戏文件夹」加进来的实例也能直接启动 / 生成脚本。
@@ -202,6 +208,8 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `%APPDATA%\mcdl-launcher-electron\icons\` | 自定义图标图片 |
 | `%APPDATA%\mcdl-launcher-electron\scanned-game-dirs.json` | 主动扫描过的其他启动器目录 |
 | `%APPDATA%\mcdl-launcher-electron\world-backups\<saves 哈希>\<世界>__<时间戳>.zip` | 世界备份 |
+| `%APPDATA%\mcdl-launcher-electron\java\temurin-<主版本>\` | 「安装 Java」下载的 JDK |
+| `%APPDATA%\mcdl-launcher-electron\logs\launcher-<日期>.log` | 启动器自身日志（主进程输出 / 崩溃） |
 | `%APPDATA%\mcdl-launcher-electron\gpu-crash.json` | 最近一次 GPU 崩溃记录（存在时下次启动走软件渲染） |
 | `<gameDir>\logs\mcdl-launcher-<时间戳>.log` | 每次启动的完整输出 |
 | `<gameDir>\logs\latest.log` | 游戏自身的日志 |
@@ -255,7 +263,14 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `launcher:launch` | renderer → main | 构造命令并启动游戏；`{ test: true }` 为测试启动（同时打开日志） |
 | `launcher:stop` | renderer → main | 结束正在运行的游戏进程 |
 | `launcher:active` | renderer → main | 列出运行中的游戏进程 |
-| `launcher:launch-progress` | main → renderer | 启动阶段与游戏输出 |
+| `launcher:launch-progress` | main → renderer | 启动阶段与游戏输出；`exit` 里带 `stopped` / `logFile` / `crashReport` |
+| `logs:tail` | renderer → main | 日志窗口快照：最近一次启动日志（或该游戏目录下最新一份）的尾部 + 是否运行中 |
+| `logs:export` | renderer → main | 把日志视图（或指定文本）另存为文件，并定位到资源管理器 |
+| `logs:open-folder` | renderer → main | 打开日志文件夹：`scope=app`（启动器日志）/ `game`（`<gameDir>/logs`） |
+| `logs:dump` | renderer → main | 导出游戏运行栈：优先 `jstack -l <pid>`，没有 jstack 时退回启动器侧信息 + 日志尾部 |
+| `crash:export` | renderer → main | 导出游戏崩溃信息（崩溃报告 + 日志尾部打包）；只接受该游戏目录下 `crash-reports` / `logs` 内的路径 |
+| `ui:copy-text` | renderer → main | 写系统剪贴板（`file://` 下 `navigator.clipboard` 不可靠） |
+| `launcher:crash` | main → renderer | 主进程 `uncaughtException` / `unhandledRejection`，渲染层弹崩溃窗口 |
 | `accounts:list` | renderer → main | 账号列表（不含令牌） |
 | `accounts:add-offline` | renderer → main | 创建并选中离线账号 |
 | `accounts:add-microsoft` | renderer → main | 打开登录窗口并完成微软登录 |
@@ -269,8 +284,20 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `accounts:set-skin-model` | renderer → main | 只切换经典 / 纤细模型 |
 | `accounts:clear-skin` | renderer → main | 删除皮肤文件 |
 | `accounts:skin-data` | renderer → main | 读取皮肤 PNG 的 data URL（预览） |
-| `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置（含下载源、隔离策略、动画开关） |
+| `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置（含下载源、隔离策略、动画开关、游戏设置预设 `presets`） |
 | `settings:preferences` | renderer → main | 启动时只读偏好，不触发 Java 扫描（用于恢复「关闭动画」） |
+| `java:install` | renderer → main | 从 Adoptium 下载并安装指定主版本 JDK，登记授权后返回 `{ path, info }` |
+| `java:install-progress` | main → renderer | Java 下载 / 解压进度 |
+| `nbt:pick` | renderer → main | 选 NBT 文件并返回一次性 token + 展平后的行；token 30 分钟有效 |
+| `nbt:save` | renderer → main | 只接受 token，按路径写回标量字段（先备份 `.bak`） |
+| `instances:screenshots` | renderer → main | 截图列表（data URL，单张 ≤16 MB、总量 ≤160 MB） |
+| `screenshots:copy` | renderer → main | 截图写入系统剪贴板 |
+| `screenshots:set-wallpaper` | renderer → main | 截图设为启动器背景（复用壁纸导入管线） |
+| `instances:maintenance` | renderer → main | 实例维护：`clean` / `remove-assets` / `remove-libraries` / `redownload-assets`（`--assets-only --verify`） |
+| `instances:merge-pack` | renderer → main | 更新整合包：把同目录下的临时实例合并进目标实例并删除临时实例 |
+| `modpack:scan` | renderer → main | 导出向导：扫描实例可导出的文件夹 / 文件 / 大小 |
+| `modpack:export` | renderer → main | 导出向导：选保存位置后打包 zip（临时文件写入 → 成功后改名） |
+| `modpack:export-progress` | main → renderer | 导出进度（收集 / 写清单 / 压缩） |
 | `app:info` | renderer → main | 关于页：版本 / Electron / Node / 平台 / 数据目录 / 仓库地址 |
 | `worlds:list` / `worlds:info` | renderer → main | 世界列表（读 level.dat）/ 单个世界信息 |
 | `worlds:save-info` | renderer → main | 写入 level.dat（作弊 / 生成建筑 / 难度 / 锁定 / 模式） |
@@ -365,7 +392,7 @@ MCDL_USER_DATA（环境变量，最高优先）
 
 已管理目录存在 `game-directories.json`；`primary` 目录是安装落点，其余目录的实例以「外部」标记参与扫描。
 
-### 实例详情（对照 [L3] 实例详情：6 页签）
+### 实例详情（对照 [L3] 实例详情：7 页签）
 
 入口三个：实例列表右键菜单「实例详情」、右侧「当前配置」卡、实例操作弹窗里的入口。
 
@@ -376,7 +403,19 @@ MCDL_USER_DATA（环境变量，最高优先）
 | 模组管理 | `mods.manage` | 搜索、分页（每页 80 + 显示更多）、全选 / 多选、批量启用 / 批量禁用 / 批量删除、定位文件（资源管理器选中）、导入、刷新、打开文件夹；「检查更新」为禁用占位 |
 | 资源包 | `resourcepack.manage` | 搜索、分页、多选、批量删除、定位文件、导入、刷新、打开文件夹（启用状态需改 `options.txt`，未接入） |
 | 世界 | `world.manage` | 世界列表（图标 / 版本 / 模式 / 难度 / 大小 / 时间）＋管理页：世界信息（读写 level.dat）、备份管理、数据包管理 |
+| 截图（第 7 页签） | `screenshots.manage` | 截图网格（搜索 / 刷新 / 打开文件夹）；点开查看器：设为启动器背景 / 复制到剪贴板 / 确定 |
 | 原理图 | `schematics.manage` | 搜索、分页、多选、批量删除、定位文件、导入（schematic / schem / nbt / litematic）、刷新 |
+
+左侧 4 个导航项（对照 `GameInstancePage.java:403-410`）：
+
+| 导航项 | 行为 |
+| --- | --- |
+| 更新整合包 | 选新版整合包 → `downloads:install-pack` 装到同游戏目录的临时实例 `update-<stamp>` → `instances:merge-pack` 覆盖合并 → 删除临时实例 |
+| 测试游戏 | 启动并把本次日志窗口打开（与实例菜单的「测试游戏」同一流程） |
+| 浏览 | 弹出 10 个文件夹快捷入口（与底部 chip 同一套动作） |
+| 管理 | 弹出 5 项：截图管理（切到截图页签）/ 更新游戏资源文件（`--assets-only --verify`）/ 删除所有游戏资源文件 / 删除所有库文件 / 清理游戏文件夹（logs + crash-reports + natives + 断点状态）；另加清单外「查看日志」 |
+
+`清理 / 删资源 / 删库` 都会先弹二次确认；`更新游戏资源文件` 走 `runTask`，可取消。
 
 内容目录按「版本隔离」解析：`versions/<id>/<子目录>` 存在就用它（HMCL / PCL 装整合包的做法），
 否则回落到 `<游戏目录>/<子目录>`；两者都不存在时，外部实例按版本目录新建、自己的实例按全局目录新建。
@@ -484,13 +523,21 @@ CDN 地址时，卡片回落成项目名首字母。
 | `wallDim` | `30` | 框外暗化 0–70%，框内另叠 `0.12 + 0.6×` |
 | `wallInnerFit` | `contain` | 框内 contain / cover；画中画关闭时该控件禁用 |
 | `wallPip` | `true` | 画中画：`true` 内外双图，`false` 内外同一张 cover |
+| `presets` | `[]` | 游戏设置预设：`{ id, name, memoryMb?, width?, height?, jvmArgs?, gameIsolation? }`，最多 50 个 |
 
 - 游戏设置页签保留表单 + 「保存设置」；其余页签的控件改完立即 `saveSettings`（`saveSettingsPatch()`）。
+- **预设**：`#settingsPreset` 下拉 + `新建预设 / 应用 / 删除`。新建时把当前表单值存进 `presets`；
+  应用会把预设写回表单并直接保存；主进程 `normalizePresets()` 做长度 / 数值范围 / 枚举校验。
 - 下载源三项会分别进入 `mcdl --list`、`--install`、`--install-loader`、`--list-loaders`。
-- Java 管理页签列出 `settings:get` 扫描到的运行时，可指定固定 Java 或「重新扫描」；自动安装 / 恢复
-  Java 还没接入（按钮禁用并注明）。
+- Java 管理页签列出 `settings:get` 扫描到的运行时，可指定固定 Java 或「重新扫描」；「选择 Java…」
+  走系统对话框并登记指纹；「安装 Java」先弹 `dlgJavaDownload`（8 / 17 / 21 / 25），确认后
+  `java:install` 从 Adoptium 下载 Temurin JDK 到 `<userData>/java/temurin-<主版本>`，
+  解压后 `registerJava()` 登记并保存为 `javaPath`。装过的同主版本会直接复用，不重复下载。
 - 关于页签通过 `app:info` 显示版本、Electron / Chromium / Node、平台与数据目录，并提供项目主页 /
   开源许可两个外链；用户协议入口未单独提供。
+- 通用页签新增 **NBT 编辑器**入口：`nbt:pick` 选文件并拿一次性 token，`dlgNbt` 里以
+  「路径 / 类型 / 值」表格编辑标量字段，保存时 `nbt:save` 按路径写回（先备份 `.bak`）。
+  只做字段编辑，不新增 / 删除节点。入口未实现的部分（主题）继续保留禁用占位。
 
 外观页签按 `docs/history/ui-tree-controls.html` 的 [L3] 个性化分层：**主题**（主题 / 主题模式 /
 色彩模式 / 抗锯齿 / 导出当前主题 / 主题包管理）与**窗口**（标题栏透明 / 窗口透明）这一轮不做，
@@ -538,7 +585,47 @@ CDN 地址时，卡片回落成项目名首字母。
   读出整棵树、改几个字段再原样写回，未知字段不会丢；写入用 gzip。
 - zip 不引入依赖：导出 / 备份用 Windows 自带的 `tar.exe`（bsdtar）`-a -c -f` 打包。
 
+### 日志窗口 / 崩溃窗口 / 游戏崩溃窗口（对照 [L5] 全局弹窗）
+
+三个窗口共用 `dlgLog` / `dlgCrash` / `dlgGameCrash`，都不阻塞游戏进程。
+
+- **日志窗口**（`dlgLog`，入口：「测试游戏」启动后、「管理 → 查看日志」、「游戏崩溃窗口 → 日志」）：
+  - 打开时 `logs:tail` 读一次快照（优先本次启动的日志，没有就取该游戏目录下最新的
+    `mcdl-launcher-*.log`），之后把 `launcher:launch-progress` 的 `output` 事件续写进 `<pre>`；
+  - `自动滚动` 是 `role="switch"` 的开关，关掉后新行继续追加但不再滚到底；
+  - `导出` → `logs:export` 另存并定位；`结束游戏进程` → `launcher:stop`（只有活动进程时可用）；
+    `导出游戏运行栈` → `logs:dump` 打开 `dlgDump`（文本块 + 复制）；`清除` 只清空 `<pre>`，不删文件。
+- **崩溃窗口**（`dlgCrash`）：主进程 `uncaughtException` / `unhandledRejection` 通过
+  `launcher:crash` 推送，渲染进程自身的 `error` / `unhandledrejection` 也会打开它；
+  只有一个必需按钮「打开日志文件夹」→ `logs:open-folder?scope=app`。主进程的 `console.*`
+  与异常由 `app-log.js` 落盘到 `<userData>/logs/launcher-YYYYMMDD.log`。
+- **游戏崩溃窗口**（`dlgGameCrash`）：`exit` 事件里 `code !== 0 && !stopped` 时弹出，
+  显示实例 / 版本 / 运行时长 / 日志路径，并补一段日志尾部；3 个强调按钮：
+  `导出游戏崩溃信息`（`crash:export`，崩溃报告 + 日志尾部打包）、`日志`（打开日志窗口）、
+  `帮助`（外链 `docs/troubleshooting.md`）。手动「结束游戏进程」不会弹这个窗口。
+
+### 导出整合包向导（对照 export/ModpackTypeSelectionPage / ModpackFileSelectionPage / ModpackInfoPage）
+
+实例菜单、实例操作对话框的「导出整合包」都打开同一个 `dlgExport`，3 步：
+
+1. **类型**：CurseForge（`manifest.json`）或 Modrinth（`modrinth.index.json`）。
+2. **文件**：`modpack:scan` 扫出的 7 类内容（模组 / 配置 / 资源包 / 光影 / 存档 / 投影 / 游戏选项），
+   默认勾选模组、配置、资源包、光影、选项；显示每类文件数与体积。
+3. **信息**：名称 / 版本 / 作者 / 简介、认证服务器、4 个开关（强制升级 / 包含启动器 /
+   不匹配远程文件 / 不匹配 CurseForge 远程资源），点「导出」选保存位置。
+
+实现要点（`electron/modpack-export.js`）：
+
+- 选中文件先复制到临时目录的 `overrides/`（实例目录优先于全局目录，同一相对路径去重），
+  写清单后再用 `tar.exe -a -c` 压缩；整个过程在 `<目标目录>/.mcdl-export-*` 里完成，失败只删临时文件。
+- **不生成远程 `files` 列表**：本地文件没有 CurseForge project/file id，Modrinth 也需要先查版本，
+  写进去反而会让别的启动器装不上；「不匹配远程文件」关掉时才为文件计算 SHA-1 / SHA-512 供排查。
+- 「包含启动器」写入 `launcher/README.txt`（启动器本体是 Electron 应用，不随整合包分发）。
+- 清单里多一个 `mcdl` 块记录导出参数；Minecraft 版本优先从版本 JSON 的 `inheritsFrom` / `id` 反推，
+  避免外部实例用中文文件夹名当版本号。
+
 ### 账户页（对照 `docs/history/ui-tree-controls.html` 的 [L2] 账户）
+
 
 布局：左侧是巨大的「账户」标题与说明，右侧是两块内容（整块靠右，最大 640px）——
 上面三张并列的操作卡片，下面已保存账户的头像卡片。卡片都是半透明底 + `backdrop-filter`
@@ -622,6 +709,17 @@ CDN 地址时，卡片回落成项目名首字母。
   （`path.basename` 相等 + realpath 越界判定），`ext` 通道只服务"当前 `settings.wallFile`"那一个路径。
   对应地，`settings:save` 禁止渲染进程把 `wallFile` 改成 `backgrounds/` 之外的值——否则这条协议就是
   "按扩展名读任意本地文件"的通道。上传时还会核对文件头（改名的 exe 过不了）。
+- **NBT 编辑器只认 token**：`nbt:pick` 由主进程弹对话框选文件，返回一次性 token；`nbt:save` 只接受 token，
+  渲染层无法指定任意路径写回。写入前复制 `.bak`，类型 / 范围不合法直接拒绝。
+- **崩溃信息导出只读固定目录**：`crash:export` 的 `crashReport` / `logFile` 必须分别位于该实例游戏目录的
+  `crash-reports/` 与 `logs/` 内（`pathGuard.assertInsideReal`），避免变成"读任意本地文本"的通道。
+- **导出整合包只读实例内容**：`modpack:scan` / `modpack:export` 的实例由 `requireInstance()` 解析，
+  写入目标由系统保存对话框决定；打包先写同目录临时文件，失败只删临时文件，不会误删用户已有的 zip。
+- **更新整合包不认渲染层拼的路径**：`instances:merge-pack` 只用「同一 gameDir + versions 下文件夹名」
+  定位临时实例，两边目录都必须在 `versions/` 下；`downloads:install-pack` 的 `gameDir` 必须是已登记的
+  游戏目录（`assertGameDirAllowed`）。
+- **Java 安装**：从 `https://api.adoptium.net` 下载到启动器数据目录，解压后由主进程 `registerJava()`
+  登记授权；不改系统 PATH / JAVA_HOME，也不静默覆盖用户已选的 Java。
 - 启动入口不要加 `--no-sandbox`：它会关掉整个 Chromium 进程沙箱，`webPreferences.sandbox` 随之失效。
   排查问题请用 `npm run start:troubleshoot`。
 
@@ -645,9 +743,10 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 
 日志：
 
-- 主进程 `console.log` 输出到启动终端（窗口创建、IPC 注册、启动阶段）；
-- 渲染进程错误见 DevTools Console；
-- 游戏输出见 `<gameDir>/logs/mcdl-launcher-<时间戳>.log` 与 `latest.log`。
+- 主进程 `console.log` 同时输出到启动终端与 `<userData>/logs/launcher-YYYYMMDD.log`
+  （`app-log.js` 包了一层 console；崩溃窗口的「打开日志文件夹」指向这里）；
+- 渲染进程错误见 DevTools Console，未捕获的 `error` / `unhandledrejection` 会弹出崩溃窗口；
+- 游戏输出见 `<gameDir>/logs/mcdl-launcher-<时间戳>.log` 与 `latest.log`，可用标题栏「帮助」打开日志窗口查看。
 
 `docs/history/` 下的 `ui-*.md` / `ui-*.html` 是重写前 HMCL 界面的控件清单，仅作设计参考，运行时不使用。
 
@@ -658,14 +757,15 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 - 整合包来源：Modrinth / CurseForge 在线浏览与一键安装（`mcdl --install-pack` 已支持本地文件）。
 - 新闻区：主视区的更新日志仍是占位内容。
 - 离线皮肤注入游戏：目前只保存与预览，需要自定义皮肤服务或 CustomSkinLoader。
-- 导出整合包（`modpack.export`）：实例菜单里已放出入口但禁用，需要整理 `mods/config/saves` 的打包逻辑。
+- 导出整合包（`modpack.export`）：向导已接入（CurseForge / Modrinth 两种格式）；后续可补
+  「按 Modrinth / CurseForge 文件 ID 生成远程 files 列表」，让整合包更小。
 - 模组「检查更新」：按钮已占位并禁用，需要模组来源（Modrinth / CurseForge）与版本比对。
 - 资源包启用 / 禁用：要读写 `options.txt` 的 `resourcePacks`，未做。
 - 世界的「进入世界」直启（`--quickPlaySingleplayer`）、数据包启用 / 禁用（`level.dat` 的 DataPacks）
   与新建世界未做。
-- 设置页的外观页签：背景（自上传壁纸）已接入；主题包 / 主题模式 / 色彩模式 / 标题栏透明 /
-  窗口透明 / 抗锯齿仍是 `disabled` 占位，等主题包层一起做。
-- Java 管理的自动安装 / 恢复 Java 未接入，需要 Adoptium 之类的下载与运行时注册流程。
-- 设置页的「预设」「版本隔离（按实例覆盖）」仍未做。
-- 内容更新（`instance.update`）与清理项（`instance.manage.remove_assets` / `clean` 等）：未做。
+- 设置页的外观页签：背景（自上传壁纸）已接入；主题 / 主题模式 / 色彩模式 / 标题栏透明 /
+  窗口透明 / 抗锯齿 / 主题包管理仍是 `disabled` 占位，等主题引擎一起做。
+- 更新整合包目前是「装到临时实例 → 覆盖合并」，后续可做逐文件差异更新（保留用户改动过的配置）。
+- 内容更新（`instance.update`）与「检查更新」的版本比对仍未做。
+- 日志窗口是「文件尾部 + 实时事件」；后续可加过滤 / 关键字搜索 / 按级别着色。
 - Java 扫描首次约 15 秒（`mcdl --list-java` + 逐个探测）；已有 24 小时磁盘缓存，可再做后台预热。

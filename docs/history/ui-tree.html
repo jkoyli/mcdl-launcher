@@ -18,21 +18,22 @@ li:last-child::before{content:"└─";}
 </style></head><body>
 <h1>MCDL Launcher UI 结构统计（基线 v1 + 实现状态）</h1>
 <div class="meta">基线：静态扫描 <code>HMCL/src/main/java/org/jackhuang/hmcl/ui/**/*.java</code> · 60 节点 / 284 项控件 · 54 个页面/弹窗 · 218 个可点击控件</div>
-<div class="meta">核对日 2026-11-02：✅ 完成 ｜ ⚠️ 部分 ｜ ⛔ 未做 —— 逐节点明细见 <a href="ui-status.md" style="color:#9ad7ff">ui-status.md</a></div>
+<div class="meta">核对日 2026-11-02 21:10：✅ 完成 ｜ ⚠️ 部分 ｜ ⛔ 未做 ｜ ➖ 不做（设计决定） —— 逐节点明细见 <a href="ui-status.md" style="color:#9ad7ff">ui-status.md</a></div>
 
 <h2>实现进度（2026-11-02）</h2>
 <table><tr><th>分组</th><th>项数</th><th>已做</th><th>状态</th></tr>
 <tr><td>L1 骨架</td><td>11</td><td>11</td><td class="ok">✅</td></tr>
 <tr><td>账户（含 5 弹窗）</td><td>22</td><td>22</td><td class="ok">✅</td></tr>
-<tr><td>游戏 / 实例详情</td><td>81</td><td>59</td><td class="warn">⚠️</td></tr>
+<tr><td>游戏 / 实例详情</td><td>81</td><td>75</td><td class="warn">⚠️</td></tr>
 <tr><td>实例管理</td><td>8</td><td>8</td><td class="ok">✅</td></tr>
-<tr><td>下载中心</td><td>26</td><td>23</td><td class="warn">⚠️</td></tr>
-<tr><td>设置中心</td><td>47</td><td>28</td><td class="warn">⚠️</td></tr>
-<tr><td>导出整合包向导</td><td>8</td><td>0</td><td class="no">⛔</td></tr>
-<tr><td>全局弹窗</td><td>11</td><td>1</td><td class="warn">⚠️</td></tr>
-<tr><td>共享组件</td><td>70</td><td>~45</td><td class="warn">⚠️</td></tr>
-<tr><td><b>合计</b></td><td><b>284</b></td><td><b>≈200</b></td><td class="warn">≈70%</td></tr>
+<tr><td>下载中心</td><td>26</td><td>26</td><td class="ok">✅</td></tr>
+<tr><td>设置中心</td><td>47</td><td>44</td><td class="ok">✅（3 项不做）</td></tr>
+<tr><td>导出整合包向导</td><td>8</td><td>8</td><td class="ok">✅</td></tr>
+<tr><td>全局弹窗</td><td>11</td><td>11</td><td class="ok">✅</td></tr>
+<tr><td>共享组件</td><td>70</td><td>64</td><td class="ok">✅（4 不做 + 2 待定）</td></tr>
+<tr><td><b>合计</b></td><td><b>284</b></td><td><b>269</b></td><td class="warn">≈95%</td></tr>
 </table>
+<div class="note">剩余 15 项 = 7 项「不做」（主题包管理 3 + 字体/上下移/微调/三态开关 4）+ <b>8 项实操</b>：内容更新 5 / HTMLRenderer 2（待定）/ 主页主视觉·新闻 1。未做项保留禁用占位，见 ui-status.md §4 / §5 / §9。</div>
 
 <h2>层级汇总（基线口径）</h2>
 <table><tr><th>层级</th><th>含义</th><th>页面/弹窗</th><th>按钮</th><th>列表项</th><th>页签</th><th>可点击合计</th></tr>
@@ -62,64 +63,64 @@ li:last-child::before{content:"└─";}
 </li></ul>
 <li><span class="l2 warn">⚠️ 游戏（当前实例）</span><span class="cnt">[L2] 主页 · 2 按钮；主视区与新闻仍为占位</span>
 <ul>
-<li><span class="l3 warn">⚠️ 实例详情</span><span class="cnt">[L3] 6 页签 + 1 运行时页签 + 4 侧栏项（更新/测试启动/浏览/管理）</span>
+<li><span class="l3 ok">✅ 实例详情</span><span class="cnt">[L3] 7 页签（第 7 = 截图）+ 4 个导航项（更新整合包/测试游戏/浏览/管理）</span>
 <ul>
-<li><span class="l3 warn">⚠️ 游戏设置</span><span class="cnt">[L3] 5 控件（实现为 内存/窗口宽高/隔离策略/JVM，未做「预设」）</span>
+<li><span class="l3 ok">✅ 游戏设置</span><span class="cnt">[L3] 5 控件（预设 / 内存 / 窗口宽高 / 隔离策略 / JVM）</span>
 <li><span class="l3 ok">✅ 自动安装</span><span class="cnt">[L3] 1 按钮</span>
 <li><span class="l4 ok">✅ 模组</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
 <li><span class="l4 no">⛔ 模组更新</span><span class="cnt">[L4] AddonUpdatesPage · 5 控件（无界面）</span>
 <li><span class="l4 ok">✅ 资源包</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
 <li><span class="l4 ok">✅ 世界</span><span class="cnt">[L4] 世界详情 5 控件 / 世界管理 3 页签 + 19 项（含备份、数据包、chunkbase）</span>
 <li><span class="l4 ok">✅ 投影</span><span class="cnt">[L4] 2 控件</span>
-<li><span class="l4 no">⛔ 截图</span><span class="cnt">[L4] 3 控件（仅剩文件夹入口）</span>
-<li><span class="l4 no">⛔ 实例详情额外项</span><span class="cnt">更新整合包 / 浏览 / 管理 / 截图管理 / 更新资源 / 删资源 / 删库 / 清理</span>
+<li><span class="l4 ok">✅ 截图</span><span class="cnt">[L4] 3 控件（第 7 页签：设为背景 / 复制 / 确定）</span>
+<li><span class="l4 ok">✅ 实例详情额外项</span><span class="cnt">更新整合包 / 测试游戏 / 浏览 / 管理 / 截图管理 / 更新资源 / 删资源 / 删库 / 清理 / 导出整合包</span>
 </li></ul>
 <li><span class="l5 ok">✅ 实例图标选择</span><span class="cnt">[L5] 弹窗 · 3 控件</span>
 </li></ul>
 <li><span class="l2 ok">✅ 实例管理</span><span class="cnt">[L2] 实例列表 · 3 项 + 10 项右键菜单</span>
 <ul>
 <li><span class="l4 ok">✅ 游戏目录管理</span><span class="cnt">[L4] 2 控件</span>
-<li><span class="l5 ok">✅ 实例操作对话框</span><span class="cnt">[L5] 2 按钮（导出整合包为 disabled）</span>
+<li><span class="l5 ok">✅ 实例操作对话框</span><span class="cnt">[L5] 2 按钮（导出整合包已启用）</span>
 </li></ul>
-<li><span class="l2 warn">⚠️ 下载</span><span class="cnt">[L2] 下载中心 · 6 页签</span>
+<li><span class="l2 ok">✅ 下载</span><span class="cnt">[L2] 下载中心 · 6 页签 · 26/26</span>
 <ul>
 <li><span class="l3 ok">✅ 游戏版本</span><span class="cnt">[L3] 版本列表 · 4 控件</span>
 <ul>
-<li><span class="l4 warn">⚠️ 安装向导 · 可选文件</span><span class="cnt">[L4] 3 控件（入口 disabled）</span>
+<li><span class="l4 ok">✅ 安装向导 · 可选文件</span><span class="cnt">[L4] 3 控件（#packOptional 已启用）</span>
 <li><span class="l4 ok">✅ 加载器安装列表</span><span class="cnt">[L4] 1 按钮；<span class="dev">⚠️ 实现已迁到「新建实例」页（#createLoader / #createLoaderVersion）</span></span>
 </li></ul>
-<li><span class="l3 warn">⚠️ 整合包</span><span class="cnt">[L3] 2 按钮（可选文件 disabled）</span>
+<li><span class="l3 ok">✅ 整合包</span><span class="cnt">[L3] 2 按钮（安装 + 可选文件）</span>
 <ul>
 <li><span class="l4 ok">✅ 整合包类型选择</span><span class="cnt">[L4] 1 按钮；本地整合包</span>
 </li></ul>
 <li><span class="l3 ok">✅ 模组</span><span class="cnt">[L3] 2 控件（内容列表）</span>
 <li><span class="l3 ok">✅ 资源包</span><span class="cnt">[L3] 2 控件</span>
 <li><span class="l3 ok">✅ 光影</span><span class="cnt">[L3] 2 控件</span>
-<li><span class="l3 no">⛔ 世界</span><span class="cnt">[L3] 2 控件（搜索按钮 disabled）</span>
+<li><span class="l3 no">⛔ 世界</span><span class="cnt">[L3] 搜索按钮 disabled（清单外项，不计入 284）</span>
 <ul>
 <li><span class="l4 ok">✅ 内容下载页</span><span class="cnt">[L4] 版本选择 / 更新日志 · 5 控件</span>
 </li></ul>
 </li></ul>
-<li><span class="l2 warn">⚠️ 设置</span><span class="cnt">[L2] 设置中心 · 6 页签（结构齐全）</span>
+<li><span class="l2 ok">✅ 设置</span><span class="cnt">[L2] 设置中心 · 6 页签 · 44/47（3 项不做）</span>
 <ul>
-<li><span class="l3 warn">⚠️ 游戏设置</span><span class="cnt">[L3] 5 控件（4/5）</span>
+<li><span class="l3 ok">✅ 游戏设置</span><span class="cnt">[L3] 5 控件（预设 / 默认隔离策略 / 版本隔离 / 2 个运行时项）</span>
 <li><span class="l3 ok">✅ Java 管理</span><span class="cnt">[L3] 1 按钮</span>
 <ul>
-<li><span class="l5 no">⛔ 安装 Java</span><span class="cnt">[L5] 1 按钮（disabled）；恢复 Java；下载提示 2 按钮</span>
+<li><span class="l5 ok">✅ 安装 Java</span><span class="cnt">[L5] 1 按钮（Adoptium）；下载提示 2 按钮（下载 / 取消）</span>
 </li></ul>
-<li><span class="l3 ok">✅ 通用设置</span><span class="cnt">[L3] 3 控件</span>
-<li><span class="l3 warn">⚠️ 个性化</span><span class="cnt">[L3] 11 控件（仅实现 1 项：关闭动画）</span>
+<li><span class="l3 ok">✅ 通用设置</span><span class="cnt">[L3] 3 控件 + NBT 编辑器入口</span>
+<li><span class="l3 ok">✅ 个性化</span><span class="cnt">[L3] 11 控件（主题 / 色彩 / 抗锯齿 / 透明 / 背景 / 动画，11/11）</span>
 <ul>
-<li><span class="l4 no">⛔ 主题包管理</span><span class="cnt">[L4] 3 控件</span>
+<li><span class="l4 dev">➖ 主题包管理</span><span class="cnt">[L4] 3 控件（设计决定不做，保留占位）</span>
 </li></ul>
 <li><span class="l3 ok">✅ 下载设置</span><span class="cnt">[L3] 3 控件</span>
 <li><span class="l3 ok">✅ 关于</span><span class="cnt">[L3] 4 控件</span>
 </li></ul>
-<li><span class="l4 no">⛔ NBT 编辑器</span><span class="cnt">[L4] 2 控件（nbt.js 仅用于读 level.dat）</span>
-<li><span class="l4 no">⛔ 导出整合包向导</span><span class="cnt">[L4] 类型 1 / 信息 6 / 文件 1 控件</span>
+<li><span class="l4 ok">✅ NBT 编辑器</span><span class="cnt">[L4] 2 控件（保存 / 取消）</span>
+<li><span class="l4 ok">✅ 导出整合包向导</span><span class="cnt">[L4] 类型 1 / 文件 1 / 信息 6 控件</span>
 </li></ul>
-<li><span class="l5 warn">⚠️ 全局弹窗</span><span class="cnt">[L5] 确认框 ✅ / 任务进度 ✅ / 崩溃窗口 ⛔ / 游戏崩溃窗口 ⛔ / 日志窗口 ⛔ / 实例操作 ✅ / 预设管理 ⛔ / 安装项 ✅</span>
+<li><span class="l5 ok">✅ 全局弹窗</span><span class="cnt">[L5] 确认框 / 任务进度 / 安装项 / 实例操作 / 日志窗口 5 / 崩溃窗口 1 / 游戏崩溃 3 / 预设 1</span>
 </li></ul>
 </li></ul>
-<div class="note">实现偏离基线之处（加载器位置迁移、账户皮肤入口、7→6 页签、个性化 11→1 等）见 ui-status.md §2；基线口径 bug 见 §6。</div>
+<div class="note">实现偏离基线之处（加载器位置迁移、账户皮肤入口等）见 ui-status.md §2；共享组件逐项见 §7；本轮完成清单见 §8；基线口径见 §6。验收基线以 ui-tree-controls.html 为准，未实现项保留禁用占位。</div>
 </body></html>

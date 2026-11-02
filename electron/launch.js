@@ -308,13 +308,20 @@ async function checkVersionType(assetIndexFile) {
 
 /**
  * 构造启动计划（不产生进程），便于测试与预览。
+ *
+ * gameDir 是「基础游戏目录」：versions / libraries / assets 都从这里解析；
+ * instanceDir 是「游戏真正使用的游戏目录」（版本隔离时等于
+ * <gameDir>/versions/<id>），会写进 --gameDir 与 ${game_directory}，
+ * 游戏也从这里读 mods / config / saves。
+ * 不传 instanceDir 时两者相同（全局布局，历史行为）。
  */
-async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, resolveJava, dataDir, onProgress }) {
-  const resolvedGameDir = path.resolve(gameDir);
+async function buildLaunchPlan({ gameDir, instanceDir, instanceId, account, settings = {}, resolveJava, dataDir, onProgress }) {
+  const resolvedBaseDir = path.resolve(gameDir);
+  const resolvedGameDir = instanceDir ? path.resolve(instanceDir) : resolvedBaseDir;
   const versionId = String(instanceId || '').trim();
   if (!versionId) throw new Error('缺少实例 ID');
 
-  const chain = await manifest.loadVersionChain(resolvedGameDir, versionId);
+  const chain = await manifest.loadVersionChain(resolvedBaseDir, versionId);
   if (chain.length === 0) {
     throw new Error(`找不到版本 ${versionId} 的版本 JSON，实例可能已损坏`);
   }
@@ -331,12 +338,12 @@ async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, re
     is_quick_play_realms: false
   };
 
-  const clientJar = await manifest.resolveClientJar(resolvedGameDir, chain, merged);
+  const clientJar = await manifest.resolveClientJar(resolvedBaseDir, chain, merged);
   if (clientJar.missing) {
-    throw new Error(`缺少客户端 jar：${path.relative(resolvedGameDir, clientJar.path)}，请重新安装该实例`);
+    throw new Error(`缺少客户端 jar：${path.relative(resolvedBaseDir, clientJar.path)}，请重新安装该实例`);
   }
 
-  const { classpath, natives, skipped } = manifest.collectLibraries(merged, resolvedGameDir, features);
+  const { classpath, natives, skipped } = manifest.collectLibraries(merged, resolvedBaseDir, features);
   const fullClasspath = [clientJar.path, ...classpath];
   const classpathSeparator = process.platform === 'win32' ? ';' : ':';
   const missingLibraries = [];
@@ -347,12 +354,12 @@ async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, re
   const memoryMb = clampMemory(settings.memoryMb);
   const width = clampDimension(settings.width, DEFAULT_WIDTH);
   const height = clampDimension(settings.height, DEFAULT_HEIGHT);
-  const nativesDir = path.join(resolvedGameDir, 'versions', versionId, 'natives');
+  const nativesDir = path.join(resolvedBaseDir, 'versions', versionId, 'natives');
   const missingNatives = await prepareNatives(natives, nativesDir);
 
-  const loggingFile = await ensureLog4jConfig(resolvedGameDir, merged.logging);
+  const loggingFile = await ensureLog4jConfig(resolvedBaseDir, merged.logging);
 
-  const assetsRoot = path.join(resolvedGameDir, 'assets');
+  const assetsRoot = path.join(resolvedBaseDir, 'assets');
   const assetsIndexId = String((merged.assetIndex && merged.assetIndex.id) || merged.assets || 'legacy');
   const assetsIndexFile = path.join(assetsRoot, 'indexes', `${assetsIndexId}.json`);
   if (!(await manifest.exists(assetsIndexFile))) {
@@ -387,7 +394,7 @@ async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, re
     launcher_version: LAUNCHER_VERSION,
     classpath: fullClasspath.join(classpathSeparator),
     classpath_separator: classpathSeparator,
-    library_directory: path.join(resolvedGameDir, 'libraries'),
+    library_directory: path.join(resolvedBaseDir, 'libraries'),
     resolution_width: String(width),
     resolution_height: String(height),
     quickPlayPath: '',
@@ -472,6 +479,8 @@ async function buildLaunchPlan({ gameDir, instanceId, account, settings = {}, re
 
   return {
     gameDir: resolvedGameDir,
+    baseDir: resolvedBaseDir,
+    isolated: resolvedGameDir !== resolvedBaseDir,
     versionId,
     javaPath: java.path,
     javaMajor: java.major,
@@ -518,9 +527,10 @@ function javaExecutableForSpawn(javaPath) {
  * 真正启动一个实例。
  * @returns {Promise<{launchId:string,pid:number|null,plan:object,logFile:string}>}
  */
-async function launchInstance({ gameDir, instanceId, account, settings = {}, resolveJava, dataDir, onEvent }) {
+async function launchInstance({ gameDir, instanceDir, instanceId, account, settings = {}, resolveJava, dataDir, onEvent }) {
   const plan = await buildLaunchPlan({
     gameDir,
+    instanceDir,
     instanceId,
     account,
     settings,
@@ -624,7 +634,10 @@ function listActiveLaunches() {
     pid: entry.child.pid || null,
     versionId: entry.plan.versionId,
     startedAt: entry.startedAt,
-    exited: entry.exited
+    exited: entry.exited,
+    // 日志窗口 / 运行栈导出要用到：日志落在哪、用哪个 JDK 起的（jstack 在同一个 bin 下）。
+    logFile: entry.logFile,
+    javaPath: entry.plan.javaPath
   }));
 }
 

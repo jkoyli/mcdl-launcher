@@ -2,7 +2,7 @@
 
 const {
   app, BrowserWindow, ipcMain, shell, Menu, dialog, session: electronSession,
-  protocol, nativeImage
+  protocol, nativeImage, clipboard
 } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
@@ -21,6 +21,10 @@ const { createInstanceStore } = require('./instance-store');
 const pathGuard = require('./path-guard');
 const launchScript = require('./launch-script');
 const modpackGuard = require('./modpack-guard');
+const modpackExport = require('./modpack-export');
+const javaInstall = require('./java-install');
+const nbtEditor = require('./nbt-editor');
+const appLog = require('./app-log');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -86,6 +90,10 @@ if (USER_DATA_DIR) {
 } else {
   console.error('[data] no writable data directory; accounts and settings cannot be saved');
 }
+
+// 启动器日志落盘：崩溃窗口 / 日志窗口的「打开日志文件夹」都指向这里。
+// 必须在其它模块开始打日志之前初始化，所以紧跟在 userData 选定之后。
+appLog.init(USER_DATA_DIR);
 
 /**
  * 渲染策略。
@@ -157,11 +165,42 @@ if (RENDER_MODE === 'software') {
 
 process.on('uncaughtException', (error) => {
   console.error('[main] uncaughtException:', error);
+  notifyLauncherCrash(error, 'main-uncaught');
 });
 
 process.on('unhandledRejection', (error) => {
   console.error('[main] unhandledRejection:', error);
+  notifyLauncherCrash(error, 'main-rejection');
 });
+
+/**
+ * 启动器崩溃：把错误推给渲染进程，由它弹「崩溃窗口」。
+ * 渲染进程已经死了的时候这个事件没人收，日志文件仍然留在 appLog 里。
+ */
+let lastCrashNoticeAt = 0;
+
+function notifyLauncherCrash(error, source) {
+  const now = Date.now();
+  // 同一秒内的连环异常只弹一次，避免崩溃窗口套崩溃窗口。
+  if (now - lastCrashNoticeAt < 2500) return;
+  lastCrashNoticeAt = now;
+
+  const message = error && (error.stack || error.message) ? String(error.stack || error.message) : String(error || '未知错误');
+  appLog.append('ERROR', `[crash][${source}] ${message}`);
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.webContents.send('launcher:crash', {
+      source: String(source || 'main'),
+      message,
+      at: now,
+      logFile: appLog.file(),
+      logDir: appLog.dir()
+    });
+  } catch (sendError) {
+    console.warn('[crash] could not notify renderer:', sendError.message);
+  }
+}
 
 /**
  * GPU 子进程崩溃：记录标记后以软件渲染重启一次。
@@ -465,12 +504,57 @@ const DEFAULT_EXTRA_SETTINGS = {
   wallBlur: 18,                // 0-40
   wallDim: 30,                 // 0-70
   wallInnerFit: 'contain',     // contain | cover
-  wallPip: true                // 画中画：true = 内外双图；false = 内外同一张 cover
+  wallPip: true,               // 画中画：true = 内外双图；false = 内外同一张 cover
+  presets: []                  // 游戏设置预设（名称 + 内存 / 窗口 / JVM / 隔离策略）
 };
 
 
 const ISOLATION_MODES = new Set(['auto', 'isolated', 'global']);
 const ADDON_SOURCES = new Set(['modrinth']);
+
+/**
+ * 游戏设置预设：只保留能被 settings 直接使用的字段，名字与 id 都做长度 / 字符限制。
+ * 渲染层提交什么形状都先过这一层，坏数据不落盘。
+ */
+function normalizePresets(raw) {
+  if (!Array.isArray(raw)) return [];
+  const result = [];
+  const seen = new Set();
+
+  for (const item of raw.slice(0, 50)) {
+    if (!item || typeof item !== 'object') continue;
+
+    const name = String(item.name || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 40);
+    if (!name) continue;
+
+    let id = String(item.id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+    if (!id) id = 'preset-' + (result.length + 1) + '-' + Math.random().toString(36).slice(2, 6);
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const entry = { id, name };
+
+    const memory = Number(item.memoryMb);
+    if (Number.isFinite(memory) && memory >= 512) entry.memoryMb = Math.min(32768, Math.round(memory));
+
+    const width = Number(item.width);
+    if (Number.isFinite(width) && width >= 320) entry.width = Math.min(7680, Math.round(width));
+
+    const height = Number(item.height);
+    if (Number.isFinite(height) && height >= 320) entry.height = Math.min(7680, Math.round(height));
+
+    if (typeof item.jvmArgs === 'string' && item.jvmArgs.trim()) {
+      entry.jvmArgs = item.jvmArgs.trim().slice(0, 2000);
+    }
+
+    const isolation = String(item.gameIsolation || '').trim();
+    if (ISOLATION_MODES.has(isolation)) entry.gameIsolation = isolation;
+
+    result.push(entry);
+  }
+
+  return result;
+}
 
 function normalizeExtraSettings(raw) {
   const source = (value, fallback) => {
@@ -508,7 +592,8 @@ function normalizeExtraSettings(raw) {
     wallInnerFit: WALL_INNER_FITS.has(String(raw.wallInnerFit || '').trim())
       ? String(raw.wallInnerFit).trim()
       : 'contain',
-    wallPip: wallPipRaw === undefined || wallPipRaw === null ? true : Boolean(wallPipRaw)
+    wallPip: wallPipRaw === undefined || wallPipRaw === null ? true : Boolean(wallPipRaw),
+    presets: normalizePresets(raw.presets)
   };
 }
 
@@ -687,6 +772,21 @@ function getInstanceStore() {
     });
   }
   return instanceStore;
+}
+
+/**
+ * 实例「游戏真正使用的游戏目录」：版本隔离实例是 versions/<id>，
+ * 全局实例就是 .minecraft。启动、日志、崩溃报告都必须用这个目录，
+ * 否则隔离实例会去读 .minecraft/mods（空的）→ 启动后一个 mod 都没有。
+ */
+async function instanceGameDirOf(instance) {
+  if (!instance) return '';
+  try {
+    return await getInstanceStore().resolveGameDir(instance);
+  } catch (error) {
+    console.warn('[instance] resolve game dir failed:', error.message);
+    return instance.gameDir ? path.resolve(instance.gameDir) : '';
+  }
 }
 
 /**
@@ -929,6 +1029,17 @@ async function managedGameDirs() {
   return { primary: own, dirs: rest };
 }
 
+/**
+ * 渲染层指定的安装落点：必须是「启动器自己的目录」或已登记的某个游戏目录。
+ * 只用于「更新整合包」与下载中心的可选 gameDir，避免变成"往任意路径写文件"的通道。
+ */
+async function assertGameDirAllowed(raw) {
+  const target = pathGuard.assertLocalPath(raw, '游戏目录');
+  const managed = await managedGameDirs();
+  const roots = [managed.primary, ...managed.dirs];
+  return pathGuard.assertInsideAnyRoots(roots, target, '游戏目录', { allowEqual: true });
+}
+
 async function readAliases() {
   try {
     const raw = await fs.readFile(aliasFile(), 'utf8');
@@ -983,6 +1094,66 @@ function uniqueDirs(dirs) {
     result.push(resolved);
   }
   return result;
+}
+
+/**
+ * 扫描缓存的完整状态：目录 + 上次写入时间。
+ * 没有缓存文件（或文件损坏）时返回 { dirs: [], updatedAt: null }。
+ */
+async function readScanCacheState() {
+  const dirs = await readScanCache();
+  let updatedAt = null;
+  try {
+    const parsed = JSON.parse(await fs.readFile(scanCacheFile(), 'utf8'));
+    if (parsed && !Array.isArray(parsed) && typeof parsed.updatedAt === 'string') {
+      updatedAt = parsed.updatedAt;
+    }
+  } catch {
+    updatedAt = null;
+  }
+  return { dirs, updatedAt };
+}
+
+/**
+ * 清空扫描缓存（删文件；删不掉就写空数组，保证 readScanCache() 仍返回 []）。
+ * 返回 { removed }：清掉了几条缓存目录。
+ */
+async function clearScanCache() {
+  const before = await readScanCache();
+  try {
+    await fs.rm(scanCacheFile(), { force: true });
+  } catch (error) {
+    console.warn('[instances] could not delete scan cache file, truncating instead:', error);
+    await writeScanCache([]).catch((writeError) => {
+      console.warn('[instances] could not truncate scan cache:', writeError);
+    });
+  }
+  return { removed: before.length };
+}
+
+/**
+ * 只从扫描缓存里剔除一个目录（保留其余条目）。
+ * 比较口径与 uniqueDirs 一致：path.resolve + 小写。
+ */
+async function forgetScanCacheDir(dirPath) {
+  const raw = String(dirPath || '').trim();
+  const before = await readScanCache();
+  if (!raw) return { removed: 0, remaining: before.length };
+
+  const key = path.resolve(raw).toLowerCase();
+  const rest = before.filter((dir) => path.resolve(dir).toLowerCase() !== key);
+  const removed = before.length - rest.length;
+
+  if (removed > 0) {
+    try {
+      await writeScanCache(rest);
+    } catch (error) {
+      // 写失败不该让「删除游戏目录」这种主操作失败，只记日志。
+      console.warn('[instances] could not persist scan cache after forget:', error);
+    }
+  }
+
+  return { removed, remaining: rest.length };
 }
 
 /**
@@ -1055,7 +1226,7 @@ async function rescanInstances(selectedId) {
   return enrichInstanceIcons(snapshot);
 }
 
-function sendInstallOutput(win, bufferState) {
+function sendInstallOutput(win, bufferState, channel = 'instances:install-progress') {
   return (text) => {
     bufferState.value += String(text);
     const parts = bufferState.value.split(/\r\n|\n|\r/);
@@ -1065,7 +1236,7 @@ function sendInstallOutput(win, bufferState) {
       const message = part.trim();
       if (!message) continue;
       if (!win.isDestroyed()) {
-        win.webContents.send('instances:install-progress', { message });
+        win.webContents.send(channel, { message });
       }
     }
   };
@@ -1133,6 +1304,15 @@ function sanitizeDisplayName(value) {
     .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** 只留文件名可用的字符，给「另存为」的默认名用（真正的落点由系统对话框决定）。 */
+function safeFileName(value) {
+  return String(value == null ? '' : value)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
 }
 
 // ---------------- 自上传壁纸：文件 / 协议 ----------------
@@ -1815,6 +1995,27 @@ function registerIpcHandlers() {
     }
   });
 
+  // 扫描缓存只影响「扫描其他启动器」，清理它不会碰任何游戏文件。
+  ipcMain.handle('instances:scan-cache', async (event) => {
+    assertAppWindow(event);
+    return await readScanCacheState();
+  });
+
+  ipcMain.handle('instances:scan-cache-clear', async (event) => {
+    assertAppWindow(event);
+    try {
+      return await clearScanCache();
+    } catch (error) {
+      console.error('[instances] clear scan cache failed:', error);
+      throw new Error(`清理扫描缓存失败: ${error.message}`);
+    }
+  });
+
+  ipcMain.handle('instances:scan-cache-forget', async (event, dir) => {
+    assertAppWindow(event);
+    return await forgetScanCacheDir(dir);
+  });
+
   ipcMain.handle('versions:list', async (event) => {
     assertAppWindow(event);
     try {
@@ -2060,7 +2261,10 @@ function registerIpcHandlers() {
 
     await modpackGuard.assertUnchanged(record);
 
-    const gameDir = await mcdl.detectGameDir();
+    // 默认装到主游戏目录；「更新整合包」会把目标实例的 gameDir 传进来（必须已登记）。
+    const gameDir = payload && payload.gameDir
+      ? await assertGameDirAllowed(payload.gameDir)
+      : await mcdl.detectGameDir();
     const bufferState = { value: '' };
     const task = beginTask(payload.taskId);
     const send = (message) => {
@@ -2500,7 +2704,9 @@ function registerIpcHandlers() {
 
     const { instance } = await findInstance(String(payload.instanceId || ''));
     if (!instance) throw new Error('实例不存在');
-    return { path: await openFolderPath(instance.gameDir) };
+    // 隔离实例打开的是游戏实际使用的目录（mods / config / saves 都在这里）。
+    const dir = (await instanceGameDirOf(instance)) || instance.gameDir;
+    return { path: await openFolderPath(dir) };
   });
 
   /**
@@ -2526,12 +2732,15 @@ function registerIpcHandlers() {
 
     const versionId = path.basename(instance.path);
     const settings = await effectiveSettings(instance.path);
+    const baseDir = instance.gameDir || (await mcdl.detectGameDir());
+    const gameDir = (await instanceGameDirOf(instance)) || baseDir;
 
     // 用占位符代替真实令牌：plan.args 里所有出现令牌的地方都会被替换掉。
     const scriptAccount = { ...account, accessToken: launchScript.TOKEN_PLACEHOLDER };
 
     const plan = await launcher.buildLaunchPlan({
-      gameDir: instance.gameDir,
+      gameDir: baseDir,
+      instanceDir: gameDir,
       instanceId: versionId,
       account: scriptAccount,
       settings,
@@ -2599,7 +2808,30 @@ function registerIpcHandlers() {
 
   ipcMain.handle('gamedirs:remove', async (event, id) => {
     assertAppWindow(event);
-    return getGameDirStore().remove(String(id || ''));
+    const store = getGameDirStore();
+    const targetId = String(id || '');
+
+    // remove() 只回剩余列表，删完就查不到这条路径了，所以先记下来。
+    let removedPath = '';
+    try {
+      const current = await store.list();
+      const entry = (current && Array.isArray(current.dirs) ? current.dirs : [])
+        .find((item) => item.id === targetId);
+      if (entry && entry.path) removedPath = entry.path;
+    } catch {
+      removedPath = '';
+    }
+
+    const result = await store.remove(targetId);
+
+    // 顺带把它从「扫描其他启动器」缓存里剔掉，否则删掉的目录下次扫描又会冒出来。
+    if (removedPath) {
+      await forgetScanCacheDir(removedPath).catch((error) => {
+        console.warn('[gamedirs] could not forget scan cache entry:', error);
+      });
+    }
+
+    return result;
   });
 
   ipcMain.handle('gamedirs:pick', async (event) => {
@@ -2805,6 +3037,505 @@ function registerIpcHandlers() {
     return { path: await openFolderPath(folder) };
   });
 
+  // ---------------- 实例详情：截图管理 ----------------
+
+  const SCREENSHOT_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+  const SCREENSHOT_MIME = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp'
+  };
+  const MAX_SCREENSHOT_BYTES = 16 * 1024 * 1024;
+  const MAX_SCREENSHOT_TOTAL = 160 * 1024 * 1024;
+  const MAX_SCREENSHOTS = 240;
+
+  async function screenshotRoot(instance) {
+    return getInstanceStore().folderFor(instance, 'screenshots');
+  }
+
+  async function resolveScreenshot(instance, rawPath) {
+    const root = await screenshotRoot(instance);
+    const real = await pathGuard.assertInsideReal(root, String(rawPath || ''), '截图文件');
+    const stat = await fs.stat(real).catch(() => null);
+    if (!stat || !stat.isFile()) throw new Error('截图不存在或已被删除');
+    if (!SCREENSHOT_EXTS.has(path.extname(real).toLowerCase())) throw new Error('这不是支持的截图格式');
+    return { root, real, stat };
+  }
+
+  /**
+   * 截图列表：直接给 data URL。
+   *
+   * 截图是用户自己的图片，走不了 mcdl-media://（那个协议只服务壁纸 / 图标），
+   * 所以按总量预算内联成 data URL；超过 16 MB 的单张跳过，避免把渲染进程撑爆。
+   */
+  ipcMain.handle('instances:screenshots', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const root = await screenshotRoot(instance);
+
+    let dirents = [];
+    try {
+      dirents = await fs.readdir(root, { withFileTypes: true });
+    } catch {
+      return { root, exists: false, entries: [], skipped: 0, total: 0 };
+    }
+
+    const entries = [];
+    let budget = 0;
+    let skipped = 0;
+
+    for (const dirent of dirents) {
+      if (entries.length >= MAX_SCREENSHOTS) break;
+      if (!dirent.isFile()) continue;
+      if (!SCREENSHOT_EXTS.has(path.extname(dirent.name).toLowerCase())) continue;
+
+      const full = path.join(root, dirent.name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (!stat) continue;
+      if (stat.size > MAX_SCREENSHOT_BYTES || budget + stat.size > MAX_SCREENSHOT_TOTAL) {
+        skipped += 1;
+        continue;
+      }
+
+      let dataUrl = '';
+      try {
+        const buffer = await fs.readFile(full);
+        dataUrl = `data:${SCREENSHOT_MIME[path.extname(full).toLowerCase()] || 'image/png'};base64,${buffer.toString('base64')}`;
+        budget += stat.size;
+      } catch {
+        continue;
+      }
+
+      entries.push({
+        name: dirent.name,
+        path: full,
+        size: stat.size,
+        modifiedAt: stat.mtime.toISOString(),
+        dataUrl
+      });
+    }
+
+    entries.sort((a, b) => String(b.modifiedAt).localeCompare(String(a.modifiedAt)));
+    return { root, exists: true, entries, skipped, total: budget };
+  });
+
+  /** 截图 → 剪贴板（HMCL 截图菜单的「复制」）。 */
+  ipcMain.handle('screenshots:copy', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const { real } = await resolveScreenshot(instance, payload.path);
+
+    const image = nativeImage.createFromPath(real);
+    if (image.isEmpty()) throw new Error('这张截图无法读取为图片');
+    clipboard.writeImage(image);
+    return { path: real };
+  });
+
+  /** 截图 → 启动器背景（复用壁纸的导入 / 设置管线）。 */
+  ipcMain.handle('screenshots:set-wallpaper', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const { real } = await resolveScreenshot(instance, payload.path);
+
+    const imported = await importWallpaperImage(real);
+    const settings = await writeSettings(
+      { wallMode: 'custom', wallMedia: 'image', wallFile: imported.name },
+      { trustWallFile: true }
+    );
+    return { settings, ...(await listWallpapers(settings)), item: { kind: 'image', label: imported.label, size: imported.size } };
+  });
+
+  // ---------------- 实例详情：管理菜单（清理 / 资源 / 库） ----------------
+
+  async function measureDir(dir) {
+    let total = 0;
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return 0;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) total += await measureDir(full);
+      else if (entry.isFile()) total += (await fs.stat(full).catch(() => ({ size: 0 }))).size;
+    }
+    return total;
+  }
+
+  /** 只清空内容、保留目录本身：游戏和启动器都会继续往这些目录写日志。 */
+  async function clearDirectory(dir) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return 0;
+    }
+    let removed = 0;
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      await fs.rm(full, { recursive: true, force: true }).catch(() => {});
+      removed += 1;
+    }
+    return removed;
+  }
+
+  ipcMain.handle('instances:maintenance', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    const action = String(payload.action || 'clean');
+
+    // baseDir：assets / libraries 所在的基础游戏目录；
+    // gameDir：游戏实际游戏目录（隔离实例的 logs / crash-reports 在这里）。
+    const baseDir = path.resolve(instance.gameDir || '');
+    const versionDir = path.resolve(instance.path || '');
+    if (!baseDir || !versionDir) throw new Error('实例路径不完整');
+    const gameDir = path.resolve((await instanceGameDirOf(instance)) || baseDir);
+
+    if (action === 'redownload-assets') {
+      const mcVersion = String(instance.versionName || '').trim();
+      if (!mcVersion) throw new Error('无法确定这个实例的 Minecraft 版本');
+      const settings = await readSettings();
+      const task = beginTask(payload.taskId);
+      const bufferState = { value: '' };
+      const send = (text) => sendInstallOutput(win, bufferState, 'instances:install-progress')(text);
+
+      try {
+        await mcdl.installVersion({
+          version: mcVersion,
+          gameDir: baseDir,
+          source: settings.downloadSource,
+          assets: true,
+          assetsOnly: true,
+          verify: true,
+          signal: task.signal,
+          onData: send
+        });
+        return { ok: true, action, message: `已更新 ${mcVersion} 的资源文件` };
+      } catch (error) {
+        if (isCancelledError(error)) throw cancellationError();
+        throw error;
+      } finally {
+        task.finish();
+      }
+    }
+
+    const targets = [];
+    if (action === 'remove-assets') {
+      targets.push({ dir: path.join(baseDir, 'assets'), label: '游戏资源文件 assets' });
+    } else if (action === 'remove-libraries') {
+      targets.push({ dir: path.join(baseDir, 'libraries'), label: '库文件 libraries' });
+    } else if (action === 'clean') {
+      const sameDir = gameDir.toLowerCase() === baseDir.toLowerCase();
+      targets.push(
+        { dir: path.join(baseDir, 'logs'), label: '日志 logs', keepDir: true },
+        { dir: path.join(baseDir, 'crash-reports'), label: '崩溃报告 crash-reports', keepDir: true }
+      );
+      // 隔离实例的实际日志在 versions/<id>/ 下，和基础目录不是同一个地方。
+      if (!sameDir) {
+        targets.push(
+          { dir: path.join(gameDir, 'logs'), label: '实例日志', keepDir: true },
+          { dir: path.join(gameDir, 'crash-reports'), label: '实例崩溃报告', keepDir: true }
+        );
+      }
+      targets.push(
+        { dir: path.join(versionDir, 'logs'), label: '实例日志', keepDir: true },
+        { dir: path.join(versionDir, 'crash-reports'), label: '实例崩溃报告', keepDir: true },
+        { dir: path.join(versionDir, 'natives'), label: '解压出的 natives' },
+        { dir: path.join(versionDir, '.mcdl-import.json'), label: '安装断点状态', isFile: true }
+      );
+    } else {
+      throw new Error(`不支持的管理动作：${action}`);
+    }
+
+    const removed = [];
+    let freed = 0;
+
+    // 同一目录可能既被「基础目录」又被「实例目录」列到（隔离实例两者相同），
+    // 去重后只清理一次，避免重复计数 / 重复条目。
+    const seenDirs = new Set();
+    for (const target of targets) {
+      const key = path.resolve(target.dir).toLowerCase();
+      if (seenDirs.has(key)) continue;
+      seenDirs.add(key);
+
+      const stat = await fs.stat(target.dir).catch(() => null);
+      if (!stat) continue;
+
+      if (target.isFile) {
+        freed += stat.size;
+        await fs.rm(target.dir, { force: true }).catch(() => {});
+        removed.push(target.label);
+        continue;
+      }
+      if (!stat.isDirectory()) continue;
+
+      if (target.keepDir) {
+        const bytes = await measureDir(target.dir);
+        const count = await clearDirectory(target.dir);
+        if (count > 0) {
+          freed += bytes;
+          removed.push(`${target.label}（${count} 项）`);
+        }
+      } else {
+        const bytes = await measureDir(target.dir);
+        await fs.rm(target.dir, { recursive: true, force: true });
+        freed += bytes;
+        removed.push(target.label);
+      }
+    }
+
+    return { ok: true, action, removed, freed, freedLabel: formatBytes(freed) };
+  });
+
+  // ---------------- 实例详情：更新整合包 ----------------
+
+  /**
+   * 把「新整合包安装出来的临时实例」的内容合并进目标实例，然后删掉临时实例。
+   *
+   * 为什么不直接原地升级：mcdl 的 --install-pack 会新建 versions/<name>（同名但包 SHA-1
+   * 不同时会退化成 <name> (2)），没有「覆盖已有实例」的入口。这里复用它的安装 +
+   * 解压核对，再在同目录内做一次覆盖复制，行为等价于「用新包的 overrides 覆盖旧实例」。
+   */
+  async function copyTreeInto(source, dest, stats) {
+    const entries = await fs.readdir(source, { withFileTypes: true });
+    await fs.mkdir(dest, { recursive: true });
+    for (const entry of entries) {
+      const from = path.join(source, entry.name);
+      const to = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        await copyTreeInto(from, to, stats);
+      } else if (entry.isFile()) {
+        await fs.copyFile(from, to);
+        stats.files += 1;
+        stats.bytes += (await fs.stat(from).catch(() => ({ size: 0 }))).size;
+      }
+    }
+  }
+
+  ipcMain.handle('instances:merge-pack', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const target = await requireInstance(payload);
+    const stagingName = String(payload.stagingName || '').trim();
+    if (!stagingName || stagingName.length > 120 || /[\\/:*?"<>|\u0000-\u001f]/.test(stagingName)) {
+      throw new Error('临时实例名非法');
+    }
+
+    // 临时实例刚由 install-pack 建出来，按「同一个游戏目录 + versions 下的文件夹名」定位，
+    // 不依赖渲染层拼好的 id（外部目录的 id 带 @hash 后缀，拼错就会误删别的实例）。
+    const targetGameDir = path.resolve(target.gameDir || '');
+    const snapshot = await rescanInstances();
+    const staging = snapshot.instances.find((item) => (
+      item.gameDir &&
+      path.resolve(item.gameDir) === targetGameDir &&
+      path.basename(item.path) === stagingName
+    ));
+
+    if (!staging) throw new Error('找不到刚安装的临时实例，可能已被删除');
+    if (staging.id === target.id) throw new Error('不能把整合包合并到它自己');
+
+    const versionsRoot = path.join(targetGameDir, 'versions');
+    const stagingPath = path.resolve(staging.path);
+    const targetPath = path.resolve(target.path);
+    if (path.dirname(stagingPath) !== versionsRoot || path.dirname(targetPath) !== versionsRoot) {
+      throw new Error('实例目录不在 versions 下，已取消合并');
+    }
+
+    const stats = { files: 0, bytes: 0 };
+    await copyTreeInto(stagingPath, targetPath, stats);
+
+    await fs.rm(stagingPath, { recursive: true, force: true });
+
+    const aliases = await readAliases();
+    delete aliases[stagingPath];
+    await writeAliases(aliases).catch(() => {});
+
+    const next = await rescanInstances(target.id);
+    return {
+      ok: true,
+      files: stats.files,
+      bytes: stats.bytes,
+      freedLabel: formatBytes(stats.bytes),
+      snapshot: next
+    };
+  });
+
+  // ---------------- 导出整合包 ----------------
+
+  ipcMain.handle('modpack:scan', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const instance = await requireInstance(payload);
+    return modpackExport.scanInstance(instance);
+  });
+
+  ipcMain.handle('modpack:export', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const instance = await requireInstance(payload);
+
+    const scan = await modpackExport.scanInstance(instance);
+    const format = payload.format === 'modrinth' ? 'modrinth' : 'curseforge';
+    const meta = payload.meta && typeof payload.meta === 'object' ? payload.meta : {};
+    const flags = payload.options && typeof payload.options === 'object' ? payload.options : {};
+    const selection = Array.isArray(payload.selection) ? payload.selection.map(String) : [];
+
+    if (selection.length === 0) throw new Error('至少勾选一个文件夹');
+
+    const baseName = modpackExport.sanitizeFileName(
+      `${meta.name || scan.name}-${meta.version || scan.suggestedVersion || '1.0.0'}`
+    );
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出整合包',
+      defaultPath: path.join(app.getPath('documents'), `${baseName}.zip`),
+      filters: [{ name: '整合包', extensions: ['zip'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    let targetFile = result.filePath;
+    if (!targetFile.toLowerCase().endsWith('.zip')) targetFile += '.zip';
+
+    const task = beginTask(payload.taskId);
+    const send = (message, percent) => {
+      if (!win.isDestroyed()) win.webContents.send('modpack:export-progress', { message, percent });
+    };
+
+    // 先写同目录下的临时文件，成功后再改名覆盖目标：
+    // 失败 / 取消时只删自己的临时文件，绝不误删用户已经存在的同名 zip。
+    const tempFile = path.join(path.dirname(targetFile), `.mcdl-export-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}.zip`);
+
+    try {
+      const exported = await modpackExport.exportPack({
+        instance,
+        scan,
+        format,
+        selection,
+        meta,
+        options: {
+          server: typeof flags.server === 'string' ? flags.server : '',
+          forceUpdate: Boolean(flags.forceUpdate),
+          includeLauncher: Boolean(flags.includeLauncher),
+          noRemoteMatch: Boolean(flags.noRemoteMatch),
+          skipCurseforge: Boolean(flags.skipCurseforge)
+        },
+        targetFile: tempFile,
+        signal: task.signal,
+        onProgress: send
+      });
+
+      await fs.rename(tempFile, targetFile).catch(async (error) => {
+        // 跨卷或目标被占用时 rename 会失败：退回复制 + 删临时文件。
+        if (error && (error.code === 'EXDEV' || error.code === 'EPERM' || error.code === 'EEXIST')) {
+          await fs.copyFile(tempFile, targetFile);
+          await fs.rm(tempFile, { force: true }).catch(() => {});
+          return;
+        }
+        throw error;
+      });
+
+      await revealPath(targetFile).catch(() => {});
+      return { ...exported, file: targetFile };
+    } catch (error) {
+      await fs.rm(tempFile, { force: true }).catch(() => {});
+      if (isCancelledError(error)) throw cancellationError();
+      console.error('[export] modpack export failed:', error);
+      throw error;
+    } finally {
+      task.finish();
+    }
+  });
+
+  // ---------------- 安装 Java（Adoptium） ----------------
+
+  ipcMain.handle('java:install', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const major = javaInstall.SUPPORTED_MAJORS.includes(Number(payload.major))
+      ? Number(payload.major)
+      : 21;
+
+    const task = beginTask(payload.taskId);
+    const send = (message, percent) => {
+      if (!win.isDestroyed()) win.webContents.send('java:install-progress', { message, percent });
+    };
+
+    try {
+      const installed = await javaInstall.installJava({
+        major,
+        destRoot: path.join(app.getPath('userData'), 'java'),
+        onProgress: send,
+        signal: task.signal
+      });
+
+      // 我们自己下载并解压出来的 java.exe：授权表里没有它，直接登记一次。
+      // 这是「启动器自己产出的可执行文件」，等价于枚举到的本机 Java。
+      const { info, record } = await javaRuntime.registerJava(installed.javaPath);
+      send(`已登记 Java ${info.major}：${record.real}`, 100);
+      return {
+        path: record.real,
+        info,
+        identity: await javaRuntime.javaAuthorization(record.real),
+        reused: installed.reused,
+        url: installed.url
+      };
+    } catch (error) {
+      if (isCancelledError(error)) throw cancellationError();
+      console.error('[java] install failed:', error);
+      throw error;
+    } finally {
+      task.finish();
+    }
+  });
+
+  // ---------------- NBT 编辑器 ----------------
+
+  // 路径只认「主进程自己弹对话框选出来的那个文件」：token 一次性生成，30 分钟有效。
+  const nbtTokens = new Map();
+  const NBT_TOKEN_TTL = 30 * 60 * 1000;
+
+  function issueNbtToken(file) {
+    const now = Date.now();
+    for (const [token, entry] of nbtTokens.entries()) {
+      if (now - entry.at > NBT_TOKEN_TTL) nbtTokens.delete(token);
+    }
+    const token = crypto.randomBytes(16).toString('hex');
+    nbtTokens.set(token, { file, at: now });
+    return token;
+  }
+
+  function resolveNbtToken(token) {
+    const entry = nbtTokens.get(String(token || ''));
+    if (!entry) throw new Error('NBT 编辑会话已过期，请重新选择文件');
+    if (Date.now() - entry.at > NBT_TOKEN_TTL) {
+      nbtTokens.delete(String(token));
+      throw new Error('NBT 编辑会话已过期，请重新选择文件');
+    }
+    entry.at = Date.now();
+    return entry.file;
+  }
+
+  ipcMain.handle('nbt:pick', async (event) => {
+    const win = assertAppWindow(event);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择要编辑的 NBT 文件',
+      properties: ['openFile'],
+      filters: [
+        { name: 'NBT 数据', extensions: ['dat', 'nbt', 'schematic', 'schem'] },
+        { name: '全部文件', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+
+    const file = pathGuard.assertLocalPath(result.filePaths[0], 'NBT 文件');
+    const loaded = await nbtEditor.load(file);
+    return { token: issueNbtToken(file), file, ...loaded };
+  });
+
+  ipcMain.handle('nbt:save', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const file = resolveNbtToken(payload.token);
+    return nbtEditor.save(file, payload.edits);
+  });
+
   /**
    * 整进程重启：改了主进程（Node 侧）代码后，页面刷新不会重载它，
    * 容易出现「新界面 + 旧后端」。标题栏「刷新」按住 Shift 走这里。
@@ -2821,7 +3552,8 @@ function registerIpcHandlers() {
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
     // 走和「打开文件夹」同一条路径：存在性 / 可读性预检 + explorer 直启 + 返回值检查
-    await openFolderPath(app.getPath('logs'));
+    // 现在主进程的 console.* 与未捕获异常都会落到 userData/logs，这里打开的就是那个目录。
+    await openFolderPath(appLog.dir() || app.getPath('logs'));
     return true;
   });
 
@@ -2837,6 +3569,377 @@ function registerIpcHandlers() {
     }
     await shell.openExternal(target);
     return true;
+  });
+
+  // ---------------- 日志 / 崩溃 / 任务栈 ----------------
+
+  /**
+   * 最近一次启动的上下文。
+   *
+   * 日志窗口要能回答三个问题：这次启动的日志在哪、进程还活着吗、崩溃报告在哪。
+   * launch.js 的 activeLaunches 只保留运行中的进程，退出后就没了，所以这里另存一份
+   * 最近 N 次的快照（含已退出）。
+   */
+  const recentLaunches = [];
+  const stoppedLaunches = new Set();
+  const MAX_RECENT_LAUNCHES = 12;
+
+  function rememberLaunch(entry) {
+    recentLaunches.unshift(entry);
+    if (recentLaunches.length > MAX_RECENT_LAUNCHES) recentLaunches.length = MAX_RECENT_LAUNCHES;
+  }
+
+  function markLaunchExited(launchId, patch) {
+    const entry = recentLaunches.find((item) => item.launchId === launchId);
+    if (!entry) return;
+    Object.assign(entry, patch || {}, { exited: true, exitedAt: Date.now() });
+  }
+
+  function currentLaunchEntry() {
+    return recentLaunches[0] || null;
+  }
+
+  async function newestLauncherLog(gameDir) {
+    const dir = path.join(path.resolve(gameDir), 'logs');
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+
+    let best = null;
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!/^mcdl-launcher-.*\.log$/i.test(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (!stat) continue;
+      if (!best || stat.mtimeMs > best.mtimeMs) {
+        best = { file: full, mtimeMs: stat.mtimeMs, size: stat.size };
+      }
+    }
+    return best;
+  }
+
+  /** 读文件尾部（按字节截断，再对齐到行边界）。 */
+  async function readTail(file, maxBytes = 512 * 1024) {
+    const stat = await fs.stat(file).catch(() => null);
+    if (!stat) return { text: '', truncated: false, size: 0 };
+    const start = Math.max(0, stat.size - maxBytes);
+    const handle = await fs.open(file, 'r');
+    try {
+      const length = stat.size - start;
+      const buffer = Buffer.alloc(length);
+      await handle.read(buffer, 0, length, start);
+      let text = buffer.toString('utf8');
+      if (start > 0) {
+        const index = text.indexOf('\n');
+        text = index >= 0 ? text.slice(index + 1) : text;
+      }
+      return { text, truncated: start > 0, size: stat.size };
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /** 本次启动之后新产生的崩溃报告（没有就返回空串）。 */
+  async function findCrashReport(gameDir, since) {
+    const dir = path.join(path.resolve(gameDir || ''), 'crash-reports');
+    let entries = [];
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return '';
+    }
+
+    let best = null;
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.txt')) continue;
+      const full = path.join(dir, entry.name);
+      const stat = await fs.stat(full).catch(() => null);
+      if (!stat) continue;
+      if (since && stat.mtimeMs < since - 5000) continue;
+      if (!best || stat.mtimeMs > best.mtimeMs) best = { file: full, mtimeMs: stat.mtimeMs };
+    }
+    return best ? best.file : '';
+  }
+
+  /**
+   * 日志窗口打开时的一次性快照。
+   *
+   * 优先用本次会话最近一次启动的日志；启动器刚打开、还没启动过游戏时，
+   * 退回「该游戏目录下最新的 mcdl-launcher-*.log」，这样窗口不会一片空白。
+   */
+  ipcMain.handle('logs:tail', async (event, payload = {}) => {
+    assertAppWindow(event);
+
+    const activeList = launcher.listActiveLaunches();
+    const activeIds = new Set(activeList.map((item) => item.launchId));
+    let entry = currentLaunchEntry();
+
+    // 指定的实例不是本次会话最后启动的那个：不要拿 A 的日志冒充 B 的。
+    if (entry && payload.instanceId && entry.instanceId && entry.instanceId !== payload.instanceId) {
+      entry = null;
+    }
+
+    if (!entry && payload.instanceId) {
+      try {
+        const instance = await requireInstance(payload);
+        // 启动日志写在「这次启动用的游戏目录」下：隔离实例是 versions/<id>/logs。
+        const gameDir = (await instanceGameDirOf(instance)) || instance.gameDir || '';
+        entry = {
+          launchId: '',
+          logFile: (await newestLauncherLog(gameDir))?.file || '',
+          gameDir,
+          instanceId: instance.id,
+          versionId: instance.versionName || '',
+          startedAt: 0,
+          exited: true
+        };
+      } catch {
+        entry = null;
+      }
+    }
+
+    if (!entry) {
+      const own = await mcdl.detectGameDir();
+      const newest = await newestLauncherLog(own);
+      entry = newest
+        ? { launchId: '', logFile: newest.file, gameDir: own, instanceId: '', versionId: '', startedAt: 0, exited: true }
+        : null;
+    }
+
+    if (!entry || !entry.logFile) {
+      return {
+        file: '',
+        text: '',
+        truncated: false,
+        active: false,
+        launch: null,
+        appLogFile: appLog.file(),
+        appLogDir: appLog.dir()
+      };
+    }
+
+    const tail = await readTail(entry.logFile);
+    return {
+      file: entry.logFile,
+      text: tail.text,
+      truncated: tail.truncated,
+      size: tail.size,
+      active: Boolean(entry.launchId && activeIds.has(entry.launchId) && !entry.exited),
+      launch: {
+        launchId: entry.launchId || '',
+        instanceId: entry.instanceId || '',
+        versionId: entry.versionId || '',
+        gameDir: entry.gameDir || '',
+        startedAt: entry.startedAt || 0,
+        exited: Boolean(entry.exited)
+      },
+      appLogFile: appLog.file(),
+      appLogDir: appLog.dir()
+    };
+  });
+
+  /** 日志导出：把当前视图（或传进来的文本）存成文件，顺手在资源管理器里定位。 */
+  ipcMain.handle('logs:export', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const text = typeof payload.text === 'string' ? payload.text : '';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const defaultName = safeFileName(String(payload.defaultName || `mcdl-launcher-${stamp}.log`)) || `mcdl-launcher-${stamp}.log`;
+
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出日志',
+      defaultPath: path.join(app.getPath('documents'), defaultName),
+      filters: [{ name: '日志文件', extensions: ['log', 'txt'] }, { name: '全部文件', extensions: ['*'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    let content = text;
+    if (!content) {
+      const entry = currentLaunchEntry();
+      if (entry && entry.logFile) content = (await readTail(entry.logFile, 8 * 1024 * 1024)).text;
+    }
+    if (!content) content = appLog.tail(4000);
+
+    await fs.writeFile(result.filePath, content, 'utf8');
+    await revealPath(result.filePath).catch(() => {});
+    return { file: result.filePath, size: Buffer.byteLength(content, 'utf8') };
+  });
+
+  /** 打开「日志文件夹」：scope=app（启动器日志）/ game（游戏日志）。 */
+  ipcMain.handle('logs:open-folder', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const scope = payload.scope === 'game' ? 'game' : 'app';
+
+    if (scope === 'app') {
+      const dir = appLog.dir() || app.getPath('logs');
+      await openFolderPath(dir);
+      return { path: dir, scope };
+    }
+
+    let gameDir = '';
+    if (payload.instanceId) {
+      const instance = await requireInstance(payload);
+      gameDir = (await instanceGameDirOf(instance)) || instance.gameDir || '';
+    }
+    if (!gameDir) gameDir = currentLaunchEntry()?.gameDir || await mcdl.detectGameDir();
+
+    const dir = path.join(gameDir, 'logs');
+    await openFolderPath(dir);
+    return { path: dir, scope };
+  });
+
+  /** 导出游戏运行栈：优先 jstack；没有就退回启动器侧的进程信息 + 日志尾部。 */
+  ipcMain.handle('logs:dump', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const activeList = launcher.listActiveLaunches();
+    const wanted = String(payload.launchId || '');
+    const active = activeList.find((item) => item.launchId === wanted) ||
+      activeList.find((item) => item.launchId === (currentLaunchEntry()?.launchId || '')) ||
+      activeList[0] || null;
+
+    const lines = [];
+    lines.push('MCDL Launcher · 游戏运行栈导出');
+    lines.push('时间：' + new Date().toISOString());
+    lines.push('');
+
+    if (!active) {
+      lines.push('当前没有正在运行的游戏进程。');
+      lines.push('下面是最近一次启动的日志尾部，仅供参考：');
+      lines.push('');
+      const entry = currentLaunchEntry();
+      if (entry && entry.logFile) {
+        const tail = await readTail(entry.logFile, 64 * 1024);
+        lines.push(tail.text.split(/\r?\n/).slice(-200).join('\n'));
+      } else {
+        lines.push('（没有找到启动日志）');
+      }
+      return { text: lines.join('\n'), source: 'launcher', pid: null, active: false };
+    }
+
+    lines.push(`launchId：${active.launchId}`);
+    lines.push(`PID：${active.pid || '-'}`);
+    lines.push(`版本：${active.versionId || '-'}`);
+    lines.push(`启动时间：${active.startedAt ? new Date(active.startedAt).toISOString() : '-'}`);
+    lines.push(`日志：${active.logFile || '-'}`);
+    lines.push('');
+
+    let source = 'launcher';
+    if (active.pid && active.javaPath) {
+      const jstack = path.join(path.dirname(active.javaPath), 'jstack.exe');
+      if (await fs.stat(jstack).then((stat) => stat.isFile()).catch(() => false)) {
+        try {
+          const output = await new Promise((resolve, reject) => {
+            execFile(jstack, ['-l', String(active.pid)], { windowsHide: true, timeout: 15000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+              if (error && !stdout && !stderr) reject(error);
+              else resolve(String(stdout || '') + String(stderr || ''));
+            });
+          });
+          lines.push(`===== jstack (${jstack}) =====`);
+          lines.push(output.trim());
+          source = 'jstack';
+        } catch (error) {
+          lines.push(`jstack 执行失败：${error.message}`);
+        }
+      } else {
+        lines.push(`没有找到 jstack.exe（${path.dirname(active.javaPath)}），改用启动器侧信息。`);
+      }
+    }
+
+    if (source !== 'jstack') {
+      lines.push('===== 进程信息 =====');
+      lines.push(`可执行文件：${active.javaPath || '-'}`);
+      lines.push('');
+      lines.push('===== 日志尾部 200 行 =====');
+      if (active.logFile) {
+        const tail = await readTail(active.logFile, 128 * 1024);
+        lines.push(tail.text.split(/\r?\n/).slice(-200).join('\n'));
+      } else {
+        lines.push('（没有找到启动日志）');
+      }
+    }
+
+    return { text: lines.join('\n'), source, pid: active.pid || null, active: true };
+  });
+
+  /** 把一段文本放进系统剪贴板（渲染层 file:// 下 navigator.clipboard 不可靠）。 */
+  ipcMain.handle('ui:copy-text', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const text = typeof payload.text === 'string' ? payload.text : '';
+    if (!text) throw new Error('没有可复制的内容');
+    clipboard.writeText(text);
+    return text.length;
+  });
+
+  /**
+   * 游戏崩溃信息导出：把崩溃报告 + 日志尾部打成一个文本包，用户选保存位置。
+   */
+  ipcMain.handle('crash:export', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    let instance = null;
+    if (payload.instanceId) {
+      instance = await requireInstance(payload).catch(() => null);
+    }
+
+    // 崩溃报告 / 日志只接受「该游戏目录下 crash-reports / logs 里」的文件：
+    // 否则渲染进程可以把任意本地文本塞进导出包（读文件的通道）。
+    // 隔离实例的这两类文件在 versions/<id>/ 下，所以用实例实际游戏目录。
+    const instanceGameDir = instance ? await instanceGameDirOf(instance) : '';
+    const gameDir = path.resolve(instanceGameDir || (currentLaunchEntry()?.gameDir || ''));
+    if (!gameDir) throw new Error('无法确定游戏目录，不能导出崩溃信息');
+
+    let crashReport = '';
+    if (payload.crashReport) {
+      const file = await pathGuard.assertInsideReal(path.join(gameDir, 'crash-reports'), payload.crashReport, '崩溃报告');
+      crashReport = await fs.readFile(file, 'utf8').catch(() => '');
+    }
+
+    let logText = '';
+    if (payload.logFile) {
+      const file = await pathGuard.assertInsideReal(path.join(gameDir, 'logs'), payload.logFile, '启动日志');
+      logText = (await readTail(file, 2 * 1024 * 1024)).text;
+    } else {
+      const entry = currentLaunchEntry();
+      if (entry && entry.logFile) logText = (await readTail(entry.logFile, 2 * 1024 * 1024)).text;
+    }
+
+    if (!crashReport && !logText) throw new Error('没有可导出的崩溃信息');
+
+    const version = instance ? (instance.versionName || instance.id) : 'game';
+    const defaultName = safeFileName(`崩溃信息-${version}-${stamp}.txt`) || `crash-${stamp}.txt`;
+
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出游戏崩溃信息',
+      defaultPath: path.join(app.getPath('documents'), defaultName),
+      filters: [{ name: '文本文件', extensions: ['txt', 'log'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    const bundle = [
+      'MCDL Launcher · 游戏崩溃信息',
+      '==========================',
+      '',
+      `时间：${new Date().toISOString()}`,
+      `实例：${instance ? (instance.displayName || instance.id) : '-'}`,
+      `版本：${instance ? (instance.versionName || '-') : '-'}`,
+      `崩溃报告：${payload.crashReport || '（无）'}`,
+      `启动日志：${payload.logFile || recentLaunches[0]?.logFile || '（无）'}`,
+      '',
+      '===== 崩溃报告 =====',
+      crashReport || '（这次退出没有生成崩溃报告）',
+      '',
+      '===== 启动日志（尾部） =====',
+      logText || '（没有日志）',
+      ''
+    ].join('\n');
+
+    await fs.writeFile(result.filePath, bundle, 'utf8');
+    await revealPath(result.filePath).catch(() => {});
+    return { file: result.filePath, size: Buffer.byteLength(bundle, 'utf8') };
   });
 
   /**
@@ -2864,7 +3967,11 @@ function registerIpcHandlers() {
       if (!instance) throw new Error('没有可启动的实例，请先创建一个实例');
 
       const versionId = path.basename(instance.path);
-      const gameDir = instance.gameDir || snapshot.gameDir;
+      // baseDir：versions / libraries / assets 所在的基础游戏目录；
+      // gameDir：游戏真正使用的目录（版本隔离实例 = versions/<id>）。
+      // 两者传给启动计划，--gameDir 必须用后者，否则隔离实例一个 mod 都读不到。
+      const baseDir = instance.gameDir || snapshot.gameDir;
+      const gameDir = (await instanceGameDirOf(instance)) || baseDir;
 
       const store = getAccountStore();
       let account = await store.getSelected();
@@ -2888,8 +3995,11 @@ function registerIpcHandlers() {
 
       send({ phase: 'starting', instanceId, versionId, memoryMb: settings.memoryMb });
 
+      let launchContext = null;
+
       const result = await launcher.launchInstance({
-        gameDir,
+        gameDir: baseDir,
+        instanceDir: gameDir,
         instanceId: versionId,
         account,
         settings,
@@ -2899,6 +4009,44 @@ function registerIpcHandlers() {
             send({ phase: 'output', stream: data.stream, text: data.text });
             return;
           }
+
+          if (kind === 'spawned') {
+            launchContext = {
+              launchId: data.launchId,
+              logFile: data.logFile || '',
+              gameDir,
+              instanceId: instance.id,
+              versionId,
+              javaPath: data.javaPath || '',
+              startedAt: Date.now(),
+              exited: false
+            };
+            rememberLaunch(launchContext);
+          }
+
+          if (kind === 'exit') {
+            const stopped = stoppedLaunches.has(data.launchId);
+            stoppedLaunches.delete(data.launchId);
+            const context = launchContext && launchContext.launchId === data.launchId ? launchContext : null;
+
+            // 崩溃报告 / 日志路径要读盘，不能卡住事件回调，单独异步补一条 exit。
+            void (async () => {
+              let crashReport = '';
+              if (!stopped && Number(data.code) !== 0) {
+                crashReport = await findCrashReport(gameDir, context ? context.startedAt : 0).catch(() => '');
+              }
+              markLaunchExited(data.launchId, { crashReport, exitCode: data.code, stopped });
+              send({
+                phase: 'exit',
+                ...data,
+                stopped,
+                logFile: context ? context.logFile : '',
+                crashReport
+              });
+            })();
+            return;
+          }
+
           send({ phase: kind, ...data });
         }
       });
@@ -2933,7 +4081,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('launcher:stop', async (event, launchId) => {
     assertAppWindow(event);
-    return launcher.stopLaunch(String(launchId || ''));
+    const id = String(launchId || '').trim() || (launcher.listActiveLaunches()[0]?.launchId || '');
+    // 记下来：手动结束游戏不算崩溃，不要让「游戏崩溃窗口」弹出来。
+    if (id) stoppedLaunches.add(id);
+    return launcher.stopLaunch(id);
   });
 
   ipcMain.handle('launcher:active', async (event) => {

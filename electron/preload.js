@@ -27,6 +27,21 @@ const launcherAPI = {
   scanOtherInstances: () => ipcRenderer.invoke('instances:scan-other'),
 
   /**
+   * 扫描缓存（<userData>/scanned-game-dirs.json）：{ dirs: string[], updatedAt: string|null }
+   */
+  getScanCache: () => ipcRenderer.invoke('instances:scan-cache'),
+
+  /**
+   * 清空扫描缓存，返回 { removed }（清掉了几条）。只清记录，不动游戏文件。
+   */
+  clearScanCache: () => ipcRenderer.invoke('instances:scan-cache-clear'),
+
+  /**
+   * 只把一个目录从扫描缓存里剔除，返回 { removed, remaining }。
+   */
+  forgetScanCacheDir: (dir) => ipcRenderer.invoke('instances:scan-cache-forget', dir),
+
+  /**
    * 通过 mcdl 拉取真实正式版列表：[{ id, date }]
    */
   getVersions: () => ipcRenderer.invoke('versions:list'),
@@ -207,6 +222,7 @@ const launcherAPI = {
 
   /**
    * 启动进度：phase = starting | spawned | output | exit | error
+   * exit 事件带上 stopped / logFile / crashReport，游戏崩溃窗口用它。
    */
   onLaunchProgress: (callback) => {
     if (typeof callback !== 'function') return;
@@ -214,6 +230,82 @@ const launcherAPI = {
       callback(payload);
     });
   },
+
+  /**
+   * 日志窗口：打开时读一次快照，之后靠 onLaunchProgress 的 output 事件续上。
+   *   snapshot → { file, text, truncated, active, launch, appLogFile, appLogDir }
+   */
+  getLogSnapshot: (payload) => ipcRenderer.invoke('logs:tail', payload || {}),
+
+  exportLog: (payload) => ipcRenderer.invoke('logs:export', payload || {}),
+
+  openLogFolder: (scope) => ipcRenderer.invoke('logs:open-folder', { scope: scope === 'game' ? 'game' : 'app' }),
+
+  openGameLogFolder: (payload) => ipcRenderer.invoke('logs:open-folder', { ...(payload || {}), scope: 'game' }),
+
+  exportThreadDump: (payload) => ipcRenderer.invoke('logs:dump', payload || {}),
+
+  exportCrashInfo: (payload) => ipcRenderer.invoke('crash:export', payload || {}),
+
+  /** 系统剪贴板写入（渲染层读不到 file:// 下的 navigator.clipboard 时用）。 */
+  copyText: (text) => ipcRenderer.invoke('ui:copy-text', { text }),
+
+  /** 启动器自身崩溃：主进程 console.error / uncaughtException 时推送。 */
+  onLauncherCrash: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('launcher:crash', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /**
+   * 实例详情：截图（列表带 data URL）、复制到剪贴板、设为启动器背景。
+   */
+  listScreenshots: (payload) => ipcRenderer.invoke('instances:screenshots', payload || {}),
+
+  copyScreenshot: (payload) => ipcRenderer.invoke('screenshots:copy', payload || {}),
+
+  setScreenshotWallpaper: (payload) => ipcRenderer.invoke('screenshots:set-wallpaper', payload || {}),
+
+  /**
+   * 实例详情：管理菜单的维护动作。
+   *   action = clean | remove-assets | remove-libraries | redownload-assets
+   */
+  runInstanceMaintenance: (payload) => ipcRenderer.invoke('instances:maintenance', payload || {}),
+
+  /** 更新整合包：把新包装出来的临时实例合并进目标实例。 */
+  mergeModpack: (payload) => ipcRenderer.invoke('instances:merge-pack', payload || {}),
+
+  /**
+   * 导出整合包：扫描 → 向导 → 打包。
+   *   scan   → { categories, name, versionName, loader, … }
+   *   export → { file, size, fileCount, format }
+   */
+  scanModpack: (payload) => ipcRenderer.invoke('modpack:scan', payload || {}),
+
+  exportModpack: (payload) => ipcRenderer.invoke('modpack:export', payload || {}),
+
+  onModpackExportProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('modpack:export-progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /** 设置 → Java 管理：从 Adoptium 下载并安装一个 JDK。 */
+  installJava: (payload) => ipcRenderer.invoke('java:install', payload || {}),
+
+  onJavaInstallProgress: (callback) => {
+    if (typeof callback !== 'function') return;
+    ipcRenderer.on('java:install-progress', (_event, payload) => {
+      callback(payload);
+    });
+  },
+
+  /** 设置 → 通用 → NBT 编辑器：选文件得到一次性 token，保存只认 token。 */
+  pickNbtFile: () => ipcRenderer.invoke('nbt:pick'),
+
+  saveNbtEdits: (payload) => ipcRenderer.invoke('nbt:save', payload || {}),
 
   // ---------------- 账户 ----------------
 
@@ -296,11 +388,6 @@ const launcherAPI = {
    * 软件渲染时渲染进程会启用降级样式。
    */
   getRenderMode: () => ipcRenderer.invoke('env:render-mode'),
-
-  /**
-   * L1 标题栏帮助按钮：打开应用日志目录。
-   */
-  openLogFolder: () => ipcRenderer.invoke('shell:open-logs'),
 
   /**
    * 整进程重启（改了主进程代码后用，标题栏「刷新」按住 Shift）。

@@ -15,6 +15,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const { assertInsideReal } = require('./path-guard');
+const { resolveGameDir: resolveInstanceGameDir } = require('./instance-layout');
 
 const CONTENT_DIRS = {
   mods: 'mods',
@@ -101,41 +102,33 @@ function createInstanceStore({ storeDir, launcherHome }) {
   }
 
   /**
-   * 内容目录解析：优先「版本隔离」目录（HMCL / PCL 的默认做法）。
+   * 实例「游戏真正使用的游戏目录」。
    *
-   *   versions/<id>/mods   版本隔离（HMCL、PCL 装整合包时用）
-   *   .minecraft/mods      全局目录（原版默认）
+   * 版本隔离（HMCL / PCL 默认行为）时是 versions/<id>，否则是 .minecraft。
+   * 判定逻辑与启动时完全共用（instance-layout），否则会出现「内容管理页
+   * 显示 300 个 mod、启动游戏一个都没有」这种自相矛盾的状态。
+   */
+  async function gameDirFor(instance) {
+    const versionDir = instance && instance.path ? instance.path : '';
+    const baseDir = instance && instance.gameDir ? instance.gameDir : '';
+    const layout = await resolveInstanceGameDir({
+      versionDir,
+      gameDir: baseDir,
+      isolationMode
+    });
+    return layout.gameDir;
+  }
+
+  /**
+   * 内容目录 = 实例当前游戏目录下的固定子目录。
    *
-   * 规则：设置里的「默认版本隔离策略」优先（isolated / global）；auto 时
-   * 版本目录里已经有这个子目录就用它，否则游戏目录里有就用游戏目录；
-   * 都没有时，外部实例（别的启动器）按隔离目录新建，自己的实例按全局目录新建。
+   *   versions/<id>/mods   版本隔离
+   *   .minecraft/mods      全局目录
    */
   async function contentRootFor(instance, kind) {
     const sub = contentSubdir(kind);
-    const versionDir = instance && instance.path ? path.resolve(instance.path) : '';
-    const gameDir = instance && instance.gameDir ? path.resolve(instance.gameDir) : '';
-
-    const versionRoot = versionDir ? path.join(versionDir, sub) : '';
-    const gameRoot = gameDir ? path.join(gameDir, sub) : '';
-
-    const isDir = async (target) => {
-      if (!target) return false;
-      try {
-        return (await fs.stat(target)).isDirectory();
-      } catch {
-        return false;
-      }
-    };
-
-    if (isolationMode === 'isolated' && versionRoot) return versionRoot;
-    if (isolationMode === 'global' && gameRoot) return gameRoot;
-
-    if (await isDir(versionRoot)) return versionRoot;
-    if (await isDir(gameRoot)) return gameRoot;
-    if (!versionRoot) return gameRoot;
-    if (!gameRoot) return versionRoot;
-
-    return instance.origin === 'external' ? versionRoot : gameRoot;
+    const gameDir = await gameDirFor(instance);
+    return path.join(gameDir, sub);
   }
 
   return {
@@ -149,6 +142,14 @@ function createInstanceStore({ storeDir, launcherHome }) {
 
     getIsolationMode() {
       return isolationMode;
+    },
+
+    /**
+     * 实例当前生效的游戏目录（版本隔离 → 实例目录；否则 → .minecraft）。
+     * 启动、内容管理、日志 / 崩溃报告都从这里取，保证口径一致。
+     */
+    async resolveGameDir(instance) {
+      return gameDirFor(instance);
     },
 
     // ---------------- 实例级设置 ----------------
