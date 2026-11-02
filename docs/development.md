@@ -265,6 +265,59 @@ MCDL_USER_DATA（环境变量，最高优先）
 | --- | --- |
 | `MCDL_GAME_DIR` | 游戏目录 |
 | `MCDL_USER_DATA` | 账号 / 设置所在的数据目录（覆盖自动选择） |
+
+### 持久化：所有状态写入必须原子
+
+**历史事故**：HMCL 曾在下模组 / 更新配置时断电或强杀，把 `.minecraft` 里的
+`version.json` / mods 写成 0 字节或半截乱码，用户下次启动直接「无法解析版本」。
+根因是直接 `fs.writeFile(target)`——目标文件先被截断再慢慢写，中途任何中断
+都会留下一个残缺的**目标文件本身**。
+
+**约定**：任何「写状态 / 写用户数据」的地方都必须走
+[`electron/atomic-write.js`](../electron/atomic-write.js)，不要直接 `fs.writeFile`。
+
+```js
+const { writeFileAtomic, writeJsonAtomic } = require('./atomic-write');
+
+await writeFileAtomic(target, JSON.stringify(state, null, 2), { encoding: 'utf8' });
+await writeJsonAtomic(target, state);          // 2 空格缩进 + 末尾换行
+```
+
+它保证：
+
+1. 同目录临时文件 → `handle.sync()`（**fsync**）→ `rename` 覆盖 → 目录 fsync（POSIX）。
+   少了 fsync，断电后可能出现「文件名在、内容是 0 字节」——这正是要避免的现象。
+2. **同一路径的并发写按入队顺序串行**。Windows 上两个 rename 抢同一个目标会抛
+   `EPERM`（共享冲突），设置面板连点保存就能踩到。
+3. `rename` 带 `EPERM/EACCES/EBUSY` 退避重试（杀毒软件 / 索引器短暂占用）。
+4. 失败时清理临时文件，**目标文件保持旧内容**；不会出现半新半旧。
+5. `flushWrites(timeoutMs)` 等所有排队写入落盘，退出流程会调它。
+
+**故意不走原子写的**：追加日志流（`createWriteStream(flags:'a')`，原子替换会破坏追加语义）、
+`copyFile` 的大文件复制（改内存原子写会显著涨内存）、以及 `app ready` 之前的同步写探针。
+
+### 退出：先收尾再退出
+
+`close` / `before-quit` / Windows `session-end` 三条路径共用同一套状态机：
+
+```
+allowQuit=false  shutdownPromise=null
+  ├─ 已 allowQuit            → 放行
+  ├─ shutdownPromise 已存在   → preventDefault，吞掉重复点击
+  ├─ 无在飞任务              → 不拦，立即关
+  └─ 有任务 → preventDefault → beginShutdown():
+        cancelAllTasks() → waitForTasksIdle(≤5s) → flushWrites(≤3s)
+        → allowQuit=true → win.destroy() → app.quit()
+```
+
+要点：
+
+- 任务登记在 `inFlightTasks`（`Set<{done}>`），`done` 在 handler 的 `finally` 里兑现；
+  **取消清的是 `activeTasks`，不清 `inFlightTasks`**——否则等待就没有对象了。
+- 用 `win.destroy()` 而不是 `win.close()`，避免二次进入 close 流程。
+- Windows 关机 / 注销时 Electron **不会**发 `before-quit`，只有窗口的 `session-end`，已单独处理。
+- 超时是硬上限：等不到就走，最坏留下 `.tmp` 孤儿，但目标文件一定是「旧的完整版本」或「新的完整版本」。
+- 新增长任务时，用 `beginTask()` / `finish()` 包住，否则退出时不会被等待。
 | `MCDL_JAR` | `mcdl.jar` 路径 |
 | `MCDL_JAVA` | 运行 `mcdl.jar` 的 Java |
 | `MCDL_RENDER` | `gpu` 或 `software`，覆盖渲染策略 |
@@ -805,6 +858,21 @@ node docs/security/wallpaper-check.js  # 壁纸：协议 / 图层 / 视频同步
 cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 ```
 
+测试（Electron 侧，纯 `node:test`，零第三方依赖）：
+
+```powershell
+cd electron
+npm test                       # = node --test --test-isolation=none tests/*.test.js
+npm run test:isolated          # 每个文件一个子进程（严格隔离，慢一点）
+node --test --test-isolation=none tests/atomic-write.test.js   # 只跑一个文件
+```
+
+- 用例放在 `electron/tests/`，覆盖 `path-guard`（路径穿越）、`modpack-guard`（zip-slip）、
+  `instance-layout`（版本隔离）、`nbt-editor`（二进制往返）、`atomic-write`（原子写 / 并发 / 失败保旧）
+  等纯逻辑模块；需要 Electron `app`/`dialog` 的模块不做 mock。
+- `--test-isolation=none` 让所有文件跑在同一个进程里：受限环境（禁止带管道 spawn）也能跑，
+  且比默认模式快；想要严格隔离用 `test:isolated`。
+
 日志：
 
 - 主进程 `console.log` 同时输出到启动终端与 `<userData>/logs/launcher-YYYYMMDD.log`
@@ -827,8 +895,13 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 - 资源包启用 / 禁用：要读写 `options.txt` 的 `resourcePacks`，未做。
 - 世界的「进入世界」直启（`--quickPlaySingleplayer`）、数据包启用 / 禁用（`level.dat` 的 DataPacks）
   与新建世界未做。
-- 设置页的外观页签：背景（自上传壁纸）已接入；主题 / 主题模式 / 色彩模式 / 标题栏透明 /
-  窗口透明 / 抗锯齿 / 主题包管理仍是 `disabled` 占位，等主题引擎一起做。
+- 设置页的外观页签：壁纸（自上传）✅、主题模式（跟随系统 / 浅色 / 深色）✅、色彩模式与自定义主色 ✅、
+  导出主题快照 ✅；**浅色目前是反相方案**（`filter: invert(1) hue-rotate(180deg)`），
+  正解需要把皮肤里约 300 处硬编码颜色收敛成 CSS token。
+  抗锯齿 / 标题栏透明 / 窗口透明 / 主题包管理仍是 `disabled`（标「暂不支持」）。
+- 主题设置写在 `localStorage` 的 `mcdl.theme.v1`：`main.js` 的 `normalizeExtraSettings` 白名单
+  还没有 `themeMode` / `colorStyle` / `accentColor`，补上后渲染层会自动改走 `settings:save`
+  （探测函数 `themeMainSupportsKeys` + `themeAdoptPreferences` 已就绪）。
 - 更新整合包目前是「装到临时实例 → 覆盖合并」，后续可做逐文件差异更新（保留用户改动过的配置）。
 - 内容更新（`instance.update`）与「检查更新」的版本比对仍未做。
 - 日志窗口是「文件尾部 + 实时事件」；后续可加过滤 / 关键字搜索 / 按级别着色。
