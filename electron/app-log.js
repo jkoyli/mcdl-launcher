@@ -108,7 +108,14 @@ function init(userDataDir) {
     } catch {
       // 忽略
     }
-    return original.apply(console, arguments);
+    // 原样转发给真正的 console：GUI 进程的 stdout 可能是已关闭的管道，
+    // 那里会抛 EPIPE 并升级成 uncaughtException，反过来把主进程打死。
+    // 控制台回显永远不该影响进程存活。
+    try {
+      return original.apply(console, arguments);
+    } catch {
+      return undefined;
+    }
   };
 
   console.log = wrap('INFO', originals.log);

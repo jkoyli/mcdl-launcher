@@ -31,6 +31,44 @@ const { writeFileAtomic, flushWrites, pendingWrites } = require('./atomic-write'
 
 const IS_DEV = process.argv.includes('--dev');
 
+// ---------------------------------------------------------------- 启动埋点
+//
+// 打包后的 GUI 进程没有控制台：一旦在 app ready 之前就崩掉，用户看到的是
+// 「双击没反应」，而我们连一行日志都拿不到。所以这里用同步追加写一个
+// 极小的 boot 轨迹（在任何模块初始化、任何 app.getPath 之前就能用），
+// 崩溃后它还在，用来判断进程究竟走到哪一步。
+//
+// 位置固定在 %APPDATA%\<product>\boot.log；写失败一律忽略（不能因为埋点本身挂掉）。
+function bootTrace(step) {
+  try {
+    const base = process.env.APPDATA || process.env.LOCALAPPDATA || process.cwd();
+    const dir = path.join(base, 'mcdl-launcher-electron');
+    fsSync.mkdirSync(dir, { recursive: true });
+    const line = `[${new Date().toISOString()}] pid=${process.pid} packaged=${Boolean(process.resourcesPath && process.execPath && !process.execPath.includes('electron.exe'))} argv=${process.argv.slice(1).join(' ')} :: ${step}\n`;
+    const file = path.join(dir, 'boot.log');
+    // 超过 64KB 就截断，避免无限增长。
+    try {
+      if (fsSync.statSync(file).size > 64 * 1024) fsSync.rmSync(file, { force: true });
+    } catch {
+      // 文件不存在，忽略
+    }
+    fsSync.appendFileSync(file, line, 'utf8');
+  } catch {
+    // 埋点失败不能影响启动
+  }
+}
+
+bootTrace('main.js loaded');
+
+// GUI 进程的 stdout / stderr 可能是一个已关闭的管道。Node 遇到这种写入会抛
+// EPIPE，而 console.* 在启动阶段几乎每行都在用——一次 EPIPE 就会触发
+// uncaughtException，把主进程直接带走（窗口都来不及创建）。
+for (const stream of [process.stdout, process.stderr]) {
+  if (stream && typeof stream.on === 'function') {
+    stream.on('error', () => {});
+  }
+}
+
 console.log(`[main] booting Electron app (dev=${IS_DEV})`);
 
 /**
@@ -87,6 +125,7 @@ function chooseUserDataDir() {
 }
 
 const USER_DATA_DIR = chooseUserDataDir();
+bootTrace(`userData=${USER_DATA_DIR}`);
 if (USER_DATA_DIR) {
   app.setPath('userData', USER_DATA_DIR);
   console.log(`[data] userData: ${USER_DATA_DIR}`);
@@ -185,13 +224,39 @@ if (RENDER_MODE === 'software') {
 
 process.on('uncaughtException', (error) => {
   console.error('[main] uncaughtException:', error);
+  showFatalBoxIfNoWindow(error);
   notifyLauncherCrash(error, 'main-uncaught');
 });
 
 process.on('unhandledRejection', (error) => {
   console.error('[main] unhandledRejection:', error);
+  showFatalBoxIfNoWindow(error);
   notifyLauncherCrash(error, 'main-rejection');
 });
+
+// 启动早期（窗口还没出现）就抛异常时，渲染层的崩溃窗口根本不存在，
+// 用户只会看到「双击没反应」。这里补一个原生错误框，让失败至少可见。
+let shownFatalBox = false;
+
+function showFatalBoxIfNoWindow(error) {
+  if (shownFatalBox) return;
+  try {
+    const visible = BrowserWindow.getAllWindows()
+      .some((win) => win && !win.isDestroyed() && win.isVisible());
+    if (visible) return;
+    shownFatalBox = true;
+    const detail = error && (error.stack || error.message) ? String(error.stack || error.message) : String(error);
+    bootTrace(`fatal (no window): ${detail.split('\n')[0]}`);
+    dialog.showErrorBox(
+      'MCDL Launcher 启动失败',
+      `主进程在窗口显示之前就出错了：\n\n${detail}\n\n`
+      + `完整日志：${path.join(USER_DATA_DIR || '', 'logs')}\n`
+      + `启动轨迹：${path.join(USER_DATA_DIR || '', 'boot.log')}`
+    );
+  } catch {
+    // 连错误框都弹不出来就只能靠日志了
+  }
+}
 
 /**
  * 启动器崩溃：把错误推给渲染进程，由它弹「崩溃窗口」。
@@ -5372,6 +5437,7 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     console.log('[main] window ready to show');
+    bootTrace('window ready to show');
     mainWindow.show();
   });
 
@@ -5499,6 +5565,7 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(async () => {
     console.log('[main] app ready');
+    bootTrace('app ready');
 
     if (process.platform === 'win32') {
       app.setAppUserModelId('com.mcdl.launcher');
@@ -5552,6 +5619,7 @@ if (!gotSingleInstanceLock) {
       .catch((error) => console.warn('[security] Java 授权恢复失败:', error.message));
 
     console.log('[main] BrowserWindow created');
+    bootTrace('BrowserWindow created');
     console.log(`[mcdl] jar: ${mcdl.resolveMcdlJar()}`);
     console.log(`[mcdl] default game dir: ${mcdl.DEFAULT_GAME_DIR}`);
 
