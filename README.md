@@ -14,15 +14,6 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
 | 进度 | 可安装原版与 Forge / NeoForge / Fabric / Quilt，并能真实启动 |
 | 分发 | zip 免安装 / NSIS 安装包 / portable 单文件 |
 
-## 作者
-
-| 头像 | 姓名 | 角色 |
-| --- | --- | --- |
-| <img src="electron/renderer/assets/author-1.jpg" width="48" height="48" alt="总多离别"> | **总多离别** | 项目作者 · 界面与启动器实现 |
-| <img src="electron/renderer/assets/author-2-deepseek.svg" width="32" height="32" alt="DeepSeek"> | **DeepSeek** | 协作开发 · 代码与文档 |
-
-启动器「设置 → 关于」里也有同样的作者信息。
-
 ## 功能
 
 - **实例管理** — 通过 `mcdl` 下载安装原版或加载器（Forge / NeoForge / Fabric / Quilt），安装进度实时回显；支持实例别名与版本类型筛选。
@@ -171,7 +162,7 @@ cd mcdl
 ```text
 mcdl-launcher/
 ├── electron/            # Electron 主进程、preload、渲染进程、启动与账户模块
-│   ├── renderer/        # index.html / renderer.js / assets（作者头像等）
+│   ├── renderer/        # index.html / renderer.js / assets（界面图片资源）
 │   ├── build/           # 打包图标（icon.ico / icon.png）
 │   ├── scripts/         # fetch-jre.js（下载内置 JRE）
 │   ├── tests/           # node:test 用例（343 条）

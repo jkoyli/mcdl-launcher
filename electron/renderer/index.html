@@ -3748,21 +3748,6 @@
     border: 1px solid rgba(var(--accent-rgb), .28);
   }
 
-  /* DeepSeek 的经典头像是一个 mark，不是照片：白底 + 居中缩放更好看 */
-  .settings-author__avatar--logo {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #fff;
-    overflow: hidden;
-  }
-
-  .settings-author__avatar--logo img {
-    width: 28px;
-    height: 28px;
-    display: block;
-  }
-
   .settings-author__text {
     display: flex;
     flex-direction: column;
@@ -8873,9 +8858,7 @@
                   </span>
                 </li>
                 <li class="settings-author">
-                  <span class="settings-author__avatar settings-author__avatar--logo" aria-hidden="true">
-                    <img src="./assets/author-2-deepseek.svg" alt="" width="44" height="44" loading="lazy">
-                  </span>
+                  <img class="settings-author__avatar" src="./assets/author-2.jpg" alt="DeepSeek 的头像" width="64" height="64" loading="lazy">
                   <span class="settings-author__text">
                     <strong class="settings-author__name">DeepSeek</strong>
                     <span class="settings-author__role">协作开发 · 代码与文档</span>
