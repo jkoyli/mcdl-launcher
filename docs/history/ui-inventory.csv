@@ -1,4 +1,4 @@
-﻿序号,层级,页面,文件,行号,控件类型,变量,i18n key,中文文案,动作/目标
+序号,层级,页面,文件,行号,控件类型,变量,i18n key,中文文案,动作/目标
 "1","L1","标题栏","decorator\MainWindowPane.java","182","JFXButton","helpButton","","帮助（打开日志文件夹）","打开日志文件夹"
 "2","L1","标题栏","decorator\MainWindowPane.java","193","JFXButton","minimizeButton","","最小化","最小化窗口"
 "3","L1","标题栏","decorator\MainWindowPane.java","200","JFXButton","closeButton","","关闭","关闭窗口"
@@ -203,8 +203,8 @@
 "196","L5","添加离线账户","account\CreateAccountPane.java","124","JFXButton","btnCancel","button.cancel","取消","动作 e -> onCancel());"
 "197","L5","添加离线账户","account\CreateAccountPane.java","136","TabItem","tabs","","（见对应导航页签）","页签容器"
 "198","L5","添加离线账户","account\CreateAccountPane.java","142","TabItem","tab","","（见对应导航页签）","页签容器"
-"199","L5","添加离线账户","account\CreateAccountPane.java","574","JFXButton","cancel","button.cancel","取消","动作 e -> latch.countDown());"
-"200","L5","添加离线账户","account\CreateAccountPane.java","606","可点击面板","","","（运行时赋值）",""
+"199","L5","添加离线账户","account\CreateAccountPane.java","574","JFXButton","cancel","button.cancel","取消（皮肤子流程）","动作 e -> latch.countDown());"
+"200","L5","添加离线账户","account\CreateAccountPane.java","606","可点击面板","","","皮肤选择入口（离线页签内嵌）","点击进入皮肤设置子流程"
 "201","L5","添加认证服务器","account\AddAuthlibInjectorServerPane.java","61","JFXButton","cancel","button.cancel","取消","动作 e -> onAddCancel());"
 "202","L5","添加认证服务器","account\AddAuthlibInjectorServerPane.java","67","JFXButton","btnAddNext","wizard.next","下一步 >","动作 e -> onAddNext());"
 "203","L5","添加认证服务器","account\AddAuthlibInjectorServerPane.java","138","JFXButton","prevButton","wizard.prev","< 上一步","动作 e -> onAddPrev());"
@@ -212,7 +212,7 @@
 "205","L5","添加认证服务器","account\AddAuthlibInjectorServerPane.java","146","JFXButton","finishButton","wizard.finish","完成","动作 e -> onAddFinish());"
 "206","L5","微软登录","account\MicrosoftAccountLoginPane.java","88","JFXButton","btnLogin","account.login","登录",""
 "207","L5","微软登录","account\MicrosoftAccountLoginPane.java","95","JFXButton","btnCancel","button.cancel","取消","动作 e -> onCancel());"
-"208","L5","微软登录","account\MicrosoftAccountLoginPane.java","216","可点击面板","","","（运行时赋值）",""
+"208","L5","微软登录","account\MicrosoftAccountLoginPane.java","216","可点击面板","","","登录说明面板（帮助/步骤提示）","点击展开说明"
 "209","L5","游戏崩溃窗口","GameCrashWindow.java","419","强调按钮","","logwindow.export_game_crash_logs","导出游戏崩溃信息",""
 "210","L5","游戏崩溃窗口","GameCrashWindow.java","446","强调按钮","","logwindow.title","日志",""
 "211","L5","游戏崩溃窗口","GameCrashWindow.java","449","强调按钮","","help","帮助",""

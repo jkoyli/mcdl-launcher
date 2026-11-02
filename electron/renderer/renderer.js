@@ -877,6 +877,7 @@
       if (!payload || !payload.message) return;
       if (createProgressText) createProgressText.textContent = payload.message;
       if (createMessage && installInProgress) createMessage.textContent = payload.message;
+      noteActiveTask(payload.message);
     });
   }
 
@@ -1573,6 +1574,227 @@
     node.classList.toggle('is-ok', tone === 'ok');
   }
 
+  // ---------------- 共享组件基座 ----------------
+
+  /**
+   * 页签基座：把 [data-*-tab] 按钮和 [data-*-panel] 面板绑成一个 tablist。
+   *
+   *   var tabs = createTabs({
+   *     tabAttr: 'data-settings-tab',
+   *     panelAttr: 'data-settings-pane',
+   *     onChange: function (value) { ... }   // 切换后要做的事
+   *   });
+   *   tabs.set('java');
+   *
+   * 统一负责：aria-selected / is-active / roving tabindex / ←→ Home End
+   * 键盘导航 + 焦点移动 + 面板 hidden 同步。
+   */
+  function createTabs(options) {
+    var opts = options || {};
+    var tabAttr = opts.tabAttr;
+    var panelAttr = opts.panelAttr;
+    var activeClass = opts.activeClass === null ? '' : (opts.activeClass || 'is-active');
+    var root = opts.root || document;
+    var current = '';
+
+    function tabNodes() {
+      return Array.prototype.slice.call(root.querySelectorAll('[' + tabAttr + ']'));
+    }
+
+    function panelNodes() {
+      if (!panelAttr) return [];
+      return Array.prototype.slice.call(root.querySelectorAll('[' + panelAttr + ']'));
+    }
+
+    function values() {
+      return tabNodes().map(function (tab) {
+        return tab.getAttribute(tabAttr);
+      });
+    }
+
+    function apply(value) {
+      tabNodes().forEach(function (tab) {
+        var active = tab.getAttribute(tabAttr) === value;
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        tab.setAttribute('tabindex', active ? '0' : '-1');
+        if (activeClass) tab.classList.toggle(activeClass, active);
+      });
+
+      panelNodes().forEach(function (panel) {
+        var active = panel.getAttribute(panelAttr) === value;
+        panel.hidden = !active;
+        if (activeClass) panel.classList.toggle(activeClass, active);
+      });
+    }
+
+    function set(value, config) {
+      var all = values();
+      var next = value;
+      // 传了不存在的页签名（比如外部数据）时退回第一个，别让所有面板都消失。
+      if (all.length && all.indexOf(next) < 0) next = all[0];
+
+      current = next;
+      apply(current);
+
+      if (!(config && config.silent) && typeof opts.onChange === 'function') {
+        opts.onChange(current);
+      }
+      return current;
+    }
+
+    tabNodes().forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        set(tab.getAttribute(tabAttr));
+      });
+
+      tab.addEventListener('keydown', function (event) {
+        var key = event.key;
+        if (key !== 'ArrowRight' && key !== 'ArrowLeft' && key !== 'ArrowDown'
+            && key !== 'ArrowUp' && key !== 'Home' && key !== 'End') {
+          return;
+        }
+
+        var tabs = tabNodes();
+        var index = tabs.indexOf(tab);
+        if (index < 0 || tabs.length === 0) return;
+
+        var nextIndex = index;
+        if (key === 'ArrowRight' || key === 'ArrowDown') nextIndex = (index + 1) % tabs.length;
+        else if (key === 'ArrowLeft' || key === 'ArrowUp') nextIndex = (index - 1 + tabs.length) % tabs.length;
+        else if (key === 'Home') nextIndex = 0;
+        else nextIndex = tabs.length - 1;
+
+        event.preventDefault();
+        var next = tabs[nextIndex];
+        if (!next) return;
+        set(next.getAttribute(tabAttr));
+        next.focus();
+      });
+    });
+
+    // 初始状态：HTML 里 aria-selected="true" 的那个，没有就用第一个。
+    var initialTabs = tabNodes();
+    var initialTab = initialTabs.filter(function (tab) {
+      return tab.getAttribute('aria-selected') === 'true';
+    })[0] || initialTabs[0];
+    current = initialTab ? initialTab.getAttribute(tabAttr) : '';
+    if (current) apply(current);
+
+    return {
+      set: set,
+      get: function () { return current; },
+      values: values,
+      sync: function () { apply(current); }
+    };
+  }
+
+  /**
+   * 列表基座：容器 + 数据 + 行渲染 + 选中 + 空态 + 计数，一处实现。
+   *
+   *   var list = createList({
+   *     container: node,
+   *     itemKey: function (item) { return item.id; },
+   *     renderRow: function (item) { return rowNode; },
+   *     emptyState: '还没有内容',            // 字符串或 () => Node
+   *     countEl: countNode,
+   *     onSelect: function (item, key) {}
+   *   });
+   *   list.render(items, { selected: id });
+   *
+   * 行节点会被写上 data-list-key；选中只切 is-selected，不重建整表，
+   * 避免「点一下行，行被替换掉」导致后续 click / dblclick 落空。
+   */
+  function createList(options) {
+    var opts = options || {};
+    var container = opts.container || null;
+    var items = [];
+    var selectedKey = '';
+
+    function keyOf(item, index) {
+      if (typeof opts.itemKey === 'function') return String(opts.itemKey(item, index));
+      return String(index);
+    }
+
+    function applySelection() {
+      if (!container) return;
+      Array.prototype.forEach.call(container.children, function (row) {
+        if (!row || !row.getAttribute) return;
+        row.classList.toggle('is-selected', row.getAttribute('data-list-key') === selectedKey);
+      });
+    }
+
+    function render(nextItems, config) {
+      items = Array.isArray(nextItems) ? nextItems.slice() : [];
+      if (config && config.selected !== undefined) {
+        selectedKey = config.selected == null ? '' : String(config.selected);
+      }
+
+      if (!container) return items;
+
+      container.innerHTML = '';
+
+      if (items.length === 0) {
+        if (typeof opts.emptyState === 'function') {
+          var custom = opts.emptyState();
+          if (custom) container.appendChild(custom);
+        } else if (opts.emptyState) {
+          var empty = document.createElement('div');
+          empty.className = opts.emptyClass || 'content-empty';
+          empty.textContent = String(opts.emptyState);
+          container.appendChild(empty);
+        }
+        if (opts.countEl) opts.countEl.textContent = '0';
+        return items;
+      }
+
+      var fragment = document.createDocumentFragment();
+      items.forEach(function (item, index) {
+        var row = typeof opts.renderRow === 'function' ? opts.renderRow(item, index) : null;
+        if (!row || !row.setAttribute) return;
+        row.setAttribute('data-list-key', keyOf(item, index));
+        fragment.appendChild(row);
+      });
+      container.appendChild(fragment);
+
+      if (opts.countEl) opts.countEl.textContent = String(items.length);
+      applySelection();
+      return items;
+    }
+
+    function selectedItem() {
+      for (var i = 0; i < items.length; i += 1) {
+        if (keyOf(items[i], i) === selectedKey) return items[i];
+      }
+      return null;
+    }
+
+    function select(key) {
+      selectedKey = key == null ? '' : String(key);
+      applySelection();
+    }
+
+    if (container && typeof opts.onSelect === 'function') {
+      container.addEventListener('click', function (event) {
+        var row = event.target && event.target.closest
+          ? event.target.closest('[data-list-key]')
+          : null;
+        if (!row || !container.contains(row)) return;
+
+        var key = row.getAttribute('data-list-key');
+        select(key);
+        opts.onSelect(selectedItem(), key);
+      });
+    }
+
+    return {
+      render: render,
+      select: select,
+      selected: selectedItem,
+      items: function () { return items.slice(); },
+      container: container
+    };
+  }
+
   function openAccountError(error, node) {
     var message = describeLaunchError(error);
     setHint(node, message, 'error');
@@ -1642,6 +1864,47 @@
     }
   }
 
+  // ---------------- 文本框原生右键菜单（共享组件） ----------------
+
+  /**
+   * 所有 input / textarea 共用一套原生右键菜单（撤销/重做/剪切/复制/粘贴/删除/全选）。
+   *
+   * 菜单在主进程用 Menu.popup 弹出，编辑动作走 Chromium 原生 role，
+   * 不用 document.execCommand —— 后者对中文输入法的撤销栈不可靠。
+   * 这里只负责把焦点控件的状态（可否编辑 / 有选中 / 是否密码框）报上去。
+   */
+  document.addEventListener('contextmenu', function (event) {
+    var field = event.target && event.target.closest
+      ? event.target.closest('input, textarea')
+      : null;
+    if (!field) return;
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.showTextContextMenu !== 'function') return;
+
+    // 启动器没有默认右键菜单，输入框上的右键一律由原生菜单接管。
+    event.preventDefault();
+
+    var hasSelection = false;
+    try {
+      hasSelection = typeof field.selectionStart === 'number'
+        && field.selectionStart !== field.selectionEnd;
+    } catch (error) {
+      // type=number / date 等控件没有 selectionStart：退化成「无选中」。
+      hasSelection = false;
+    }
+
+    api.showTextContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      editable: !field.disabled && !field.readOnly,
+      secret: field.type === 'password',
+      hasSelection: hasSelection
+    }).catch(function (error) {
+      console.warn('[context-menu] failed:', error);
+    });
+  });
+
   // ---------------- 弹窗管理（L5 层） ----------------
 
   var dialogLayer = document.getElementById('dialogLayer');
@@ -1655,17 +1918,22 @@
     icon: document.getElementById('dlgIcon'),
     install: document.getElementById('dlgInstall'),
     packFiles: document.getElementById('dlgPackFiles'),
-    addon: document.getElementById('dlgAddon')
+    addon: document.getElementById('dlgAddon'),
+    task: document.getElementById('dlgTask')
   };
   var openDialogName = null;
   var dialogReturnFocus = null;
   var confirmCallback = null;
+  var confirmPrompt = null;      // askPrompt 的待决状态：{ resolve, required }
+  var taskDialogState = null;    // runTask 的当前任务：{ id, settled, cancelled, ... }
 
   function openDialog(name, trigger) {
     var pane = DIALOGS[name];
     if (!pane || !dialogLayer) return;
 
     if (openDialogName && DIALOGS[openDialogName] && openDialogName !== name) {
+      // 切走「确认框」时，挂着的 askPrompt 必须有个结果，否则调用方永远等下去。
+      if (openDialogName === 'confirm') settlePrompt(null);
       DIALOGS[openDialogName].classList.remove('is-open');
       DIALOGS[openDialogName].hidden = true;
     }
@@ -1691,6 +1959,8 @@
     // 安装 / 解压期间不允许把弹窗关掉，避免状态错乱。
     if (openDialogName === 'install' && installBusy) return;
     if (openDialogName === 'addon' && addonDialog.busy) return;
+    // 任务跑着的时候只能通过「取消任务」结束，不能直接把进度框关掉。
+    if (openDialogName === 'task' && taskDialogState && !taskDialogState.settled) return;
 
     var pane = DIALOGS[openDialogName];
     if (pane) {
@@ -1710,7 +1980,10 @@
       }
     }
     dialogReturnFocus = null;
+    // 关掉确认框 = 取消：把还在等结果的输入框/确认框调用方放行。
+    settlePrompt(null);
     confirmCallback = null;
+    taskDialogState = null;
   }
 
   if (dialogLayer) {
@@ -1722,20 +1995,291 @@
 
   var confirmText = document.getElementById('confirmText');
   var confirmOk = document.getElementById('confirmOk');
+  var confirmTitle = document.getElementById('dlgConfirmTitle');
+  var confirmInputField = document.getElementById('confirmInputField');
+  var confirmInputLabel = document.getElementById('confirmInputLabel');
+  var confirmInput = document.getElementById('confirmInput');
+  var confirmStatus = document.getElementById('confirmStatus');
+
+  /** 把通用对话框恢复成「普通确认」的初始形态。 */
+  function resetConfirmDialog() {
+    if (confirmTitle) confirmTitle.textContent = '确认';
+    if (confirmText) {
+      confirmText.hidden = false;
+      confirmText.textContent = '确定要继续吗？';
+    }
+    if (confirmInputField) confirmInputField.hidden = true;
+    if (confirmInput) {
+      confirmInput.value = '';
+      confirmInput.placeholder = '';
+      confirmInput.type = 'text';
+      confirmInput.maxLength = 120;
+      confirmInput.classList.remove('is-invalid');
+      confirmInput.removeAttribute('aria-invalid');
+    }
+    if (confirmStatus) setHint(confirmStatus, '');
+    if (confirmOk) {
+      confirmOk.textContent = '确定';
+      confirmOk.disabled = false;
+    }
+  }
+
+  /** askPrompt 的收尾：同一个对话框只能有一个待决 Promise。 */
+  function settlePrompt(value) {
+    var pending = confirmPrompt;
+    confirmPrompt = null;
+    if (pending && typeof pending.resolve === 'function') pending.resolve(value);
+  }
 
   function askConfirm(text, onConfirm, confirmLabel) {
+    resetConfirmDialog();
     if (confirmText) confirmText.textContent = text;
     if (confirmOk) confirmOk.textContent = confirmLabel || '确定';
     confirmCallback = onConfirm;
     openDialog('confirm');
   }
 
+  /**
+   * 通用输入对话框：复用 dlgConfirm，加上一个输入框。
+   *
+   * 返回 Promise<string|null>：点「确定」得到 trim 后的值，取消 / 关闭得到 null。
+   * 默认 required，留空会停在对话框里提示，不会静默返回空串。
+   */
+  function askPrompt(options) {
+    var opts = options || {};
+
+    return new Promise(function (resolve) {
+      resetConfirmDialog();
+      confirmCallback = null;
+
+      if (confirmTitle) confirmTitle.textContent = opts.title || '请输入';
+      if (confirmText) {
+        if (opts.text) {
+          confirmText.hidden = false;
+          confirmText.textContent = opts.text;
+        } else {
+          confirmText.hidden = true;
+          confirmText.textContent = '';
+        }
+      }
+      if (confirmInputLabel) confirmInputLabel.textContent = opts.label || '名称';
+      if (confirmInputField) confirmInputField.hidden = false;
+      if (confirmInput) {
+        confirmInput.value = opts.value == null ? '' : String(opts.value);
+        confirmInput.placeholder = opts.placeholder || '';
+        confirmInput.type = opts.password ? 'password' : 'text';
+        if (Number(opts.maxLength) > 0) confirmInput.maxLength = Number(opts.maxLength);
+      }
+      if (confirmOk) confirmOk.textContent = opts.okText || '确定';
+
+      confirmPrompt = {
+        resolve: resolve,
+        // required 默认 true；确实允许空值时显式传 allowEmpty: true。
+        required: opts.required !== false && opts.allowEmpty !== true
+      };
+
+      openDialog('confirm');
+
+      window.setTimeout(function () {
+        if (openDialogName !== 'confirm' || !confirmInput) return;
+        confirmInput.focus();
+        try {
+          confirmInput.select();
+        } catch (error) {
+          // 个别 input type 不支持 select()
+        }
+      }, 150);
+    });
+  }
+
   if (confirmOk) {
     confirmOk.addEventListener('click', function () {
+      if (confirmPrompt) {
+        var value = confirmInput ? confirmInput.value : '';
+        if (confirmPrompt.required && !value.trim()) {
+          setHint(confirmStatus, '不能为空', 'error');
+          if (confirmInput) {
+            confirmInput.classList.add('is-invalid');
+            confirmInput.focus();
+          }
+          return;
+        }
+
+        var resolvePrompt = confirmPrompt.resolve;
+        confirmPrompt = null;
+        closeDialog();
+        if (typeof resolvePrompt === 'function') resolvePrompt(value.trim());
+        return;
+      }
+
       var callback = confirmCallback;
       confirmCallback = null;
       closeDialog();
       if (typeof callback === 'function') callback();
+    });
+  }
+
+  if (confirmInput) {
+    confirmInput.addEventListener('input', function () {
+      confirmInput.classList.remove('is-invalid');
+      confirmInput.removeAttribute('aria-invalid');
+      if (confirmStatus) setHint(confirmStatus, '');
+    });
+
+    confirmInput.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (confirmOk) confirmOk.click();
+    });
+  }
+
+  // ---------------- 通用任务对话框（runTask） ----------------
+
+  var taskTitleEl = document.getElementById('dlgTaskTitle');
+  var taskStatusEl = document.getElementById('taskStatus');
+  var taskProgressEl = document.getElementById('taskProgress');
+  var taskProgressBar = document.getElementById('taskProgressBar');
+  var taskCancelBtn = document.getElementById('taskCancel');
+  var taskCloseBtn = document.getElementById('taskClose');
+
+  /** percent 省略 = 不确定进度（来回滚动的条）。 */
+  function setTaskProgress(text, percent) {
+    if (text !== undefined && text !== null) setHint(taskStatusEl, String(text));
+
+    var value = Number(percent);
+    var determinate = percent !== undefined && percent !== null && Number.isFinite(value);
+
+    if (taskProgressEl) {
+      taskProgressEl.classList.toggle('is-indeterminate', !determinate);
+      if (determinate) {
+        var clamped = Math.max(0, Math.min(100, Math.round(value)));
+        taskProgressEl.setAttribute('aria-valuenow', String(clamped));
+        taskProgressEl.setAttribute('aria-valuetext', clamped + '%');
+      } else {
+        taskProgressEl.removeAttribute('aria-valuenow');
+        taskProgressEl.setAttribute('aria-valuetext', '进行中');
+      }
+    }
+    if (taskProgressBar) {
+      taskProgressBar.style.width = determinate ? Math.max(0, Math.min(100, value)) + '%' : '';
+    }
+  }
+
+  /** 安装 / 下载的进度事件顺手写进任务框，调用点不用自己接线。 */
+  function noteActiveTask(message) {
+    if (!taskDialogState || taskDialogState.settled) return;
+    if (!message) return;
+    setHint(taskStatusEl, String(message));
+  }
+
+  function taskErrorMessage(error) {
+    var raw = error && error.message ? String(error.message) : String(error || '未知错误');
+    var lines = raw.split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+    return lines[lines.length - 1] || '未知错误';
+  }
+
+  /**
+   * 通用长任务对话框。
+   *
+   *   runTask({
+   *     title: '安装整合包',
+   *     cancelable: true,
+   *     run: function (ctx) { return api.installModpack({ ... , taskId: ctx.taskId }); }
+   *   })
+   *
+   * ctx.taskId 会随原有 IPC 传下去；点「取消任务」→ 主进程 task:cancel → abort
+   * → mcdl 子进程被 kill / fetch 中断。取消时 Promise 结果为 null，失败时 reject。
+   */
+  function runTask(options) {
+    var opts = options || {};
+
+    return new Promise(function (resolve, reject) {
+      var taskId = String(opts.taskId || ('task-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)));
+      var state = { id: taskId, settled: false, cancelled: false };
+      taskDialogState = state;
+
+      if (taskTitleEl) taskTitleEl.textContent = opts.title || '任务';
+      setTaskProgress(opts.status || '准备中…', null);
+      if (taskCancelBtn) {
+        taskCancelBtn.hidden = opts.cancelable === false;
+        taskCancelBtn.disabled = false;
+        taskCancelBtn.textContent = opts.cancelText || '取消任务';
+      }
+      if (taskCloseBtn) taskCloseBtn.hidden = true;
+
+      openDialog('task');
+
+      var ctx = {
+        taskId: taskId,
+        progress: function (text, percent) { setTaskProgress(text, percent); },
+        isCancelled: function () { return state.cancelled; }
+      };
+
+      function finish(error, result) {
+        if (state.settled) return;
+        state.settled = true;
+
+        if (taskCancelBtn) taskCancelBtn.hidden = true;
+        if (taskCloseBtn) taskCloseBtn.hidden = false;
+        if (taskProgressEl) taskProgressEl.classList.remove('is-indeterminate');
+
+        var cancelled = Boolean(state.cancelled
+          || (error && (error.cancelled || error.code === 'TASK_CANCELLED')));
+
+        if (cancelled) {
+          if (taskProgressBar) taskProgressBar.style.width = '0%';
+          setHint(taskStatusEl, opts.cancelledText || '已取消', 'ok');
+          window.setTimeout(function () {
+            if (openDialogName === 'task' && taskDialogState === state) closeDialog();
+          }, 900);
+          resolve(null);
+          return;
+        }
+
+        if (error) {
+          if (taskProgressBar) taskProgressBar.style.width = '0%';
+          setHint(taskStatusEl, '失败：' + taskErrorMessage(error), 'error');
+          reject(error);
+          return;
+        }
+
+        if (taskProgressBar) taskProgressBar.style.width = '100%';
+        setHint(taskStatusEl, opts.doneText || '完成', 'ok');
+        window.setTimeout(function () {
+          if (openDialogName === 'task' && taskDialogState === state) closeDialog();
+        }, 800);
+        resolve(result);
+      }
+
+      Promise.resolve()
+        .then(function () {
+          if (typeof opts.run !== 'function') throw new Error('runTask 缺少 run()');
+          return opts.run(ctx);
+        })
+        .then(function (result) { finish(null, result); }, function (error) { finish(error); });
+    });
+  }
+
+  if (taskCancelBtn) {
+    taskCancelBtn.addEventListener('click', function () {
+      var state = taskDialogState;
+      if (!state || state.settled || state.cancelled) return;
+
+      state.cancelled = true;
+      taskCancelBtn.disabled = true;
+      setHint(taskStatusEl, '正在取消…');
+
+      var api = window.launcherAPI;
+      if (!api || typeof api.cancelTask !== 'function') return;
+      Promise.resolve(api.cancelTask(state.id)).catch(function (error) {
+        console.warn('[task] cancel failed:', error);
+      });
+    });
+  }
+
+  if (taskCloseBtn) {
+    taskCloseBtn.addEventListener('click', function () {
+      closeDialog();
     });
   }
 
@@ -3594,23 +4138,21 @@
     else wallPlayAll();
   });
 
+  var settingsTabs = createTabs({
+    tabAttr: 'data-settings-tab',
+    panelAttr: 'data-settings-pane',
+    onChange: function (tab) {
+      // 「关于」第一次打开时才去问主进程版本号，避免每次进设置都拉一遍。
+      if (tab === 'about' && settingsAboutVersion &&
+          settingsAboutVersion.textContent === 'MCDL Launcher') {
+        loadAppInfo();
+      }
+    }
+  });
+
   function setSettingsTab(tab) {
     settingsTab = tab || 'game';
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-settings-tab]'), function (button) {
-      var active = button.getAttribute('data-settings-tab') === settingsTab;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-settings-pane]'), function (pane) {
-      var active = pane.getAttribute('data-settings-pane') === settingsTab;
-      if (active) {
-        pane.removeAttribute('hidden');
-      } else {
-        pane.setAttribute('hidden', '');
-      }
-    });
+    settingsTabs.set(settingsTab);
   }
 
   function loadAppInfo() {
@@ -3635,16 +4177,6 @@
         if (settingsAboutMeta) settingsAboutMeta.textContent = '读取版本信息失败';
       });
   }
-
-  Array.prototype.forEach.call(document.querySelectorAll('[data-settings-tab]'), function (button) {
-    button.addEventListener('click', function () {
-      setSettingsTab(button.getAttribute('data-settings-tab'));
-      if (button.getAttribute('data-settings-tab') === 'about' && settingsAboutVersion &&
-          settingsAboutVersion.textContent === 'MCDL Launcher') {
-        loadAppInfo();
-      }
-    });
-  });
 
   if (settingsJava) {
     settingsJava.addEventListener('change', function () {
@@ -4119,7 +4651,7 @@
     }
 
     if (action === 'rename') {
-      openInstanceDialog(id);
+      renameInstanceFlow(instance);
       return;
     }
 
@@ -4194,20 +4726,65 @@
       });
   }
 
+  /**
+   * 重命名实例（askPrompt 调用点 1/3：实例管理页 / 实例右键菜单）。
+   * 只改显示名，不动 versions 下的文件夹。
+   */
+  function renameInstanceFlow(instance) {
+    var api = window.launcherAPI;
+    if (!instance || !api || typeof api.renameInstance !== 'function') return;
+
+    var currentName = instanceLabel(instance);
+    askPrompt({
+      title: '重命名实例',
+      text: '只改启动器里显示的名字，版本文件夹不变：' + (instance.versionName || instance.id),
+      label: '实例名称',
+      value: currentName,
+      placeholder: '例如 1.21.4 · 原版',
+      okText: '重命名',
+      maxLength: 48
+    }).then(function (name) {
+      if (!name || name === currentName) return;
+
+      setInstancePanelStatus('正在重命名…');
+      return api.renameInstance({ instanceId: instance.id, name: name })
+        .then(function (snapshot) {
+          if (snapshot) updateInstanceUI(snapshot);
+          setInstancePanelStatus('已重命名为 ' + name, 'ok');
+        })
+        .catch(function (error) {
+          setInstancePanelStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  /**
+   * 复制实例（askPrompt 调用点 2/3）：先问副本名，再走 instances:duplicate。
+   */
   function duplicateInstance(instance) {
     var api = window.launcherAPI;
-    if (!api || typeof api.duplicateInstance !== 'function') return;
+    if (!instance || !api || typeof api.duplicateInstance !== 'function') return;
 
-    setInstancePanelStatus('正在复制 ' + instanceLabel(instance) + ' …');
+    askPrompt({
+      title: '复制游戏实例',
+      text: '会完整复制实例文件夹（模组、配置、存档），比较大的实例需要一会儿。',
+      label: '副本名称',
+      value: instanceLabel(instance) + ' · 副本',
+      okText: '开始复制',
+      maxLength: 48
+    }).then(function (name) {
+      if (!name) return;
 
-    api.duplicateInstance({ instanceId: instance.id })
-      .then(function (snapshot) {
-        updateInstanceUI(snapshot);
-        setInstancePanelStatus('已复制为副本', 'ok');
-      })
-      .catch(function (error) {
-        setInstancePanelStatus(describeLaunchError(error), 'error');
-      });
+      setInstancePanelStatus('正在复制 ' + instanceLabel(instance) + ' …');
+      return api.duplicateInstance({ instanceId: instance.id, name: name })
+        .then(function (snapshot) {
+          updateInstanceUI(snapshot);
+          setInstancePanelStatus('已复制为「' + name + '」', 'ok');
+        })
+        .catch(function (error) {
+          setInstancePanelStatus(describeLaunchError(error), 'error');
+        });
+    });
   }
 
   function confirmRemoveInstance(instance) {
@@ -4242,7 +4819,6 @@
     dialogInstanceId = id;
 
     var meta = document.getElementById('instanceDialogMeta');
-    var nameInput = document.getElementById('instanceNameInput');
     var status = document.getElementById('instanceDialogStatus');
     var del = document.getElementById('instanceDelete');
 
@@ -4251,7 +4827,6 @@
         (loaderLabel(instance) !== 'Vanilla' ? ' · ' + loaderLabel(instance) : '') +
         (instance.origin === 'external' ? ' · 外部目录' : '');
     }
-    if (nameInput) nameInput.value = instance.displayName || instance.versionName || '';
     if (status) setHint(status, '');
     if (del) del.disabled = false;
 
@@ -4261,45 +4836,14 @@
   var instanceRenameApply = document.getElementById('instanceRenameApply');
   var instanceDuplicateBtn = document.getElementById('instanceDuplicate');
   var instanceDeleteBtn = document.getElementById('instanceDelete');
-  var instanceNameInput = document.getElementById('instanceNameInput');
-  var instanceDialogStatus = document.getElementById('instanceDialogStatus');
 
-  function applyInstanceRename() {
-    var api = window.launcherAPI;
-    var instance = instanceById(dialogInstanceId);
-    if (!instance || !api || typeof api.renameInstance !== 'function') return;
-
-    var name = instanceNameInput ? instanceNameInput.value.trim() : '';
-    if (!name) {
-      setHint(instanceDialogStatus, '名称不能为空', 'error');
-      if (instanceNameInput) instanceNameInput.focus();
-      return;
-    }
-
-    setHint(instanceDialogStatus, '正在重命名…');
-
-    api.renameInstance({ instanceId: instance.id, name: name })
-      .then(function (snapshot) {
-        updateInstanceUI(snapshot);
-        setHint(instanceDialogStatus, '已重命名为 ' + name, 'ok');
-        var meta = document.getElementById('instanceDialogMeta');
-        if (meta) meta.textContent = name + ' · ' + (instance.versionName || '—');
-      })
-      .catch(function (error) {
-        setHint(instanceDialogStatus, describeLaunchError(error), 'error');
-      });
-  }
-
+  // 「重命名」不再自带输入框，统一走 askPrompt（确定 / 取消 / 空值校验都是基座行为）。
   if (instanceRenameApply) {
-    instanceRenameApply.addEventListener('click', applyInstanceRename);
-  }
-
-  if (instanceNameInput) {
-    instanceNameInput.addEventListener('keydown', function (event) {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        applyInstanceRename();
-      }
+    instanceRenameApply.addEventListener('click', function () {
+      var instance = instanceById(dialogInstanceId);
+      if (!instance) return;
+      closeDialog();
+      renameInstanceFlow(instance);
     });
   }
 
@@ -4361,16 +4905,13 @@
     if (deleteBtn) deleteBtn.hidden = !entry || entry.primary;
   }
 
-  function renderGameDirList() {
-    var list = document.getElementById('gameDirList');
-    if (!list) return;
-
-    list.innerHTML = '';
-
-    gameDirCache.forEach(function (entry) {
+  var gameDirList = createList({
+    container: document.getElementById('gameDirList'),
+    itemKey: function (entry) { return entry.id; },
+    renderRow: function (entry) {
       var item = document.createElement('button');
       item.type = 'button';
-      item.className = 'gamedir-item' + (entry.id === gameDirEditingId ? ' is-selected' : '');
+      item.className = 'gamedir-item';
       item.setAttribute('data-gamedir-id', entry.id);
 
       var main = document.createElement('div');
@@ -4386,10 +4927,20 @@
 
       main.appendChild(pathNode);
       main.appendChild(metaNode);
-
       item.appendChild(main);
-      list.appendChild(item);
-    });
+      return item;
+    },
+    onSelect: function (entry) {
+      if (!entry) return;
+      gameDirEditingId = entry.id;
+      gameDirAddMode = false;
+      renderGameDirList();
+      applyGameDirForm();
+    }
+  });
+
+  function renderGameDirList() {
+    gameDirList.render(gameDirCache, { selected: gameDirEditingId });
   }
 
   function loadGameDirs(selectId) {
@@ -4525,18 +5076,6 @@
         },
         '移除'
       );
-    });
-  }
-
-  var gameDirList = document.getElementById('gameDirList');
-  if (gameDirList) {
-    gameDirList.addEventListener('click', function (event) {
-      var item = event.target.closest ? event.target.closest('[data-gamedir-id]') : null;
-      if (!item) return;
-      gameDirEditingId = item.getAttribute('data-gamedir-id');
-      gameDirAddMode = false;
-      renderGameDirList();
-      applyGameDirForm();
     });
   }
 
@@ -4677,33 +5216,31 @@
     setDetailTab(detailTab || 'game');
   }
 
+  var detailTabs = createTabs({
+    tabAttr: 'data-detail-tab',
+    panelAttr: 'data-detail-panel',
+    onChange: function (tab) {
+      if (tab === 'game') {
+        loadDetailSettings();
+        return;
+      }
+      if (tab === 'installers') {
+        renderInstallerList();
+        return;
+      }
+      if (tab === 'worlds') {
+        openWorldList();
+        return;
+      }
+
+      var kind = TAB_CONTENT_KIND[tab];
+      if (kind) loadInstanceContent(kind);
+    }
+  });
+
   function setDetailTab(tab) {
-    detailTab = tab;
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-detail-tab]'), function (button) {
-      button.setAttribute('aria-selected', button.getAttribute('data-detail-tab') === tab ? 'true' : 'false');
-    });
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-detail-panel]'), function (panel) {
-      panel.hidden = panel.getAttribute('data-detail-panel') !== tab;
-    });
-
-    if (tab === 'game') {
-      loadDetailSettings();
-      return;
-    }
-    if (tab === 'installers') {
-      renderInstallerList();
-      return;
-    }
-
-    if (tab === 'worlds') {
-      openWorldList();
-      return;
-    }
-
-    var kind = TAB_CONTENT_KIND[tab];
-    if (kind) loadInstanceContent(kind);
+    detailTab = tab || 'game';
+    detailTabs.set(detailTab);
   }
 
   // ---------------- 页签：游戏设置（实例级） ----------------
@@ -5570,21 +6107,18 @@
     });
   }
 
+  var worldTabs = createTabs({
+    tabAttr: 'data-world-tab',
+    panelAttr: 'data-world-panel',
+    onChange: function (tab) {
+      if (tab === 'backup') loadWorldBackups();
+      if (tab === 'datapack') loadWorldDatapacks();
+    }
+  });
+
   function setWorldTab(tab) {
     worldState.tab = tab || 'info';
-    Array.prototype.forEach.call(document.querySelectorAll('[data-world-tab]'), function (button) {
-      var active = button.getAttribute('data-world-tab') === worldState.tab;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-    Array.prototype.forEach.call(document.querySelectorAll('[data-world-panel]'), function (panel) {
-      var active = panel.getAttribute('data-world-panel') === worldState.tab;
-      if (active) panel.removeAttribute('hidden');
-      else panel.setAttribute('hidden', '');
-    });
-
-    if (worldState.tab === 'backup') loadWorldBackups();
-    if (worldState.tab === 'datapack') loadWorldDatapacks();
+    worldTabs.set(worldState.tab);
   }
 
   function renderWorldEmpty(text) {
@@ -5859,6 +6393,7 @@
     [
       { action: 'launch', label: '启动游戏' },
       { action: 'folder', label: '世界文件夹' },
+      { action: 'rename', label: '重命名此世界' },
       { action: 'export', label: '导出此世界' },
       { action: 'duplicate', label: '复制此世界' },
       { action: 'delete', label: '删除此世界', danger: true }
@@ -5918,6 +6453,51 @@
         console.error('[worlds] duplicate failed:', error);
         setWorldManageStatus('复制失败：' + describeLaunchError(error), 'error');
       });
+  }
+
+  /**
+   * 重命名世界（askPrompt 调用点 3/3：世界列表 / 世界管理页）。
+   * 只改 level.dat 里的 LevelName（游戏内显示名），存档文件夹名不变。
+   */
+  function renameWorld(folder, currentName) {
+    var api = worldApi();
+    var instance = worldInstance();
+    if (!api || typeof api.saveWorldInfo !== 'function' || !instance) return;
+
+    askPrompt({
+      title: '重命名世界',
+      text: '只改世界在游戏内和列表里显示的名字，文件夹名保持「' + folder + '」不变。',
+      label: '世界名称',
+      value: currentName || folder,
+      okText: '重命名',
+      maxLength: 64
+    }).then(function (name) {
+      if (!name || name === (currentName || folder)) return;
+
+      setWorldManageStatus('正在重命名…');
+      return api.saveWorldInfo({
+        instanceId: instance.id,
+        folder: folder,
+        patch: { levelName: name }
+      })
+        .then(function (info) {
+          worldState.list = worldState.list.map(function (world) {
+            if (world.folder !== folder) return world;
+            return Object.assign({}, world, { levelName: name });
+          });
+          renderWorldList();
+
+          if (worldState.folder === folder) {
+            applyWorldInfo(Object.assign({}, worldState.info || {}, info || {}, { levelName: name }));
+          }
+
+          setWorldManageStatus('已重命名为「' + name + '」', 'ok');
+        })
+        .catch(function (error) {
+          console.error('[worlds] rename failed:', error);
+          setWorldManageStatus('重命名失败：' + describeLaunchError(error), 'error');
+        });
+    });
   }
 
   function deleteWorld(folder) {
@@ -6243,12 +6823,6 @@
     });
   }
 
-  Array.prototype.forEach.call(document.querySelectorAll('[data-world-tab]'), function (button) {
-    button.addEventListener('click', function () {
-      setWorldTab(button.getAttribute('data-world-tab'));
-    });
-  });
-
   if (worldCheats) {
     worldCheats.addEventListener('click', function () {
       saveWorldPatch({ allowCommands: worldCheats.getAttribute('aria-checked') !== 'true' });
@@ -6385,6 +6959,10 @@
         var instance = worldInstance();
         if (instance) launchInstanceFlow(instance, false);
       } else if (action === 'folder') openWorldFolder(folder);
+      else if (action === 'rename') {
+        var target = findWorld(folder);
+        renameWorld(folder, target ? target.levelName : folder);
+      }
       else if (action === 'export') exportWorld(folder);
       else if (action === 'duplicate') duplicateWorld(folder);
       else if (action === 'delete') deleteWorld(folder);
@@ -6403,12 +6981,6 @@
   }, true);
 
   // ---------------- 页签 / 文件夹入口绑定 ----------------
-
-  Array.prototype.forEach.call(document.querySelectorAll('[data-detail-tab]'), function (button) {
-    button.addEventListener('click', function () {
-      setDetailTab(button.getAttribute('data-detail-tab'));
-    });
-  });
 
   var detailBackBtn = document.getElementById('detailBack');
   if (detailBackBtn) {
@@ -7182,35 +7754,26 @@
       });
   }
 
+  var downloadTabs = createTabs({
+    tabAttr: 'data-download-tab',
+    panelAttr: 'data-download-pane',
+    onChange: function (tab) {
+      if (tab === 'game' && !downloadCatalog && !downloadLoading) {
+        loadDownloadCatalog(false);
+      }
+
+      if (ADDON_PAGES && ADDON_PAGES[tab]) {
+        updateAddonTargets();
+        fillAddonVersionOptions();
+        var addonPage = ADDON_PAGES[tab];
+        if (!addonPage.loaded && !addonPage.loading) searchAddons(tab);
+      }
+    }
+  });
+
   function setDownloadTab(tab) {
     downloadTab = tab || 'game';
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-download-tab]'), function (button) {
-      var active = button.getAttribute('data-download-tab') === downloadTab;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-selected', active ? 'true' : 'false');
-    });
-
-    Array.prototype.forEach.call(document.querySelectorAll('[data-download-pane]'), function (pane) {
-      var active = pane.getAttribute('data-download-pane') === downloadTab;
-      pane.classList.toggle('is-active', active);
-      if (active) {
-        pane.removeAttribute('hidden');
-      } else {
-        pane.setAttribute('hidden', '');
-      }
-    });
-
-    if (downloadTab === 'game' && !downloadCatalog && !downloadLoading) {
-      loadDownloadCatalog(false);
-    }
-
-    if (ADDON_PAGES && ADDON_PAGES[downloadTab]) {
-      updateAddonTargets();
-      fillAddonVersionOptions();
-      var addonPage = ADDON_PAGES[downloadTab];
-      if (!addonPage.loaded && !addonPage.loading) searchAddons(downloadTab);
-    }
+    downloadTabs.set(downloadTab);
   }
 
   function openDownloadPanel() {
@@ -7406,23 +7969,35 @@
     setInstallBusy(true);
     setInstallStatus('正在启动 mcdl…');
 
-    api.createInstance({
-      version: version,
-      loader: loader,
-      loaderVersion: installLoaderVersion ? installLoaderVersion.value : '',
-      name: name,
-      assets: installAssets ? installAssets.checked : true
+    runTask({
+      title: '安装 ' + version + (loader !== 'Vanilla' ? ' · ' + loaderLabelOf(loader) : ''),
+      status: '正在启动 mcdl…',
+      cancelable: true,
+      doneText: '安装完成：' + name,
+      run: function (ctx) {
+        return api.createInstance({
+          version: version,
+          loader: loader,
+          loaderVersion: installLoaderVersion ? installLoaderVersion.value : '',
+          name: name,
+          assets: installAssets ? installAssets.checked : true,
+          taskId: ctx.taskId
+        });
+      }
     })
       .then(function (snapshot) {
         setInstallBusy(false);
-        if (snapshot) {
-          instanceLoadState = 'ready';
-          instanceLoadError = '';
-          updateInstanceUI(snapshot);
-          updateScanMeta(snapshot);
+        if (!snapshot) {
+          // 用户取消：任务框自己显示「已取消」，这里只把安装向导复位。
+          setInstallStatus('已取消安装', 'ok');
+          return;
         }
+
+        instanceLoadState = 'ready';
+        instanceLoadError = '';
+        updateInstanceUI(snapshot);
+        updateScanMeta(snapshot);
         setInstallStatus('安装完成：' + name, 'ok');
-        closeDialog();
         window.dispatchEvent(new CustomEvent('launcher:instance-created', {
           detail: { version: version, name: name }
         }));
@@ -7430,7 +8005,7 @@
         if (!installReveal || installReveal.checked) {
           closeActivePanel({ focus: false });
           openInstancesPanel();
-          if (snapshot && snapshot.selectedId) selectInstance(snapshot.selectedId);
+          if (snapshot.selectedId) selectInstance(snapshot.selectedId);
         }
       })
       .catch(function (error) {
@@ -7585,25 +8160,38 @@
     setPackBusy(true);
     setPackStatus('正在解压并安装整合包…');
 
-    api.installModpack({
-      token: packInfo.token,
-      name: packName ? packName.value.trim() : ''
+    runTask({
+      title: '安装整合包',
+      status: '正在解压并安装整合包…',
+      cancelable: true,
+      doneText: '安装完成',
+      run: function (ctx) {
+        return api.installModpack({
+          token: packInfo.token,
+          name: packName ? packName.value.trim() : '',
+          taskId: ctx.taskId
+        });
+      }
     })
       .then(function (result) {
         setPackBusy(false);
-        if (result && result.snapshot) {
+        if (!result) {
+          setPackStatus('已取消安装', 'ok');
+          return;
+        }
+        if (result.snapshot) {
           instanceLoadState = 'ready';
           instanceLoadError = '';
           updateInstanceUI(result.snapshot);
           updateScanMeta(result.snapshot);
         }
-        setPackStatus('安装完成：' + (result && result.instanceId ? result.instanceId : '整合包'), 'ok');
+        setPackStatus('安装完成：' + (result.instanceId ? result.instanceId : '整合包'), 'ok');
         window.dispatchEvent(new CustomEvent('launcher:instance-created', {
-          detail: { version: '', name: result && result.instanceId ? result.instanceId : '' }
+          detail: { version: '', name: result.instanceId || '' }
         }));
         closeActivePanel({ focus: false });
         openInstancesPanel();
-        if (result && result.snapshot && result.snapshot.selectedId) {
+        if (result.snapshot && result.snapshot.selectedId) {
           selectInstance(result.snapshot.selectedId);
         }
       })
@@ -7649,12 +8237,6 @@
       loadDownloadCatalog(true);
     });
   }
-
-  Array.prototype.forEach.call(document.querySelectorAll('[data-download-tab]'), function (button) {
-    button.addEventListener('click', function () {
-      setDownloadTab(button.getAttribute('data-download-tab'));
-    });
-  });
 
   if (downloadVersions) {
     downloadVersions.addEventListener('click', function (event) {
@@ -7755,6 +8337,7 @@
     window.launcherAPI.onDownloadProgress(function (payload) {
       if (!payload || !payload.message) return;
       if (packBusy) setPackStatus(payload.message);
+      noteActiveTask(payload.message);
     });
   }
 
@@ -7762,6 +8345,7 @@
     window.launcherAPI.onInstallProgress(function (payload) {
       if (!payload || !payload.message) return;
       if (installBusy) setInstallStatus(payload.message);
+      noteActiveTask(payload.message);
     });
   }
 
@@ -7888,6 +8472,14 @@
     });
   }
 
+  // 内容卡片图标：页面 CSP 只放行 data: / mcdl-media:，渲染层也不联网，
+  // 所以 <img> 指向主进程的图标代理；非 Modrinth CDN 的地址不代理，直接回落成首字母。
+  function addonIconSource(rawUrl) {
+    var value = String(rawUrl || '').trim();
+    if (!/^https:\/\/cdn\.modrinth\.com\//i.test(value)) return '';
+    return 'mcdl-media://addon-icon/' + encodeURIComponent(value);
+  }
+
   function renderAddonResults(kind) {
     var page = ADDON_PAGES[kind];
     if (!page || !page.grid) return;
@@ -7925,10 +8517,12 @@
 
       var icon = document.createElement('span');
       icon.className = 'addon-card__icon';
-      if (item.iconUrl) {
+      var iconSrc = addonIconSource(item.iconUrl);
+      if (iconSrc) {
         var img = document.createElement('img');
-        img.src = item.iconUrl;
+        img.src = iconSrc;
         img.alt = '';
+        img.decoding = 'async';
         img.loading = 'lazy';
         img.referrerPolicy = 'no-referrer';
         img.addEventListener('error', function () {
@@ -8365,6 +8959,7 @@
     window.launcherAPI.onAddonProgress(function (payload) {
       if (!payload || !payload.message) return;
       if (addonDialog.busy) setHint(dlgAddonStatus, payload.message);
+      noteActiveTask(payload.message);
     });
   }
 

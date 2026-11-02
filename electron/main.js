@@ -468,6 +468,7 @@ const DEFAULT_EXTRA_SETTINGS = {
   wallPip: true                // 画中画：true = 内外双图；false = 内外同一张 cover
 };
 
+
 const ISOLATION_MODES = new Set(['auto', 'isolated', 'global']);
 const ADDON_SOURCES = new Set(['modrinth']);
 
@@ -1541,12 +1542,67 @@ async function serveWallpaperMedia(request) {
   throw new Error(`未知的壁纸 host：${host}`);
 }
 
-function registerWallpaperProtocol() {
+// ---------------- 内容图标代理（mcdl-media://addon-icon/…） ----------------
+//
+// 下载中心的模组 / 资源包 / 光影卡片要显示项目自己上传的图标，但页面 CSP 不放行
+// http(s)（`img-src 'self' data: mcdl-media:`），渲染层也没有联网能力。所以图标仍由
+// 主进程抓取，再经这个已有特权协议交给 <img>：换 URL 不改 CSP，也不给页面直连外网的口子。
+//
+// 只放行 Modrinth 的图标 CDN（modrinth.fetchProjectIcon 会再校验一次），并按 URL 做
+// 内存缓存——翻页、切页签、重新搜索都不重复下载同一张图。
+
+const ADDON_ICON_HOST = 'addon-icon';
+const ADDON_ICON_CACHE_MAX = 240;
+const addonIconCache = new Map();
+
+async function loadAddonIcon(iconUrl) {
+  const cached = addonIconCache.get(iconUrl);
+  if (cached) {
+    // 命中就移到队尾：Map 的插入顺序当 LRU 用，淘汰最久没碰过的那张。
+    addonIconCache.delete(iconUrl);
+    addonIconCache.set(iconUrl, cached);
+    return cached;
+  }
+
+  const icon = await modrinth.fetchProjectIcon(iconUrl);
+  addonIconCache.set(iconUrl, icon);
+  while (addonIconCache.size > ADDON_ICON_CACHE_MAX) {
+    addonIconCache.delete(addonIconCache.keys().next().value);
+  }
+  return icon;
+}
+
+async function serveAddonIcon(request) {
+  const url = new URL(request.url);
+  const raw = url.pathname.replace(/^\/+/, '');
+
+  let iconUrl;
+  try {
+    iconUrl = decodeURIComponent(raw);
+  } catch {
+    throw new Error('图标地址编码非法');
+  }
+
+  const icon = await loadAddonIcon(iconUrl);
+  return new Response(new Uint8Array(icon.buffer), {
+    headers: {
+      'Content-Type': icon.contentType,
+      'Content-Length': String(icon.buffer.length),
+      // Chromium 对自定义协议的磁盘缓存不保证，真正的复用靠上面的内存表。
+      'Cache-Control': 'public, max-age=86400'
+    }
+  });
+}
+
+function registerMediaProtocol() {
   protocol.handle('mcdl-media', async (request) => {
     try {
+      if (new URL(request.url).hostname.toLowerCase() === ADDON_ICON_HOST) {
+        return await serveAddonIcon(request);
+      }
       return await serveWallpaperMedia(request);
     } catch (error) {
-      console.warn('[wallpaper] 拒绝媒体请求:', request.url, error.message);
+      console.warn('[media] 拒绝媒体请求:', request.url, error.message);
       return new Response('Forbidden', {
         status: 403,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
@@ -1578,7 +1634,114 @@ async function removeWallpaperEntry(payload, settings) {
   await fs.rm(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)), { force: true });
 }
 
+/**
+ * 长任务取消：渲染层生成 taskId，随原有 IPC 一起传下来；主进程把 AbortController
+ * 登记在表里，`task:cancel` 一到就 abort，mcdl 子进程会被 kill、fetch 会被中断。
+ */
+const activeTasks = new Map();
+
+const CANCEL_MESSAGE = '已取消';
+const MAX_TASK_ID_LENGTH = 80;
+
+function beginTask(taskId) {
+  const id = String(taskId || '').trim();
+  if (!id || id.length > MAX_TASK_ID_LENGTH) {
+    return { id: '', signal: null, finish: () => {} };
+  }
+
+  // 同一个 id 重复登记时先把旧任务停掉，避免留下"永远挂着的孤儿进程"。
+  const existing = activeTasks.get(id);
+  if (existing) existing.abort();
+
+  const controller = new AbortController();
+  activeTasks.set(id, controller);
+
+  return {
+    id,
+    signal: controller.signal,
+    finish: () => {
+      if (activeTasks.get(id) === controller) activeTasks.delete(id);
+    }
+  };
+}
+
+function cancelAllTasks() {
+  for (const controller of activeTasks.values()) {
+    try {
+      controller.abort();
+    } catch {
+      // 已经结束的任务不用管
+    }
+  }
+  activeTasks.clear();
+}
+
+function isCancelledError(error) {
+  return Boolean(error && (error.cancelled || error.name === 'AbortError' || error.code === 'TASK_CANCELLED'));
+}
+
+/** 把取消错误改写成用户能读懂、渲染层能识别的一句话。 */
+function cancellationError() {
+  const error = new Error(CANCEL_MESSAGE);
+  error.cancelled = true;
+  error.code = 'TASK_CANCELLED';
+  return error;
+}
+
+/**
+ * 文本框右键菜单：只放编辑命令，不拼任何页面数据。
+ * 用 role 而不是 webContents.undo()，让 Chromium 自己处理编辑状态与输入法。
+ */
+function popTextContextMenu(win, params = {}) {
+  const editable = Boolean(params.editable);
+  const hasSelection = Boolean(params.hasSelection);
+  const secret = Boolean(params.secret);   // 密码框：不提供剪切 / 复制 / 粘贴
+  const x = Math.max(0, Math.round(Number(params.x) || 0));
+  const y = Math.max(0, Math.round(Number(params.y) || 0));
+
+  const menu = Menu.buildFromTemplate([
+    { role: 'undo', label: '撤销', enabled: editable },
+    { role: 'redo', label: '重做', enabled: editable },
+    { type: 'separator' },
+    { role: 'cut', label: '剪切', enabled: editable && hasSelection && !secret },
+    { role: 'copy', label: '复制', enabled: hasSelection && !secret },
+    { role: 'paste', label: '粘贴', enabled: editable && !secret },
+    { role: 'delete', label: '删除', enabled: editable && hasSelection },
+    { type: 'separator' },
+    { role: 'selectAll', label: '全选', enabled: true }
+  ]);
+
+  menu.popup({
+    window: win,
+    x,
+    y,
+    callback: () => {
+      // 菜单是一次性的，关掉后立刻释放，别等 GC。
+      try {
+        menu.destroy();
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  return true;
+}
+
 function registerIpcHandlers() {
+  ipcMain.handle('ui:context-menu', (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    return popTextContextMenu(win, payload || {});
+  });
+
+  ipcMain.handle('task:cancel', (event, taskId) => {
+    assertAppWindow(event);
+    const controller = activeTasks.get(String(taskId || '').trim());
+    if (!controller) return false;
+    controller.abort();
+    return true;
+  });
+
   ipcMain.handle('window:minimize', (event) => {
     const win = assertAppWindow(event);
     win.minimize();
@@ -1704,6 +1867,7 @@ function registerIpcHandlers() {
     const cachedDirs = await readScanCache();
     const bufferState = { value: '' };
     const loaderLabel = vanilla ? '原版' : loader + (loaderVersion ? ' ' + loaderVersion : '');
+    const task = beginTask(payload.taskId);
 
     if (!win.isDestroyed()) {
       win.webContents.send('instances:install-progress', {
@@ -1719,6 +1883,7 @@ function registerIpcHandlers() {
           gameDir,
           source: settings.downloadSource,
           assets: payload.assets !== false,
+          signal: task.signal,
           onData: sendInstallOutput(win, bufferState)
         });
 
@@ -1750,6 +1915,7 @@ function registerIpcHandlers() {
         name: requestedName,
         gameDir,
         source: settings.downloadSource,
+        signal: task.signal,
         onData: sendInstallOutput(win, bufferState)
       });
 
@@ -1775,6 +1941,12 @@ function registerIpcHandlers() {
 
       return snapshot;
     } catch (error) {
+      if (isCancelledError(error)) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('instances:install-progress', { message: CANCEL_MESSAGE });
+        }
+        throw cancellationError();
+      }
       console.error('[instances] mcdl install failed:', error);
       if (error && error.stdout) {
         console.error('[instances] mcdl stdout tail:\n' + String(error.stdout).split(/\r?\n/).slice(-30).join('\n'));
@@ -1788,6 +1960,8 @@ function registerIpcHandlers() {
         });
       }
       throw error;
+    } finally {
+      task.finish();
     }
   });
 
@@ -1888,6 +2062,7 @@ function registerIpcHandlers() {
 
     const gameDir = await mcdl.detectGameDir();
     const bufferState = { value: '' };
+    const task = beginTask(payload.taskId);
     const send = (message) => {
       if (!win.isDestroyed()) win.webContents.send('downloads:progress', { message });
     };
@@ -1899,6 +2074,7 @@ function registerIpcHandlers() {
         file: record.file,
         name: requestedName,
         gameDir,
+        signal: task.signal,
         onData: sendDownloadOutput(win, bufferState)
       });
 
@@ -1928,12 +2104,18 @@ function registerIpcHandlers() {
       send(`安装完成：${result.instanceId}`);
       return { ...result, snapshot };
     } catch (error) {
+      if (isCancelledError(error)) {
+        send(CANCEL_MESSAGE);
+        throw cancellationError();
+      }
       console.error('[downloads] modpack install failed:', error);
       if (error && error.stdout) {
         console.error('[downloads] mcdl stdout tail:\n' + String(error.stdout).split(/\r?\n/).slice(-30).join('\n'));
       }
       send(`安装失败：${error.message}`);
       throw error;
+    } finally {
+      task.finish();
     }
   });
 
@@ -2158,6 +2340,7 @@ function registerIpcHandlers() {
         win.webContents.send('downloads:addon-progress', progress);
       }
     };
+    const task = beginTask(payload.taskId);
 
     try {
       const version = await modrinth.getVersion(versionId);
@@ -2168,6 +2351,7 @@ function registerIpcHandlers() {
         installDependencies: Boolean(payload.installDependencies) && kind === 'mods',
         gameVersion: instance.versionName || '',
         loader: loaderKeyForInstance(instance),
+        signal: task.signal,
         onProgress: send
       });
 
@@ -2179,11 +2363,17 @@ function registerIpcHandlers() {
         instanceName: instance.displayName || instance.versionName || instance.id
       };
     } catch (error) {
+      if (isCancelledError(error)) {
+        send({ message: CANCEL_MESSAGE });
+        throw cancellationError();
+      }
       console.error('[addons] install failed:', error);
       if (!win.isDestroyed()) {
         win.webContents.send('downloads:addon-progress', { message: `安装失败：${error.message}` });
       }
       throw error;
+    } finally {
+      task.finish();
     }
   });
 
@@ -2201,16 +2391,22 @@ function registerIpcHandlers() {
     if (picked.canceled || !picked.filePaths || !picked.filePaths.length) return null;
 
     const version = await modrinth.getVersion(versionId);
-    const result = await modrinth.downloadVersion({
-      version,
-      targetDir: picked.filePaths[0],
-      installDependencies: false,
-      onProgress: (progress) => {
-        if (!win.isDestroyed()) win.webContents.send('downloads:addon-progress', progress);
-      }
-    });
+    const task = beginTask(payload.taskId);
+    try {
+      const result = await modrinth.downloadVersion({
+        version,
+        targetDir: picked.filePaths[0],
+        installDependencies: false,
+        signal: task.signal,
+        onProgress: (progress) => {
+          if (!win.isDestroyed()) win.webContents.send('downloads:addon-progress', progress);
+        }
+      });
 
-    return { folder: picked.filePaths[0], ...result };
+      return { folder: picked.filePaths[0], ...result };
+    } finally {
+      task.finish();
+    }
   });
 
   // ---------------- 实例：重命名 / 复制 / 删除 / 打开目录 / 启动脚本 ----------------
@@ -3161,6 +3357,8 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    // 窗口没了就没有人接收进度/取消：把还挂着的 mcdl 子进程与下载一起停掉。
+    cancelAllTasks();
     mainWindow = null;
   });
 
@@ -3258,7 +3456,7 @@ if (!gotSingleInstanceLock) {
     ensureWallpaperDirs().catch((error) => {
       console.warn('[wallpaper] 无法创建壁纸目录:', error.message);
     });
-    registerWallpaperProtocol();
+    registerMediaProtocol();
 
     createWindow();
 

@@ -313,6 +313,21 @@ const launcherAPI = {
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
 
   /**
+   * 文本框原生右键菜单（撤销 / 重做 / 剪切 / 复制 / 粘贴 / 删除 / 全选）。
+   *
+   * 菜单由主进程用 Menu.popup 弹出，编辑动作走 Chromium 原生编辑命令，
+   * 所以中文输入法的撤销栈不会被 execCommand 打断。
+   * 渲染层只负责报告焦点控件的状态（是否可编辑 / 有选中 / 是否密码框）。
+   */
+  showTextContextMenu: (payload) => ipcRenderer.invoke('ui:context-menu', payload || {}),
+
+  /**
+   * 取消一个长任务（安装 / 下载）。返回 false 表示任务已经结束。
+   * taskId 由渲染层的 runTask() 生成，并随原有 IPC 一起传下来。
+   */
+  cancelTask: (taskId) => ipcRenderer.invoke('task:cancel', String(taskId || '')),
+
+  /**
    * Optional: keep a custom maximize icon in sync.
    */
   onMaximizedChange: (callback) => {

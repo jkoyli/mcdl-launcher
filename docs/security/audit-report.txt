@@ -1,5 +1,5 @@
 ## 1. IPC handler 的调用方校验
-  共 83 个 handler
+  共 89 个 handler
   [通过] 所有 handler 都调用了 assertAppWindow
 
 ## 2. Electron 加固开关
@@ -34,7 +34,7 @@
   [通过] assertAppWindow 校验 senderFrame + 来源
 
 ## 5. preload 暴露面
-  window.launcherAPI 方法数: 89
+  window.launcherAPI 方法数: 95
   [通过] 没有暴露 ipcRenderer
   [提示] preload 收到回调时没有过滤 event.senderFrame
 

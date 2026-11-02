@@ -175,7 +175,7 @@ async function readWorld(savesRoot, folder) {
 /**
  * 写 level.dat：先复制一份 level.dat_old，再覆盖。
  * @param {{allowCommands?:boolean, generateFeatures?:boolean, difficulty?:number,
- *          difficultyLocked?:boolean, gameType?:number}} patch
+ *          difficultyLocked?:boolean, gameType?:number, levelName?:string}} patch
  */
 async function saveWorld(savesRoot, folder, patch = {}) {
   const dir = worldDir(savesRoot, folder);
@@ -202,6 +202,14 @@ async function saveWorld(savesRoot, folder, patch = {}) {
     const value = Number(patch.gameType);
     if (!Number.isInteger(value) || value < 0 || value > 3) throw worldError('游戏模式只能是 0–3');
     nbt.setInt(root, value, 'Data', 'GameType');
+  }
+
+  // 世界显示名称（≠ 文件夹名）：游戏内与启动器列表都读这个字段。
+  if (patch.levelName !== undefined) {
+    const name = String(patch.levelName || '').trim();
+    if (!name) throw worldError('世界名称不能为空');
+    if (name.length > 64) throw worldError('世界名称不能超过 64 个字符');
+    nbt.setString(root, name, 'Data', 'LevelName');
   }
 
   await fs.copyFile(levelFile, path.join(dir, 'level.dat_old')).catch(() => {});

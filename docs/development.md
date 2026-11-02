@@ -280,9 +280,37 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `worlds:backups` / `backup-create` / `backup-restore` / `backup-delete` | renderer → main | 世界备份的列表 / 创建 / 恢复 / 删除 |
 | `worlds:open-backup-folder` | renderer → main | 打开该存档目录的备份文件夹 |
 | `worlds:datapacks` / `import-datapack` / `delete-datapack` | renderer → main | 数据包列表 / 导入 / 删除 |
+| `ui:context-menu` | renderer → main | 文本框原生右键菜单（撤销/重做/剪切/复制/粘贴/删除/全选），编辑动作走 Chromium role |
+| `task:cancel` | renderer → main | 取消长任务：abort 对应 `taskId`，mcdl 子进程被 kill、下载 fetch 中断 |
 | `shell:open-logs` | renderer → main | 打开应用日志目录 |
 
 主进程用 `assertAppWindow()` 校验调用方是否为当前应用窗口，其他来源的调用一律拒绝。
+
+长任务（安装原版 / 加载器 / 整合包、Modrinth 下载）的 `payload.taskId` 由渲染层的
+`runTask()` 生成；主进程把它登记进 `activeTasks`（`AbortController`），`task:cancel`
+一到就 abort。窗口关闭时 `cancelAllTasks()` 会把这些进程一起停掉。
+
+## 渲染层共享基座
+
+`renderer.js` 里有几块通用组件，新页面直接复用，不要在页面里再抄一份：
+
+| 基座 | 位置 | 负责 | 已迁移 |
+| --- | --- | --- | --- |
+| `createTabs({ tabAttr, panelAttr, onChange })` | 共享组件基座 | `aria-selected` / `is-active` / roving tabindex / ←→ Home End / 焦点 / 面板 `hidden` | 设置 6、实例详情 6、世界 3、下载 6 页签 |
+| `createList({ container, itemKey, renderRow, emptyState, countEl, onSelect })` | 共享组件基座 | 列表行渲染 / 选中（`is-selected`）/ 空态 / 计数 | 游戏文件夹列表 |
+| `createToolbar` | — | 搜索 + 筛选 + 计数 | 暂未抽出（下载 / 世界 / 实例三处工具栏仍是各自实现，等新页面再统一） |
+
+通用对话框（`renderer.js` 弹窗管理一节）：
+
+| API | 用法 |
+| --- | --- |
+| `askConfirm(text, onConfirm, okText)` | 确认框（原有） |
+| `askPrompt({ title, text, label, value, placeholder, okText, maxLength, required })` | 输入框，`Promise<string\|null>`；留空会在对话框内提示，取消得到 `null` |
+| `runTask({ title, status, cancelable, run, doneText })` | 长任务进度框；`run(ctx)` 里把 `ctx.taskId` 传给 IPC，取消会真正中断 |
+
+`askPrompt` 目前用于：实例重命名（实例右键菜单 / 实例操作对话框）、复制实例命名、
+世界重命名（世界右键菜单）。`runTask` 用于：安装实例（原版 / 加载器）、安装整合包。
+
 
 ## 界面结构
 
@@ -414,7 +442,8 @@ zip 预览不依赖第三方库：`mcdl-service.js` 的 `readZipEntries()` 只�
 | 控件 | control key | 行为 |
 | --- | --- | --- |
 | 搜索 + 版本 / 加载器 / 排序 | `search` | `downloads:addon-search` → `GET /search`，facets 为 `project_type` + `versions` + `categories`；打开页签时用空关键词先拉热门 |
-| 结果卡片 | 运行时 | 图标、标题、作者、下载量、两行简介；点击打开「内容下载页」 |
+| 结果卡片 · 图标 | 运行时 | 项目自己的图标：`<img src="mcdl-media://addon-icon/<encodeURIComponent(cdn 地址)>">`，由主进程抓取并缓存，失败才回落成首字母 |
+| 结果卡片 · 正文 | 运行时 | 标题、作者、下载量、两行简介；点击打开「内容下载页」 |
 | 内容下载页 · 版本行 | 运行时 | `downloads:addon-versions` 按当前实例的 MC 版本 / 加载器过滤；没有匹配时回退成全部版本并提示 |
 | 内容下载页 · 必需前置 | — | 勾选时递归下载 `dependency_type=required` 的文件（深度 3、最多 8 个） |
 | 内容下载页 · 确定 | `button.ok` | `downloads:install-addon` → 下载到实例的内容目录（`mods` / `resourcepacks` / `shaderpacks`，按版本隔离规则解析） |
@@ -424,6 +453,13 @@ zip 预览不依赖第三方库：`mcdl-service.js` 的 `readZipEntries()` 只�
 目标实例取右侧控制台当前选中的实例；没选实例时「确定」禁用并提示。文件下载走主进程的
 `fetch` + 流式写盘，先写 `.part`、校验 SHA1 后改名，重名自动加 `(2)`。世界页签没有在线源：
 Modrinth 没有世界分类，CurseForge 需要 API Key。
+
+**内容图标**：搜索结果里的图标是 Modrinth 项目自己上传的图（`icon_url`）。渲染层 CSP 只有
+`img-src 'self' data: mcdl-media:`，页面也不联网，所以图标不直连 CDN，而是由主进程的
+`modrinth.fetchProjectIcon()` 抓取（只放行 `cdn.modrinth.com`、MIME 白名单、≤2 MB、重定向后
+再校验 host），再经 `mcdl-media://addon-icon/<encodeURIComponent(icon_url)>` 交给 `<img>`。
+主进程按 URL 做 240 条 LRU 内存缓存，翻页 / 切页签 / 重新搜索不重复下载；抓取失败或不是
+CDN 地址时，卡片回落成项目名首字母。
 
 ### 设置页（对照 [L2] 设置：6 个页签）
 

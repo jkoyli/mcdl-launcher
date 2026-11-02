@@ -2,6 +2,9 @@
 
 > 共 284 项控件。结构：L1 骨架 → L2 侧边栏直达页 → L3 页签/详情 → L4 三级详情 → L5 弹窗/向导。
 > 每行格式：`文案 ｜ 类型 ｜ i18n key ｜ 动作 ｜ 文件:行`。`（运行时赋值）` 表示文案在构建后动态设置。
+>
+> **2026-11-02 核对**：本文件是 HMCL 上游基线，**不是实现进度**。逐节点 ✅/⚠️/⛔ 与实现位置见 [ui-status.md](ui-status.md)。
+> 已知偏差：加载器版本选择实现在「新建实例」页（不在下载页）；账户皮肤入口 = `CreateAccountPane.java:606`；实例详情实现 6 页签（第 7 个为运行时条件页签）。
 
 - **[L1] MCDL Launcher 主窗口** （一级：窗口骨架） — 直接 0 项
   - **[L1] 标题栏** （最小化 / 最大化 / 关闭 / 帮助） — 直接 6 项
@@ -48,7 +51,7 @@
     - **[L2] 游戏（当前实例）** （主页；无实例时跳实例列表） — 直接 2 项
       - （运行时赋值） ｜ JFXButton ｜  ｜  ｜ main/MainPage.java:140
       - （运行时赋值） ｜ JFXButton ｜  ｜ 动作 e -> { ｜ main/MainPage.java:177
-      - **[L3] 实例详情** （6 页签 + 4 侧栏项） — 直接 38 项
+      - **[L3] 实例详情** （6 页签 + 1 运行时页签 + 4 侧栏项） — 直接 38 项
         - 游戏设置 ｜ TabItem ｜ settings.game ｜ 页签容器 ｜ instances/GameInstancePage.java:83
         - 自动安装 ｜ TabItem ｜ settings.tabs.installers ｜ 页签容器 ｜ instances/GameInstancePage.java:84
         - 模组管理 ｜ TabItem ｜ mods.manage ｜ 页签容器 ｜ instances/GameInstancePage.java:85

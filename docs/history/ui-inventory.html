@@ -18,6 +18,7 @@ tr:hover td{background:#1c1c2a;}
 </style></head><body>
 <h1>MCDL Launcher 按钮/控件全量清单</h1>
 <div class="meta">共 284 项 · 数据源 ui/**/*.java · 文案由 I18N_zh_Hans 解析</div>
+<div class="meta">2026-11-02 核对：实现进度与偏离见 <a href="ui-status.md" style="color:#9ad7ff">ui-status.md</a>；账户两处「（运行时赋值）」已回填真实语义（皮肤选择入口 / 登录说明面板）。</div>
 <div class="bar"><input id="q" placeholder="搜索文案 / key / 文件 / 页面" style="width:320px">
 <select id="lv"><option value="">全部层级</option><option value="L1">L1 骨架</option><option value="L2">L2 直达页</option><option value="L3">L3 页签</option><option value="L4">L4 详情页</option><option value="L5">L5 弹窗</option><option value="共享">共享组件</option></select>
 <select id="pg"><option value="">全部页面</option>
@@ -1470,15 +1471,15 @@ tr:hover td{background:#1c1c2a;}
 <td class="loc">account/CreateAccountPane.java<br>574</td>
 <td>JFXButton</td>
 <td class="k">button.cancel</td>
-<td class="p">取消</td>
+<td class="p">取消（皮肤子流程）</td>
 <td class="act">动作 e -&gt; latch.countDown());</td></tr>
 <tr><td><span class="lv l5">L5</span></td>
 <td class="p">添加离线账户</td>
 <td class="loc">account/CreateAccountPane.java<br>606</td>
 <td>可点击面板</td>
 <td class="k"></td>
-<td class="dyn">（运行时赋值）</td>
-<td class="act"></td></tr>
+<td class="p">皮肤选择入口（离线页签内嵌，→ #offlineSkinPick）</td>
+<td class="act">点击进入皮肤设置子流程</td></tr>
 <tr><td><span class="lv l5">L5</span></td>
 <td class="p">添加认证服务器</td>
 <td class="loc">account/AddAuthlibInjectorServerPane.java<br>61</td>
@@ -1533,8 +1534,8 @@ tr:hover td{background:#1c1c2a;}
 <td class="loc">account/MicrosoftAccountLoginPane.java<br>216</td>
 <td>可点击面板</td>
 <td class="k"></td>
-<td class="dyn">（运行时赋值）</td>
-<td class="act"></td></tr>
+<td class="p">登录说明面板（帮助/步骤提示，→ #msaHelpPanel）</td>
+<td class="act">点击展开说明</td></tr>
 <tr><td><span class="lv l5">L5</span></td>
 <td class="p">游戏崩溃窗口</td>
 <td class="loc">GameCrashWindow.java<br>419</td>

@@ -9,6 +9,8 @@
   样式是内联 <style>，皮肤和实例图标是 data URL，所以 style-src / img-src 要放行它们。
   自上传壁纸走主进程注册的 mcdl-media: 特权协议（本地 mp4 既不能直接 file://，
   也不能 data: 转 base64），所以 img-src / media-src 额外放行这个 scheme。
+  下载中心的内容图标同理走 mcdl-media://addon-icon/…（主进程抓 Modrinth CDN），
+  img-src 因此仍然不需要放行任何 http(s) 源。
   即使将来某处退化成 innerHTML 拼字符串，注入的 <script> / onerror 也不会执行。
 -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: mcdl-media:; font-src 'self' data:; media-src 'self' data: mcdl-media:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
@@ -5098,6 +5100,38 @@
     color: rgba(176, 232, 203, .78);
   }
 
+  /* 通用任务对话框（runTask）：确定进度 + 可取消 */
+  .task-progress {
+    position: relative;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(159, 208, 255, .12);
+    overflow: hidden;
+  }
+
+  .task-progress__bar {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, rgba(112, 163, 255, .8), rgba(159, 208, 255, .95));
+    transition: width 220ms ease;
+  }
+
+  .task-progress.is-indeterminate .task-progress__bar {
+    width: 36%;
+    animation: task-indeterminate 1.25s ease-in-out infinite;
+  }
+
+  @keyframes task-indeterminate {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(320%); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .task-progress.is-indeterminate .task-progress__bar { animation: none; width: 60%; }
+  }
+
   .dialog-tabs {
     display: flex;
     gap: 4px;
@@ -8081,13 +8115,8 @@
       <div class="dialog-body">
         <p class="dialog-text" id="instanceDialogMeta">—</p>
 
-        <label class="dialog-field" for="instanceNameInput">
-          <span class="create-label">Display name / 实例名称</span>
-          <input class="create-control" id="instanceNameInput" type="text" maxlength="48" autocomplete="off">
-        </label>
-
         <div class="dialog-actions">
-          <button class="dialog-btn" id="instanceRenameApply" type="button">重命名</button>
+          <button class="dialog-btn" id="instanceRenameApply" type="button">重命名…</button>
           <button class="dialog-btn" id="instanceDuplicate" type="button">复制游戏实例</button>
           <button class="dialog-btn" id="instanceExport" type="button" disabled title="导出整合包待接入">导出整合包</button>
         </div>
@@ -8239,10 +8268,34 @@
       </div>
       <div class="dialog-body">
         <p class="dialog-text" id="confirmText">确定要继续吗？</p>
+        <label class="dialog-field" id="confirmInputField" for="confirmInput" hidden>
+          <span class="dialog-label" id="confirmInputLabel">名称</span>
+          <input class="create-control" id="confirmInput" type="text" maxlength="120" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="dialog-status" id="confirmStatus" role="status" aria-live="polite"></p>
       </div>
       <div class="dialog-foot">
         <button class="dialog-btn" type="button" data-dialog-close>取消</button>
         <button class="dialog-btn dialog-btn--primary" id="confirmOk" type="button">确定</button>
+      </div>
+    </section>
+
+    <!-- 通用任务对话框（runTask）：长任务进度 + 真正可取消 -->
+    <section class="dialog" id="dlgTask" role="dialog" aria-modal="true" aria-labelledby="dlgTaskTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgTaskTitle">任务</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="task-progress is-indeterminate" id="taskProgress" role="progressbar"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="进行中">
+          <span class="task-progress__bar" id="taskProgressBar"></span>
+        </div>
+        <p class="dialog-status" id="taskStatus" role="status" aria-live="polite">准备中…</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="dialog-btn" type="button" id="taskCancel" hidden>取消任务</button>
+        <button class="dialog-btn dialog-btn--primary" type="button" id="taskClose" hidden>关闭</button>
       </div>
     </section>
   </div>

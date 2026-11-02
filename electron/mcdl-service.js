@@ -79,6 +79,22 @@ function runMcdl(args, options = {}) {
       env
     });
 
+    // 取消：kill 掉 mcdl 的 JVM。已经写下的文件保留，下次安装会接着用。
+    let aborted = false;
+    const onAbort = () => {
+      if (finished) return;
+      aborted = true;
+      try {
+        child.kill();
+      } catch {
+        // 进程可能已经退出
+      }
+    };
+    if (options.signal) {
+      if (options.signal.aborted) onAbort();
+      else options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     const emit = (chunk, stream) => {
       const text = String(chunk);
       if (stream === 'stdout') stdout += text;
@@ -96,12 +112,25 @@ function runMcdl(args, options = {}) {
     child.on('error', (error) => {
       if (finished) return;
       finished = true;
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
       reject(new Error(`无法启动 Java/mcdl: ${error.message}`));
     });
 
     child.on('close', (code) => {
       if (finished) return;
       finished = true;
+      if (options.signal) options.signal.removeEventListener('abort', onAbort);
+
+      if (aborted) {
+        const cancelled = new Error('已取消');
+        cancelled.cancelled = true;
+        cancelled.code = 'TASK_CANCELLED';
+        cancelled.stdout = stdout;
+        cancelled.stderr = stderr;
+        reject(cancelled);
+        return;
+      }
+
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
@@ -481,7 +510,7 @@ async function listVersions({ source = 'auto' } = {}) {
   return versions;
 }
 
-async function installVersion({ version, gameDir, source = 'auto', jobs = 16, assets = true, onData }) {
+async function installVersion({ version, gameDir, source = 'auto', jobs = 16, assets = true, onData, signal }) {
   // 快照/远古版本的 ID 可能包含空格和括号（如 1.14.2 Pre-Release 4）。
   // spawn 使用参数数组，不经过 shell，因此允许这些字符，只排除换行和路径控制字符。
   if (!/^[A-Za-z0-9][A-Za-z0-9 ._()+\-]{0,127}$/.test(String(version || ''))) {
@@ -500,6 +529,7 @@ async function installVersion({ version, gameDir, source = 'auto', jobs = 16, as
   if (assets === false) args.push('--no-assets');
 
   await runMcdl(args, {
+    signal,
     onData: (text, stream) => {
       if (typeof onData === 'function') onData(text, stream);
     }
@@ -614,7 +644,7 @@ async function inspectModpack(file) {
  * 安装整合包：mcdl --install-pack 解压到 <gameDir>/versions/<实例名>。
  * @returns {{instanceId:string,instanceDir:string,gameDir:string}}
  */
-async function installModpack({ file, name = '', gameDir, jobs = 16, cfKey = '', onData }) {
+async function installModpack({ file, name = '', gameDir, jobs = 16, cfKey = '', onData, signal }) {
   const pack = path.resolve(String(file || ''));
   const stat = await fs.stat(pack).catch(() => null);
   if (!stat || !stat.isFile()) throw new Error('找不到整合包文件');
@@ -633,6 +663,7 @@ async function installModpack({ file, name = '', gameDir, jobs = 16, cfKey = '',
   if (cfKey) args.push('--cf-key', String(cfKey));
 
   const result = await runMcdl(args, {
+    signal,
     onData: (text, stream) => {
       if (typeof onData === 'function') onData(text, stream);
     }
@@ -724,7 +755,8 @@ async function installLoader({
   gameDir,
   jobs = 16,
   source = 'auto',
-  onData
+  onData,
+  signal
 } = {}) {
   const key = loaderKeyOf(loader);
   if (!key) throw new Error(`不支持的加载器：${loader}`);
@@ -747,6 +779,7 @@ async function installLoader({
   if (name) args.push('--name', String(name));
 
   const result = await runMcdl(args, {
+    signal,
     onData: (text, stream) => {
       if (typeof onData === 'function') onData(text, stream);
     }

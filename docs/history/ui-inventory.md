@@ -2,6 +2,8 @@
 
 > 生成方式：静态扫描 `HMCL/src/main/java/org/jackhuang/hmcl/ui/**/*.java`。
 > 「中文文案」由 `i18n` key 在 `I18N_zh_Hans.properties` 中解析；`（运行时赋值）` 表示文案/状态在构建后动态设置；`（见对应导航页签）` 表示页签标签由其导航项给出。
+>
+> **2026-11-02 核对**：本清单是 HMCL 上游基线（284 项）。**实现进度与偏离以 [ui-status.md](ui-status.md) 为准**；其中账户两处「（运行时赋值）可点击面板」已回填为它们的真实语义（皮肤选择入口 / 登录说明面板）。
 
 ## 概览
 
@@ -267,8 +269,8 @@
 | 46 | 添加离线账户 | account/CreateAccountPane.java:124 | JFXButton | button.cancel | 取消 | 动作 e -> onCancel()); |
 | 47 | 添加离线账户 | account/CreateAccountPane.java:136 | TabItem |  | （见对应导航页签） | 页签容器 |
 | 48 | 添加离线账户 | account/CreateAccountPane.java:142 | TabItem |  | （见对应导航页签） | 页签容器 |
-| 49 | 添加离线账户 | account/CreateAccountPane.java:574 | JFXButton | button.cancel | 取消 | 动作 e -> latch.countDown()); |
-| 50 | 添加离线账户 | account/CreateAccountPane.java:606 | 可点击面板 |  | （运行时赋值） |  |
+| 49 | 添加离线账户 | account/CreateAccountPane.java:574 | JFXButton | button.cancel | 取消（皮肤子流程） | 动作 e -> latch.countDown()); |
+| 50 | 添加离线账户 | account/CreateAccountPane.java:606 | 可点击面板 |  | 皮肤选择入口（离线页签内嵌，→ #offlineSkinPick） | 点击进入皮肤设置子流程 |
 | 38 | 添加认证服务器 | account/AddAuthlibInjectorServerPane.java:61 | JFXButton | button.cancel | 取消 | 动作 e -> onAddCancel()); |
 | 39 | 添加认证服务器 | account/AddAuthlibInjectorServerPane.java:67 | JFXButton | wizard.next | 下一步 > | 动作 e -> onAddNext()); |
 | 40 | 添加认证服务器 | account/AddAuthlibInjectorServerPane.java:138 | JFXButton | wizard.prev | < 上一步 | 动作 e -> onAddPrev()); |
@@ -276,7 +278,7 @@
 | 42 | 添加认证服务器 | account/AddAuthlibInjectorServerPane.java:146 | JFXButton | wizard.finish | 完成 | 动作 e -> onAddFinish()); |
 | 51 | 微软登录 | account/MicrosoftAccountLoginPane.java:88 | JFXButton | account.login | 登录 |  |
 | 52 | 微软登录 | account/MicrosoftAccountLoginPane.java:95 | JFXButton | button.cancel | 取消 | 动作 e -> onCancel()); |
-| 53 | 微软登录 | account/MicrosoftAccountLoginPane.java:216 | 可点击面板 |  | （运行时赋值） |  |
+| 53 | 微软登录 | account/MicrosoftAccountLoginPane.java:216 | 可点击面板 |  | 登录说明面板（帮助/步骤提示，→ #msaHelpPanel） | 点击展开说明 |
 | 18 | 游戏崩溃窗口 | GameCrashWindow.java:419 | 强调按钮 | logwindow.export_game_crash_logs | 导出游戏崩溃信息 |  |
 | 19 | 游戏崩溃窗口 | GameCrashWindow.java:446 | 强调按钮 | logwindow.title | 日志 |  |
 | 20 | 游戏崩溃窗口 | GameCrashWindow.java:449 | 强调按钮 | help | 帮助 |  |

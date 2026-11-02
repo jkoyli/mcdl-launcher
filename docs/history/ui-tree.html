@@ -1,8 +1,10 @@
-<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>MCDL Launcher UI 结构</title><style>
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>MCDL Launcher UI 结构（含实现状态）</title><style>
 body{background:#15151f;color:#e7e7f2;font:14px/1.6 "Microsoft YaHei","Segoe UI",sans-serif;margin:36px;}
 h1{font-size:20px;margin:0 0 4px;color:#9ad7ff;}
-.meta{color:#9aa0b4;margin-bottom:18px;font-size:13px;}
-table{border-collapse:collapse;margin:8px 0 26px;font-size:13px;}
+h2{font-size:15px;margin:22px 0 6px;color:#cfd3e4;}
+.meta{color:#9aa0b4;margin-bottom:14px;font-size:13px;}
+.note{color:#8d93a8;font-size:12px;margin:6px 0 20px;}
+table{border-collapse:collapse;margin:8px 0 20px;font-size:13px;}
 th,td{border:1px solid #34344a;padding:6px 12px;text-align:right;}
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left;}
 th{background:#23233a;color:#cfd3e4;}
@@ -12,8 +14,27 @@ li::before{content:"├─";position:absolute;left:-20px;color:#4b4b63;}
 li:last-child::before{content:"└─";}
 .l1{color:#9ad7ff;font-weight:600;} .l2{color:#a5e8b8;} .l3{color:#ffe08a;} .l4{color:#e0b0ff;} .l5{color:#ff9fb0;}
 .cnt{color:#8d93a8;font-size:12px;margin-left:8px;}
-</style></head><body><h1>MCDL Launcher UI 结构统计</h1>
-<div class="meta">54 个页面/弹窗 · 218 个可点击控件（101 按钮 + 62 列表项/开关 + 20 页签 + 23 导航页签 + 12 导航项）</div>
+.ok{color:#a5e8b8;} .warn{color:#ffe08a;} .no{color:#ff9fb0;} .dev{color:#8ea2c8;font-size:12px;}
+</style></head><body>
+<h1>MCDL Launcher UI 结构统计（基线 v1 + 实现状态）</h1>
+<div class="meta">基线：静态扫描 <code>HMCL/src/main/java/org/jackhuang/hmcl/ui/**/*.java</code> · 60 节点 / 284 项控件 · 54 个页面/弹窗 · 218 个可点击控件</div>
+<div class="meta">核对日 2026-11-02：✅ 完成 ｜ ⚠️ 部分 ｜ ⛔ 未做 —— 逐节点明细见 <a href="ui-status.md" style="color:#9ad7ff">ui-status.md</a></div>
+
+<h2>实现进度（2026-11-02）</h2>
+<table><tr><th>分组</th><th>项数</th><th>已做</th><th>状态</th></tr>
+<tr><td>L1 骨架</td><td>11</td><td>11</td><td class="ok">✅</td></tr>
+<tr><td>账户（含 5 弹窗）</td><td>22</td><td>22</td><td class="ok">✅</td></tr>
+<tr><td>游戏 / 实例详情</td><td>81</td><td>59</td><td class="warn">⚠️</td></tr>
+<tr><td>实例管理</td><td>8</td><td>8</td><td class="ok">✅</td></tr>
+<tr><td>下载中心</td><td>26</td><td>23</td><td class="warn">⚠️</td></tr>
+<tr><td>设置中心</td><td>47</td><td>28</td><td class="warn">⚠️</td></tr>
+<tr><td>导出整合包向导</td><td>8</td><td>0</td><td class="no">⛔</td></tr>
+<tr><td>全局弹窗</td><td>11</td><td>1</td><td class="warn">⚠️</td></tr>
+<tr><td>共享组件</td><td>70</td><td>~45</td><td class="warn">⚠️</td></tr>
+<tr><td><b>合计</b></td><td><b>284</b></td><td><b>≈200</b></td><td class="warn">≈70%</td></tr>
+</table>
+
+<h2>层级汇总（基线口径）</h2>
 <table><tr><th>层级</th><th>含义</th><th>页面/弹窗</th><th>按钮</th><th>列表项</th><th>页签</th><th>可点击合计</th></tr>
 <tr><td>L1</td><td>主窗口骨架</td><td>2</td><td>6</td><td>3</td><td>0</td><td>9</td></tr>
 <tr><td>L2</td><td>侧边栏直达页</td><td>5</td><td>3</td><td>5</td><td>8</td><td>29</td></tr>
@@ -21,77 +42,84 @@ li:last-child::before{content:"└─";}
 <tr><td>L4</td><td>三级详情 / 列表页</td><td>22</td><td>26</td><td>17</td><td>3</td><td>53</td></tr>
 <tr><td>L5</td><td>弹窗 / 向导</td><td>15</td><td>30</td><td>5</td><td>2</td><td>37</td></tr>
 <tr><td>—</td><td>共享组件</td><td>—</td><td>26</td><td>11</td><td>0</td><td>42</td></tr>
-</table><ul>
-<li><span class="l1">MCDL Launcher 主窗口</span><span class="cnt">[L1] 54 个页面/弹窗 · 218 个可点击控件</span>
+</table>
+<div class="note">注：本表为基线口径，"可点击合计 218"与控件明细行数 284 不是同一套统计，不可直接相减；验收请用 ui-status.md。</div>
+
+<h2>树状图（含实现状态）</h2>
 <ul>
-<li><span class="l1">标题栏</span><span class="cnt">[L1] 最小化 / 最大化 / 关闭 / 帮助（打开日志）</span>
-<li><span class="l1">侧边栏</span><span class="cnt">[L1] 5 个导航项</span>
+<li><span class="l1 ok">✅ MCDL Launcher 主窗口</span><span class="cnt">[L1] 54 个页面/弹窗 · 218 个可点击控件</span>
 <ul>
-<li><span class="l2">账户</span><span class="cnt">[L2] 账户列表 · 4 列表项</span>
+<li><span class="l1 ok">✅ 标题栏</span><span class="cnt">[L1] 返回 / 刷新 / 关闭当前页 / 帮助 + 最小化 / 最大化 / 关闭</span>
+<li><span class="l1 ok">✅ 侧边栏</span><span class="cnt">[L1] 5 个导航项（下载项已启用）</span>
 <ul>
-<li><span class="l5">微软登录</span><span class="cnt">[L5] 弹窗 · 3 控件</span>
-<li><span class="l5">添加离线账户</span><span class="cnt">[L5] 弹窗 · 3 按钮 + 1 项 + 2 页签</span>
-<li><span class="l5">正版登录对话框</span><span class="cnt">[L5] 弹窗 · 2 按钮</span>
-<li><span class="l5">添加认证服务器</span><span class="cnt">[L5] 弹窗 · 5 按钮</span>
-<li><span class="l5">离线皮肤设置</span><span class="cnt">[L5] 弹窗 · 2 按钮</span>
-</li></ul>
-<li><span class="l2">游戏（当前实例）</span><span class="cnt">[L2] 主页 · 2 按钮；无实例时跳实例列表</span>
+<li><span class="l2 ok">✅ 账户</span><span class="cnt">[L2] 账户列表 · 4 列表项</span>
 <ul>
-<li><span class="l3">实例详情</span><span class="cnt">[L3] 7 页签 + 4 侧栏项（更新/测试启动/浏览/管理）</span>
+<li><span class="l5 ok">✅ 微软登录</span><span class="cnt">[L5] 弹窗 · 3 控件（:216 = 登录说明面板 #msaHelpPanel）</span>
+<li><span class="l5 ok">✅ 添加离线账户</span><span class="cnt">[L5] 弹窗 · 3 按钮 + 2 页签 + 1 项；皮肤入口 :606 → #offlineSkinPick</span>
+<li><span class="l5 ok">✅ 正版登录对话框</span><span class="cnt">[L5] 2 按钮（实现合并为「正版登录」页签）</span>
+<li><span class="l5 ok">✅ 添加认证服务器</span><span class="cnt">[L5] 5 按钮（实现的 2 个取消合并为 1 个）</span>
+<li><span class="l5 ok">✅ 离线皮肤设置</span><span class="cnt">[L5] 2 按钮</span>
+</li></ul>
+<li><span class="l2 warn">⚠️ 游戏（当前实例）</span><span class="cnt">[L2] 主页 · 2 按钮；主视区与新闻仍为占位</span>
 <ul>
-<li><span class="l3">游戏设置</span><span class="cnt">[L3] 5 控件</span>
-<li><span class="l3">自动安装</span><span class="cnt">[L3] 1 按钮</span>
-<li><span class="l4">模组</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
-<li><span class="l4">模组更新</span><span class="cnt">[L4] AddonUpdatesPage · 5 控件</span>
-<li><span class="l4">资源包</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
-<li><span class="l4">世界</span><span class="cnt">[L4] 世界详情 5 控件 / 世界管理 3 页签 + 4 项</span>
-<li><span class="l4">投影</span><span class="cnt">[L4] 2 控件</span>
-<li><span class="l4">截图</span><span class="cnt">[L4] 3 控件</span>
-</li></ul>
-<li><span class="l5">实例图标选择</span><span class="cnt">[L5] 弹窗 · 3 控件</span>
-</li></ul>
-<li><span class="l2">实例管理</span><span class="cnt">[L2] 实例列表 · 1 项 + 1 导航项</span>
+<li><span class="l3 warn">⚠️ 实例详情</span><span class="cnt">[L3] 6 页签 + 1 运行时页签 + 4 侧栏项（更新/测试启动/浏览/管理）</span>
 <ul>
-<li><span class="l4">游戏目录管理</span><span class="cnt">[L4] 2 控件</span>
-<li><span class="l4">实例右键菜单</span><span class="cnt">[L4] 1 项</span>
+<li><span class="l3 warn">⚠️ 游戏设置</span><span class="cnt">[L3] 5 控件（实现为 内存/窗口宽高/隔离策略/JVM，未做「预设」）</span>
+<li><span class="l3 ok">✅ 自动安装</span><span class="cnt">[L3] 1 按钮</span>
+<li><span class="l4 ok">✅ 模组</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
+<li><span class="l4 no">⛔ 模组更新</span><span class="cnt">[L4] AddonUpdatesPage · 5 控件（无界面）</span>
+<li><span class="l4 ok">✅ 资源包</span><span class="cnt">[L4] 1 按钮 → 内容下载页 5 控件</span>
+<li><span class="l4 ok">✅ 世界</span><span class="cnt">[L4] 世界详情 5 控件 / 世界管理 3 页签 + 19 项（含备份、数据包、chunkbase）</span>
+<li><span class="l4 ok">✅ 投影</span><span class="cnt">[L4] 2 控件</span>
+<li><span class="l4 no">⛔ 截图</span><span class="cnt">[L4] 3 控件（仅剩文件夹入口）</span>
+<li><span class="l4 no">⛔ 实例详情额外项</span><span class="cnt">更新整合包 / 浏览 / 管理 / 截图管理 / 更新资源 / 删资源 / 删库 / 清理</span>
 </li></ul>
-<li><span class="l2">下载</span><span class="cnt">[L2] 下载中心 · 6 页签</span>
+<li><span class="l5 ok">✅ 实例图标选择</span><span class="cnt">[L5] 弹窗 · 3 控件</span>
+</li></ul>
+<li><span class="l2 ok">✅ 实例管理</span><span class="cnt">[L2] 实例列表 · 3 项 + 10 项右键菜单</span>
 <ul>
-<li><span class="l3">游戏版本</span><span class="cnt">[L3] 版本列表 · 4 控件</span>
+<li><span class="l4 ok">✅ 游戏目录管理</span><span class="cnt">[L4] 2 控件</span>
+<li><span class="l5 ok">✅ 实例操作对话框</span><span class="cnt">[L5] 2 按钮（导出整合包为 disabled）</span>
+</li></ul>
+<li><span class="l2 warn">⚠️ 下载</span><span class="cnt">[L2] 下载中心 · 6 页签</span>
 <ul>
-<li><span class="l4">安装向导 · 可选文件</span><span class="cnt">[L4] 3 控件</span>
-<li><span class="l4">加载器安装列表</span><span class="cnt">[L4] 1 按钮；加载器版本选择</span>
-</li></ul>
-<li><span class="l3">整合包</span><span class="cnt">[L3] 2 按钮</span>
+<li><span class="l3 ok">✅ 游戏版本</span><span class="cnt">[L3] 版本列表 · 4 控件</span>
 <ul>
-<li><span class="l4">整合包类型选择</span><span class="cnt">[L4] 1 按钮；本地整合包</span>
+<li><span class="l4 warn">⚠️ 安装向导 · 可选文件</span><span class="cnt">[L4] 3 控件（入口 disabled）</span>
+<li><span class="l4 ok">✅ 加载器安装列表</span><span class="cnt">[L4] 1 按钮；<span class="dev">⚠️ 实现已迁到「新建实例」页（#createLoader / #createLoaderVersion）</span></span>
 </li></ul>
-<li><span class="l3">模组</span><span class="cnt">[L3] 2 控件（内容列表）</span>
-<li><span class="l3">资源包</span><span class="cnt">[L3] 2 控件</span>
-<li><span class="l3">光影</span><span class="cnt">[L3] 2 控件</span>
-<li><span class="l3">世界</span><span class="cnt">[L3] 2 控件</span>
+<li><span class="l3 warn">⚠️ 整合包</span><span class="cnt">[L3] 2 按钮（可选文件 disabled）</span>
 <ul>
-<li><span class="l4">内容下载页</span><span class="cnt">[L4] 版本选择 / 更新日志 · 5 控件</span>
+<li><span class="l4 ok">✅ 整合包类型选择</span><span class="cnt">[L4] 1 按钮；本地整合包</span>
 </li></ul>
-</li></ul>
-<li><span class="l2">设置</span><span class="cnt">[L2] 设置中心 · 6 页签</span>
+<li><span class="l3 ok">✅ 模组</span><span class="cnt">[L3] 2 控件（内容列表）</span>
+<li><span class="l3 ok">✅ 资源包</span><span class="cnt">[L3] 2 控件</span>
+<li><span class="l3 ok">✅ 光影</span><span class="cnt">[L3] 2 控件</span>
+<li><span class="l3 no">⛔ 世界</span><span class="cnt">[L3] 2 控件（搜索按钮 disabled）</span>
 <ul>
-<li><span class="l3">游戏设置</span><span class="cnt">[L3] 5 控件</span>
-<li><span class="l3">Java 管理</span><span class="cnt">[L3] 1 按钮</span>
+<li><span class="l4 ok">✅ 内容下载页</span><span class="cnt">[L4] 版本选择 / 更新日志 · 5 控件</span>
+</li></ul>
+</li></ul>
+<li><span class="l2 warn">⚠️ 设置</span><span class="cnt">[L2] 设置中心 · 6 页签（结构齐全）</span>
 <ul>
-<li><span class="l5">安装 Java</span><span class="cnt">[L5] 1 按钮；恢复 Java；下载提示 2 按钮</span>
-</li></ul>
-<li><span class="l3">通用设置</span><span class="cnt">[L3] 3 控件</span>
-<li><span class="l3">个性化</span><span class="cnt">[L3] 10 控件（8 个开关/选择项）</span>
+<li><span class="l3 warn">⚠️ 游戏设置</span><span class="cnt">[L3] 5 控件（4/5）</span>
+<li><span class="l3 ok">✅ Java 管理</span><span class="cnt">[L3] 1 按钮</span>
 <ul>
-<li><span class="l4">主题包管理</span><span class="cnt">[L4] 3 控件</span>
+<li><span class="l5 no">⛔ 安装 Java</span><span class="cnt">[L5] 1 按钮（disabled）；恢复 Java；下载提示 2 按钮</span>
 </li></ul>
-<li><span class="l3">下载设置</span><span class="cnt">[L3] 3 控件</span>
-<li><span class="l3">关于</span><span class="cnt">[L3] 1 按钮（上游链接）</span>
+<li><span class="l3 ok">✅ 通用设置</span><span class="cnt">[L3] 3 控件</span>
+<li><span class="l3 warn">⚠️ 个性化</span><span class="cnt">[L3] 11 控件（仅实现 1 项：关闭动画）</span>
+<ul>
+<li><span class="l4 no">⛔ 主题包管理</span><span class="cnt">[L4] 3 控件</span>
 </li></ul>
-<li><span class="l4">NBT 编辑器</span><span class="cnt">[L4] 2 控件</span>
-<li><span class="l4">导出整合包向导</span><span class="cnt">[L4] 类型 1 / 信息 6 / 文件 1 控件</span>
+<li><span class="l3 ok">✅ 下载设置</span><span class="cnt">[L3] 3 控件</span>
+<li><span class="l3 ok">✅ 关于</span><span class="cnt">[L3] 4 控件</span>
 </li></ul>
-<li><span class="l5">全局弹窗</span><span class="cnt">[L5] 确认框 / 任务进度 / 崩溃窗口 1 / 游戏崩溃窗口 3 / 日志窗口 5 / 实例操作 2 / 预设管理 1 / 安装项 1</span>
+<li><span class="l4 no">⛔ NBT 编辑器</span><span class="cnt">[L4] 2 控件（nbt.js 仅用于读 level.dat）</span>
+<li><span class="l4 no">⛔ 导出整合包向导</span><span class="cnt">[L4] 类型 1 / 信息 6 / 文件 1 控件</span>
 </li></ul>
+<li><span class="l5 warn">⚠️ 全局弹窗</span><span class="cnt">[L5] 确认框 ✅ / 任务进度 ✅ / 崩溃窗口 ⛔ / 游戏崩溃窗口 ⛔ / 日志窗口 ⛔ / 实例操作 ✅ / 预设管理 ⛔ / 安装项 ✅</span>
+</li></ul>
+</li></ul>
+<div class="note">实现偏离基线之处（加载器位置迁移、账户皮肤入口、7→6 页签、个性化 11→1 等）见 ui-status.md §2；基线口径 bug 见 §6。</div>
 </body></html>

@@ -31,12 +31,36 @@ function projectTypeOf(kind) {
   return type;
 }
 
+/**
+ * 内容卡片的项目图标。
+ *
+ * 图标只可能来自 Modrinth 的 CDN，主进程只代理这一个 host：否则这条通道就等于
+ * "按任意 URL 抓图"，既能把请求引向内网，也能当无鉴权的图片下载器。
+ */
+const ICON_HOST = 'cdn.modrinth.com';
+const ICON_MAX_BYTES = 2 * 1024 * 1024;
+const ICON_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
+
 class ModrinthError extends Error {
   constructor(message, status) {
     super(message);
     this.name = 'ModrinthError';
     this.status = status;
   }
+}
+
+function assertIconUrl(raw) {
+  const value = String(raw || '').trim();
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ModrinthError('图标地址非法');
+  }
+  if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== ICON_HOST) {
+    throw new ModrinthError('图标地址不在 Modrinth CDN 上');
+  }
+  return url;
 }
 
 function describeHttp(status) {
@@ -127,6 +151,62 @@ async function searchProjects(options = {}) {
       dateModified: String(hit.date_modified || '')
     }))
   };
+}
+
+/**
+ * 抓取项目图标（Buffer + 实际 MIME）。
+ *
+ * 渲染层不联网，图标由主进程转成 mcdl-media:// 响应；所以大小、类型、最终 host
+ * 都在这里卡住，代理端只负责按 URL 缓存。
+ * @returns {Promise<{contentType:string, buffer:Buffer}>}
+ */
+async function fetchProjectIcon(raw) {
+  const url = assertIconUrl(raw);
+  let response;
+
+  try {
+    response = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'image/*' },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT)
+    });
+  } catch (error) {
+    if (error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new ModrinthError('图标请求超时');
+    }
+    throw new ModrinthError(`无法获取图标：${error.message}`);
+  }
+
+  if (!response.ok) {
+    throw new ModrinthError(`图标请求失败（HTTP ${response.status}）`, response.status);
+  }
+
+  // fetch 会跟随重定向：最终地址必须还在白名单里，不能借 302 跳出 CDN。
+  let finalUrl = null;
+  try {
+    finalUrl = new URL(response.url);
+  } catch {
+    finalUrl = null;
+  }
+  if (!finalUrl || finalUrl.hostname.toLowerCase() !== ICON_HOST) {
+    throw new ModrinthError('图标被重定向到非 Modrinth 的地址');
+  }
+
+  const contentType = String(response.headers.get('content-type') || '')
+    .split(';')[0].trim().toLowerCase();
+  if (!ICON_TYPES.has(contentType)) {
+    throw new ModrinthError(`图标格式不支持：${contentType || '未知'}`);
+  }
+
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > ICON_MAX_BYTES) {
+    throw new ModrinthError('图标超过 2 MB');
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) throw new ModrinthError('图标是空文件');
+  if (buffer.length > ICON_MAX_BYTES) throw new ModrinthError('图标超过 2 MB');
+
+  return { contentType, buffer };
 }
 
 function trimVersion(version) {
@@ -224,11 +304,30 @@ function hashOf(algorithm, buffer) {
   return crypto.createHash(algorithm).update(buffer).digest('hex');
 }
 
-async function downloadFile(url, target, expectedHashes) {
+function cancelledError() {
+  const error = new Error('已取消');
+  error.cancelled = true;
+  error.code = 'TASK_CANCELLED';
+  return error;
+}
+
+/**
+ * 下载单个文件。
+ *
+ * `signal` 来自主进程的取消令牌：一旦 abort，fetch 立刻中断，`.part` 文件删掉，
+ * 已经下完的文件不受影响（下次重装会重新校验）。
+ */
+async function downloadFile(url, target, expectedHashes, signal) {
+  if (signal && signal.aborted) throw cancelledError();
+
+  const timeout = AbortSignal.timeout(120000);
+  const combined = signal ? AbortSignal.any([timeout, signal]) : timeout;
+
   const response = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
-    signal: AbortSignal.timeout(120000)
+    signal: combined
   }).catch((error) => {
+    if (signal && signal.aborted) throw cancelledError();
     throw new ModrinthError(`下载失败：${error.message}`);
   });
 
@@ -239,7 +338,18 @@ async function downloadFile(url, target, expectedHashes) {
   await fs.mkdir(path.dirname(target), { recursive: true });
 
   const temp = target + '.part';
-  await pipeline(Readable.fromWeb(response.body), fsSync.createWriteStream(temp));
+  try {
+    await pipeline(Readable.fromWeb(response.body), fsSync.createWriteStream(temp));
+  } catch (error) {
+    await fs.rm(temp, { force: true });
+    if (signal && signal.aborted) throw cancelledError();
+    throw new ModrinthError(`写入文件失败：${error.message}`);
+  }
+
+  if (signal && signal.aborted) {
+    await fs.rm(temp, { force: true });
+    throw cancelledError();
+  }
 
   const buffer = await fs.readFile(temp);
   const expected = expectedHashes && expectedHashes.sha1 ? String(expectedHashes.sha1) : '';
@@ -275,7 +385,7 @@ async function uniqueTarget(dir, filename) {
  * @returns {Promise<{installed:Array, failed:Array}>}
  */
 async function downloadVersion({ version, targetDir, installDependencies = false,
-  gameVersion = '', loader = '', onProgress }) {
+  gameVersion = '', loader = '', onProgress, signal }) {
   if (!version || !version.file || !version.file.url) {
     throw new ModrinthError('该版本没有可下载的文件');
   }
@@ -289,7 +399,7 @@ async function downloadVersion({ version, targetDir, installDependencies = false
 
   const target = await uniqueTarget(targetDir, version.file.filename);
   notify(`正在下载 ${version.file.filename} …`, 0, 1);
-  const saved = await downloadFile(version.file.url, target, version.file.hashes);
+  const saved = await downloadFile(version.file.url, target, version.file.hashes, signal);
   installed.push({ filename: path.basename(target), path: saved.path, size: saved.size });
 
   if (!installDependencies) return { installed, failed };
@@ -298,13 +408,15 @@ async function downloadVersion({ version, targetDir, installDependencies = false
   let index = 0;
 
   for (const dep of deps) {
+    if (signal && signal.aborted) throw cancelledError();
     index += 1;
     notify(`正在下载前置 ${index}/${deps.length}：${dep.file.filename} …`, index, deps.length + 1);
     try {
       const depTarget = await uniqueTarget(targetDir, dep.file.filename);
-      const depSaved = await downloadFile(dep.file.url, depTarget, dep.file.hashes);
+      const depSaved = await downloadFile(dep.file.url, depTarget, dep.file.hashes, signal);
       installed.push({ filename: path.basename(depTarget), path: depSaved.path, size: depSaved.size });
     } catch (error) {
+      if (error && error.cancelled) throw error;
       failed.push({ filename: dep.file.filename, error: error.message });
     }
   }
@@ -319,6 +431,7 @@ module.exports = {
   searchProjects,
   listVersions,
   getVersion,
+  fetchProjectIcon,
   collectRequiredDependencies,
   downloadVersion,
   projectTypeOf
