@@ -1,6 +1,6 @@
 # MCDL Launcher
 
-Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的无边框窗口（空心囗 / Hollow Frame），
+Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的无边框窗口（Hollow Frame），
 内置原版下载器 `mcdl`，实例安装、账户与游戏启动均在本仓库内实现，不依赖 JavaFX 或第三方启动器。
 
 | 项目 | 说明 |
