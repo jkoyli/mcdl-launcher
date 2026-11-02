@@ -192,7 +192,7 @@ function shortHash(value) {
   return crypto.createHash('sha1').update(String(value)).digest('hex').slice(0, 8);
 }
 
-function detectLoader(meta) {
+function detectLoader(meta, hint) {
   const libraries = Array.isArray(meta.libraries)
     ? meta.libraries.map((entry) => String(entry && entry.name || '')).join(' ').toLowerCase()
     : '';
@@ -205,20 +205,63 @@ function detectLoader(meta) {
     return 'Forge';
   }
 
-  return 'Vanilla';
+  // 加载器实例有时只写一层 inheritsFrom（例如 forge 安装器生成的 1.20.1-forge-47.4.28），
+  // 自身没有 libraries，只能从父版本 id 或目录名反推。
+  return loaderFromText(meta.inheritsFrom) || loaderFromText(hint) || 'Vanilla';
+}
+
+function loaderFromText(value) {
+  const text = String(value || '').toLowerCase();
+  if (!text) return '';
+  if (/quilt/.test(text)) return 'Quilt';
+  if (/fabric/.test(text)) return 'Fabric';
+  if (/neoforge/.test(text)) return 'NeoForge';
+  if (/forge/.test(text)) return 'Forge';
+  return '';
+}
+
+/** 从 inheritsFrom / 版本 id 里抽加载器版本号，例如 1.20.1-forge-47.4.28 → 47.4.28。 */
+function loaderVersionFromText(value) {
+  const text = String(value || '');
+  const forge = text.match(/-forge[-\s]?([\w.+-]+)$/i);
+  if (forge) return forge[1];
+  const neo = text.match(/neoforge[-\s]?([\w.+-]+)$/i);
+  if (neo) return neo[1];
+  return '';
+}
+
+/** 加载器 json 的 libraries 里就写着加载器版本，Fabric / Quilt 只能从这里读。 */
+function loaderVersionFromLibraries(meta) {
+  const libraries = Array.isArray(meta && meta.libraries) ? meta.libraries : [];
+  const patterns = [
+    /^net\.fabricmc:fabric-loader:([^:@]+)/,
+    /^org\.quiltmc:quilt-loader:([^:@]+)/,
+    /^net\.neoforged:neoforge:([^:@]+)/,
+    /^net\.minecraftforge:forge:([^:@]+)/
+  ];
+  for (const library of libraries) {
+    const name = String(library && library.name || '');
+    for (const pattern of patterns) {
+      const match = name.match(pattern);
+      if (match) return match[1];
+    }
+  }
+  return '';
+}
+
+const MC_VERSION_PATTERN = /(?:^|[^\d])(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)(?:[^\d]|$)/;
+
+function versionFromText(value) {
+  const match = String(value || '').match(MC_VERSION_PATTERN);
+  return match ? match[1] : '';
 }
 
 function detectGameVersion(meta, folderName) {
-  if (meta.inheritsFrom) return String(meta.inheritsFrom);
-
-  const candidates = [meta.id, folderName];
-  for (const value of candidates) {
-    if (typeof value !== 'string') continue;
-    const match = value.match(/(?:^|[^\d])(\d{1,2}\.\d{1,2}(?:\.\d{1,2})?)(?:[^\d]|$)/);
-    if (match) return match[1];
+  for (const candidate of [meta.inheritsFrom, meta.id, folderName]) {
+    const hit = versionFromText(candidate);
+    if (hit) return hit;
   }
-
-  return typeof meta.id === 'string' ? meta.id : folderName;
+  return typeof meta.id === 'string' ? meta.id : (folderName || '');
 }
 
 async function findVersionJson(versionDir, folderName) {
@@ -305,7 +348,7 @@ async function scanInstances(gameDir, aliases = {}, options = {}) {
     }
 
     const settings = await readHmclSettings(versionDir);
-    const loader = detectLoader(manifest);
+    const loader = detectLoader(manifest, entry.name);
     const gameVersion = detectGameVersion(manifest, entry.name);
     const javaRequirement = manifest.javaVersion && manifest.javaVersion.majorVersion
       ? String(manifest.javaVersion.majorVersion)
@@ -321,7 +364,11 @@ async function scanInstances(gameDir, aliases = {}, options = {}) {
       sourceLabel: primary ? '' : '外部',
       versionName: gameVersion,
       modLoader: loader === 'Vanilla' ? '' : loader,
-      modLoaderVersion: '',
+      modLoaderVersion: loader === 'Vanilla'
+        ? ''
+        : (loaderVersionFromLibraries(manifest)
+          || loaderVersionFromText(manifest.inheritsFrom)
+          || loaderVersionFromText(entry.name)),
       javaVersion: detectedJava || javaRequirement,
       javaRequirement,
       installedVersions: 1,
@@ -444,6 +491,106 @@ function clearCaches() {
   versionCacheAt = 0;
 }
 
+// ---------------- 模组加载器：列表 / 自动安装 ----------------
+
+/** 界面上的加载器名 → mcdl 的后端键。 */
+const LOADER_KEYS = {
+  fabric: 'fabric-loader',
+  'fabric-loader': 'fabric-loader',
+  quilt: 'quilt-loader',
+  'quilt-loader': 'quilt-loader',
+  forge: 'forge',
+  neoforge: 'neoforge'
+};
+
+function loaderKeyOf(value) {
+  return LOADER_KEYS[String(value || '').trim().toLowerCase()] || '';
+}
+
+/** 界面传进来的加载器名（Fabric / Forge …）是否支持自动安装。 */
+function isSupportedLoader(value) {
+  return Boolean(loaderKeyOf(value));
+}
+
+/** 从 mcdl 的 stdout 里取最后一段 JSON（安装结果）。 */
+function parseTrailingJson(stdout) {
+  const text = String(stdout || '');
+  const start = text.lastIndexOf('\n{');
+  if (start < 0) return null;
+  try {
+    return JSON.parse(text.slice(start));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 列出某个 Minecraft 版本可用的加载器构建。
+ * @returns {{loader:string,label:string,gameVersion:string,versions:Array<{version:string,stable:boolean,note:string}>}}
+ */
+async function listLoaders({ loader, mcVersion } = {}) {
+  const key = loaderKeyOf(loader);
+  if (!key) throw new Error(`不支持的加载器：${loader}`);
+  if (!mcVersion) throw new Error('缺少 Minecraft 版本');
+
+  const result = await runMcdl(['--list-loaders', key, '--mc', String(mcVersion)]);
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    throw new Error('mcdl 返回的加载器列表不是合法 JSON');
+  }
+  if (!parsed || !Array.isArray(parsed.versions)) {
+    throw new Error('mcdl 返回的加载器列表为空');
+  }
+  return parsed;
+}
+
+/**
+ * 自动安装加载器：mcdl 会先确保原版，再生成一个独立实例。
+ * @returns {{instanceId:string,instanceDir:string,loader:string,label:string,loaderVersion:string,gameVersion:string}}
+ */
+async function installLoader({
+  loader,
+  loaderVersion = '',
+  mcVersion,
+  name = '',
+  gameDir,
+  jobs = 16,
+  onData
+} = {}) {
+  const key = loaderKeyOf(loader);
+  if (!key) throw new Error(`不支持的加载器：${loader}`);
+  if (!mcVersion) throw new Error('缺少 Minecraft 版本');
+  if (loaderVersion && !/^[A-Za-z0-9][A-Za-z0-9 ._()+\-]{0,127}$/.test(String(loaderVersion))) {
+    throw new Error('无效的加载器版本号');
+  }
+
+  const dir = gameDir || await detectGameDir();
+  await fs.mkdir(dir, { recursive: true });
+
+  const args = [
+    '--install-loader', key,
+    '--mc', String(mcVersion),
+    '--dir', dir,
+    '--jobs', String(Math.max(1, Math.min(64, Number(jobs) || 16)))
+  ];
+  if (loaderVersion) args.push('--loader-version', String(loaderVersion));
+  if (name) args.push('--name', String(name));
+
+  const result = await runMcdl(args, {
+    onData: (text, stream) => {
+      if (typeof onData === 'function') onData(text, stream);
+    }
+  });
+
+  const parsed = parseTrailingJson(result.stdout);
+  if (!parsed || !parsed.instanceId) {
+    throw new Error('mcdl 没有返回安装结果');
+  }
+  return { ...parsed, gameDir: dir };
+}
+
 module.exports = {
   MCDL_JAR,
   DEFAULT_GAME_DIR,
@@ -454,6 +601,10 @@ module.exports = {
   scanInstances,
   listVersions,
   installVersion,
+  listLoaders,
+  installLoader,
+  isSupportedLoader,
+  loaderKeyOf,
   listJavaPaths,
   parseGameDirs,
   clearCaches

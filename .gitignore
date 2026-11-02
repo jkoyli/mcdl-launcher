@@ -25,3 +25,4 @@ Thumbs.db
 
 # 本地测试夹具 / 数据目录
 /electron/.testdata/
+/mcdl/McdlDialog.exe

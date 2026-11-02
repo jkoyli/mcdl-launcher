@@ -22,7 +22,7 @@ public final class Main {
     }
 
     /** 发布版本号。 */
-    public static final String VERSION = "1.0.7";
+    public static final String VERSION = "1.0.8";
 
     private static final String HELP = """
             MCDL — Minecraft 原版下载器（仿 PCL2 / HMCL 的下载逻辑）
@@ -45,8 +45,12 @@ public final class Main {
               --type <类型>       --list 时过滤：release（默认）/ snapshot / old / all
               --list-java         扫描并核实本机所有 Java
               --list-dirs         识别 PCL / HMCL 使用的游戏目录
+              --list-loaders <加载器>  列出某版本可用的加载器构建（fabric / quilt / forge / neoforge）
+              --install-loader <加载器>  安装加载器（自动先装原版）
+              --mc <版本>         配合 --list-loaders / --install-loader 指定 Minecraft 版本
+              --loader-version <v> 指定加载器构建，不填取最新稳定版
               --install-pack <文件>  安装整合包（Modrinth .mrpack / CurseForge zip）
-              --name <实例名>     整合包安装后的实例名
+              --name <实例名>     实例名（整合包或加载器安装时使用）
               --cf-key <key>      CurseForge API key（也可用环境变量 CF_API_KEY）
               --java <路径>       指定 Java（java.exe 或 home 目录），不指定则自动匹配
               --limit-assets <N>  调试：只下载前 N 个资源对象
@@ -87,6 +91,9 @@ public final class Main {
         String packFile = null;
         String packName = null;
         String cfKey = null;
+        String loaderKey = null;
+        String loaderVersion = null;
+        String mcVersion = null;
         Sources.Source source = Sources.Source.AUTO;
         int jobs = 16;
         boolean verify = false;
@@ -128,6 +135,16 @@ public final class Main {
                     dirSet = true;
                 }
                 case "--list-dirs" -> command = "list-dirs";
+                case "--list-loaders" -> {
+                    command = "list-loaders";
+                    loaderKey = need(args, ++i, "--list-loaders");
+                }
+                case "--install-loader" -> {
+                    command = "install-loader";
+                    loaderKey = need(args, ++i, "--install-loader");
+                }
+                case "--mc" -> mcVersion = need(args, ++i, "--mc");
+                case "--loader-version" -> loaderVersion = need(args, ++i, "--loader-version");
                 case "--install-pack" -> {
                     command = "install-pack";
                     packFile = need(args, ++i, "--install-pack");
@@ -181,6 +198,19 @@ public final class Main {
             }
             case "list-dirs" -> {
                 return listDirs();
+            }
+            case "list-loaders" -> {
+                return listLoaders(loaderKey, mcVersion, source);
+            }
+            case "install-loader" -> {
+                if (!dirSet) {
+                    List<mcdl.core.LauncherDirs.DirInfo> dirs = mcdl.core.LauncherDirs.detect();
+                    if (!dirs.isEmpty()) {
+                        dir = dirs.get(0).dir;
+                        System.out.println("未指定 --dir，自动识别到：" + dirs.get(0).label());
+                    }
+                }
+                return installLoader(loaderKey, mcVersion, loaderVersion, dir, packName, javaPath, jobs, source);
             }
             case "install-pack" -> {
                 return installPack(packFile, dir, dirSet, packName, jobs, cfKey);
@@ -260,6 +290,78 @@ public final class Main {
         }
         System.out.println("       安装摘要：" + result.instanceDir.resolve("install-summary.txt"));
         System.out.println("       打开 PCL / HMCL 的版本列表即可看到并启动。");
+        return 0;
+    }
+
+    /** 列出某个 Minecraft 版本可用的加载器构建，stdout 只输出 JSON。 */
+    private static int listLoaders(String loader, String mcVersion, Sources.Source source) throws Exception {
+        if (loader == null || loader.isBlank()) {
+            System.err.println("错误：--list-loaders 需要一个加载器名（fabric / quilt / forge / neoforge）");
+            return 2;
+        }
+        if (mcVersion == null || mcVersion.isBlank()) {
+            System.err.println("错误：--list-loaders 需要 --mc <Minecraft 版本>");
+            return 2;
+        }
+        String key = mcdl.core.Loaders.normalizeKey(loader);
+        List<mcdl.core.Loaders.Entry> entries =
+                mcdl.core.Loaders.list(key, mcVersion, source, s -> System.err.println("[MCDL] " + s));
+
+        mcdl.core.Json.Value root = mcdl.core.Json.Value.obj();
+        root.put("loader", key);
+        root.put("label", mcdl.core.Loaders.labelOf(key));
+        root.put("gameVersion", mcVersion);
+        mcdl.core.Json.Value arr = mcdl.core.Json.Value.arr();
+        for (mcdl.core.Loaders.Entry entry : entries) {
+            mcdl.core.Json.Value row = mcdl.core.Json.Value.obj();
+            row.put("version", entry.version);
+            row.put("stable", entry.stable);
+            row.put("note", entry.note);
+            arr.add(row);
+        }
+        root.put("versions", arr);
+        System.out.println(root.toPrettyString());
+        return 0;
+    }
+
+    /** 自动安装加载器：先确保原版，再生成独立实例。 */
+    private static int installLoader(String loader, String mcVersion, String loaderVersion, Path dir,
+                                     String name, Path javaPath, int jobs, Sources.Source source)
+            throws Exception {
+        if (loader == null || loader.isBlank()) {
+            System.err.println("错误：--install-loader 需要一个加载器名（fabric / quilt / forge / neoforge）");
+            return 2;
+        }
+        if (mcVersion == null || mcVersion.isBlank()) {
+            System.err.println("错误：--install-loader 需要 --mc <Minecraft 版本>");
+            return 2;
+        }
+        String key = mcdl.core.Loaders.normalizeKey(loader);
+        System.out.println("加载器：" + mcdl.core.Loaders.labelOf(key)
+                + (loaderVersion == null || loaderVersion.isBlank() ? "（最新稳定版）" : " " + loaderVersion));
+        System.out.println("游戏版本：" + mcVersion);
+        System.out.println("游戏目录：" + dir);
+
+        mcdl.core.Cancel cancel = new mcdl.core.Cancel();
+        mcdl.core.Loaders.Result result = mcdl.core.Loaders.install(
+                key, mcVersion, loaderVersion, dir, name, javaPath, jobs, source, cancel,
+                s -> System.out.println("[MCDL] " + s));
+
+        System.out.println();
+        System.out.println("[完成] " + mcdl.core.Loaders.labelOf(result.loader) + " " + result.loaderVersion
+                + " + Minecraft " + result.gameVersion);
+        System.out.println("       实例：" + result.instanceId + " → " + result.instanceDir);
+
+        // 给调用方（Electron）用的机器可读结果，最后一行固定是 JSON
+        mcdl.core.Json.Value out = mcdl.core.Json.Value.obj();
+        out.put("loader", result.loader);
+        out.put("label", mcdl.core.Loaders.labelOf(result.loader));
+        out.put("loaderVersion", result.loaderVersion);
+        out.put("gameVersion", result.gameVersion);
+        out.put("instanceId", result.instanceId);
+        out.put("instanceDir", result.instanceDir.toAbsolutePath().toString());
+        out.put("versionJson", result.versionJson);
+        System.out.println(out.toPrettyString());
         return 0;
     }
 

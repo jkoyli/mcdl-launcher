@@ -119,8 +119,23 @@ electron/
 | --- | --- |
 | 版本列表 | `--list --type all` |
 | 安装原版 | `--install <version> --dir <gameDir> --source auto --jobs 16` |
+| 加载器版本列表 | `--list-loaders <fabric\|quilt\|forge\|neoforge> --mc <version>`（stdout 只有 JSON） |
+| 安装加载器 | `--install-loader <loader> --mc <version> [--loader-version <v>] [--name <实例名>] --dir <gameDir>` |
 | 探测其他启动器目录 | `--list-dirs` |
 | 探测本机 Java | `--list-java` |
+
+加载器安装由 `mcdl/core/Loaders.java` 实现，三条路径：
+
+- **Fabric / Quilt** — 直接取 meta 的 profile JSON（已含 `libraries` 与 `mainClass`），
+  写入 `versions/<实例名>/<实例名>.json` 并补齐 maven 库，不需要跑安装器。
+- **Forge 1.12+ / NeoForge** — 下载官方 `-installer.jar`，用 `--installClient <gameDir>`
+  静默安装（先补一个 `launcher_profiles.json`），再写一层 `inheritsFrom` 指向安装器生成的版本。
+- **Forge 1.7.10 一类老安装器** — 只有 Swing 界面、没有静默模式，改为读安装器 zip 里的
+  `install_profile.json`：写出 `versionInfo`、释放内嵌 universal jar 到 `libraries/`，再补下载其中的库。
+
+NeoForge 的版本号反推 MC 版本按 HMCL 的规则处理（`21.1.9` → 1.21.1，`21.0.167` → 1.21，
+`20.4.x` → 1.20.4；1.20.1 走 `net.neoforged:forge` 的 47.1.x）。
+OptiFine 需要官网安装器（没有稳定的机器可读列表），LiteLoader 停在 1.12.2，两者不提供自动安装。
 
 `mcdl/README.md` 为上游原始文档；本仓库对它的集成说明见下一节「数据文件」。
 

@@ -8,11 +8,11 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
 | 平台 | Windows 10 / 11 |
 | 界面 | Electron 无边框窗口，自绘标题栏 |
 | 下载 | 内置 `mcdl.jar`（MIT） |
-| 进度 | 可安装原版并真实启动；模组加载器安装尚未接入 |
+| 进度 | 可安装原版与 Forge / NeoForge / Fabric / Quilt，并能真实启动 |
 
 ## 功能
 
-- **实例管理** — 通过 `mcdl` 下载安装原版，安装进度实时回显；支持实例别名与版本类型筛选。
+- **实例管理** — 通过 `mcdl` 下载安装原版或加载器（Forge / NeoForge / Fabric / Quilt），安装进度实时回显；支持实例别名与版本类型筛选。
 - **启动游戏** — 解析版本 JSON（含 `inheritsFrom` 合并），拼接 classpath、natives 与启动参数，
   自动匹配 Java，回传进程 PID、退出码与失败原因。
 - **账户** — 离线账号、微软账号（应用内登录窗口）与第三方 authlib-injector 服务器登录；
@@ -107,7 +107,8 @@ mcdl-launcher/
 
 ## 已知限制
 
-- 新建实例仅支持原版；Fabric / Forge / NeoForge / Quilt 选项保持禁用。
+- 自动安装支持原版与 Forge / NeoForge / Fabric / Quilt；OptiFine 需要官网安装器，LiteLoader 已停止更新，
+  两者的入口保持禁用。
 - 「下载中心」尚无对应面板（已标为待接入并禁用），新闻区为占位内容。
 - 「修改 / 添加游戏文件夹 / 全局游戏设置」为禁用占位。
 - 离线皮肤只做保存与预览，游戏内生效还需要自定义皮肤服务。

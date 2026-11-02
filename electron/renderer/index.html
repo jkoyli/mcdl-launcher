@@ -5156,7 +5156,7 @@
         <!-- 页签：自动安装（加载器安装待接入） -->
         <div class="detail-panel" data-detail-panel="installers" hidden>
           <div class="content-list" id="detailInstallerList"></div>
-          <p class="detail-note">内置下载器 mcdl 目前只处理原版文件；下面的加载器安装入口保持禁用，避免假安装。</p>
+          <p class="detail-note">原版与 Forge / NeoForge / Fabric / Quilt 由内置 mcdl 自动安装：先确保原版就位，再生成一个独立的加载器实例。OptiFine 需要手动下载安装器，LiteLoader 已停止更新（仅 1.12.2），两者仍保持禁用。</p>
         </div>
 
         <!-- 页签：模组 / 资源包 / 世界 / 原理图（统一由 renderContentPanel 渲染） -->
@@ -5208,7 +5208,7 @@
       <div class="create-intro">
         <p class="create-kicker">New instance</p>
         <h2 class="create-title">新建实例</h2>
-        <p class="create-desc">从实时版本列表选择游戏版本，填写一个名字，或直接使用自动生成的默认名称。当前由 mcdl 安装原版文件。</p>
+        <p class="create-desc">从实时版本列表选择游戏版本，可选原版或 Forge / NeoForge / Fabric / Quilt，mcdl 会自动装好原版与加载器。</p>
       </div>
 
       <form class="create-form" id="createForm" novalidate>
@@ -5238,10 +5238,20 @@
           <span class="create-control-wrap">
             <select class="create-control" id="createLoader" name="loader">
               <option value="Vanilla" selected>Vanilla · 原版</option>
-              <option value="Fabric" disabled>Fabric · 待接入</option>
-              <option value="NeoForge" disabled>NeoForge · 待接入</option>
-              <option value="Forge" disabled>Forge · 待接入</option>
-              <option value="Quilt" disabled>Quilt · 待接入</option>
+              <option value="Fabric">Fabric · 1.14 起</option>
+              <option value="Quilt">Quilt · 1.18 起</option>
+              <option value="Forge">Forge · 1.7.10 起</option>
+              <option value="NeoForge">NeoForge · 1.20.1 起</option>
+            </select>
+            <span class="create-select-arrow" aria-hidden="true"></span>
+          </span>
+        </label>
+
+        <label class="create-field" id="createLoaderVersionField" for="createLoaderVersion" hidden>
+          <span class="create-label">Loader version / 加载器版本</span>
+          <span class="create-control-wrap">
+            <select class="create-control" id="createLoaderVersion" name="loaderVersion">
+              <option value="">最新稳定版</option>
             </select>
             <span class="create-select-arrow" aria-hidden="true"></span>
           </span>

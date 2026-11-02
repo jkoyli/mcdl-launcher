@@ -37,6 +37,12 @@ const launcherAPI = {
   createInstance: (payload) => ipcRenderer.invoke('instances:create', payload),
 
   /**
+   * 某个 Minecraft 版本可用的加载器构建：
+   *   { loader, label, gameVersion, versions: [{ version, stable, note }] }
+   */
+  listLoaders: (payload) => ipcRenderer.invoke('loaders:list', payload),
+
+  /**
    * 实例操作：重命名别名 / 复制 / 删除 / 打开运行目录 / 生成启动脚本。
    */
   renameInstance: (payload) => ipcRenderer.invoke('instances:rename', payload),

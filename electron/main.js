@@ -931,37 +931,95 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('loaders:list', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const loader = String(payload.loader || '').trim();
+    const mcVersion = String(payload.mcVersion || payload.version || '').trim();
+    try {
+      return await mcdl.listLoaders({ loader, mcVersion });
+    } catch (error) {
+      console.error('[loaders] failed to list loader versions:', error);
+      throw new Error(`无法读取加载器版本: ${error.message}`);
+    }
+  });
+
   ipcMain.handle('instances:create', async (event, payload = {}) => {
     const win = assertAppWindow(event);
     const version = String(payload.version || '').trim();
     const loader = String(payload.loader || 'Vanilla');
+    const loaderVersion = String(payload.loaderVersion || '').trim();
     const requestedName = String(payload.name || '').trim();
 
     if (!version) throw new Error('缺少游戏版本');
-    if (loader !== 'Vanilla') {
-      throw new Error('当前 mcdl 后端仅支持原版安装，加载器安装尚未接入');
+    const vanilla = loader === 'Vanilla' || loader === '' || loader === 'vanilla';
+    if (!vanilla && !mcdl.isSupportedLoader(loader)) {
+      throw new Error(`不支持的加载器：${loader}`);
     }
 
-    const gameDir = await mcdl.detectGameDir();
+    const requestedDir = String(payload.gameDir || '').trim();
+    let gameDir;
+    if (requestedDir) {
+      gameDir = path.resolve(requestedDir);
+      const stat = await fs.stat(gameDir).catch(() => null);
+      if (!stat || !stat.isDirectory()) {
+        throw new Error(`游戏目录不存在：${gameDir}`);
+      }
+    } else {
+      gameDir = await mcdl.detectGameDir();
+    }
     const aliases = await readAliases();
     const cachedDirs = await readScanCache();
     const bufferState = { value: '' };
+    const loaderLabel = vanilla ? '原版' : loader + (loaderVersion ? ' ' + loaderVersion : '');
 
     if (!win.isDestroyed()) {
       win.webContents.send('instances:install-progress', {
-        message: `准备安装 ${version} …`
+        message: `准备安装 ${version}${vanilla ? '' : ' + ' + loaderLabel} …`
       });
     }
 
     try {
-      await mcdl.installVersion({
-        version,
+      if (vanilla) {
+        await mcdl.installVersion({
+          version,
+          gameDir,
+          onData: sendInstallOutput(win, bufferState)
+        });
+
+        const versionDir = path.join(gameDir, 'versions', version);
+        aliases[versionDir] = requestedName || aliases[versionDir] || `${version} · 原版`;
+        try {
+          await writeAliases(aliases);
+        } catch (error) {
+          console.warn('[instances] could not persist display name:', error);
+        }
+
+        const snapshot = await buildInstanceSnapshot(gameDir, cachedDirs);
+        snapshot.selectedId = version;
+
+        if (!win.isDestroyed()) {
+          win.webContents.send('instances:install-progress', {
+            message: `安装完成：${version}`
+          });
+        }
+
+        return snapshot;
+      }
+
+      // 加载器：mcdl 会先确保原版，再生成 versions/<实例名> 并写入 inheritsFrom
+      const result = await mcdl.installLoader({
+        loader,
+        loaderVersion,
+        mcVersion: version,
+        name: requestedName,
         gameDir,
         onData: sendInstallOutput(win, bufferState)
       });
 
-      const versionDir = path.join(gameDir, 'versions', version);
-      aliases[versionDir] = requestedName || aliases[versionDir] || `${version} · 原版`;
+      // 重名时 mcdl 会给实例目录加 (2) 后缀，此时别名改用可读的默认名，避免两条同名实例
+      aliases[result.instanceDir] = requestedName && result.instanceId === requestedName
+        ? requestedName
+        : `${version} · ${result.label || loader} ${result.loaderVersion || loaderVersion}`.trim();
       try {
         await writeAliases(aliases);
       } catch (error) {
@@ -969,11 +1027,12 @@ function registerIpcHandlers() {
       }
 
       const snapshot = await buildInstanceSnapshot(gameDir, cachedDirs);
-      snapshot.selectedId = version;
+      snapshot.selectedId = result.instanceId;
+      snapshot.createdInstanceId = result.instanceId;
 
       if (!win.isDestroyed()) {
         win.webContents.send('instances:install-progress', {
-          message: `安装完成：${version}`
+          message: `安装完成：${version} + ${result.label || loader} ${result.loaderVersion || loaderVersion}`
         });
       }
 

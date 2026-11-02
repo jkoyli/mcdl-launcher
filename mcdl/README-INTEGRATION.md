@@ -13,4 +13,5 @@
 
 调用方式与能力边界见 [../docs/development.md](../docs/development.md#与-mcdl-的边界)。
 
-`mcdl` 只负责原版 Minecraft 文件的下载与安装；账户、启动参数与进程管理都在 `electron/` 中实现。
+`mcdl` 负责原版与加载器的下载安装（`--install`、`--list-loaders`、`--install-loader`），
+以及整合包导入；账户、启动参数与进程管理都在 `electron/` 中实现。

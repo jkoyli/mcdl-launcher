@@ -2,6 +2,14 @@
 
 本文档记录每个版本的变更内容，按时间倒序排列。
 
+## 1.0.8
+
+- 新增 `--list-loaders <加载器> --mc <版本>`：列出 Forge / NeoForge / Fabric / Quilt 可用的构建（stdout 只有 JSON，进度走 stderr），Forge 带上官方推荐的 recommended / latest 标记。
+- 新增 `--install-loader <加载器> --mc <版本> [--loader-version <v>] [--name <实例名>] [--dir <目录>]`：自动安装加载器。先确保原版就位，再生成 `versions/<实例名>/`，最后输出一段 JSON 安装结果供启动器解析。
+- 加载器安装拆成三条路径：Fabric / Quilt 直接写 meta 的 profile JSON 并补库；Forge 1.12+ 与 NeoForge 走官方安装器的 `--installClient` 静默安装（自动补 `launcher_profiles.json`）；Forge 1.7.10 一类老安装器读安装器 zip 里的 `install_profile.json`，释放内嵌 universal jar 并写出 `versionInfo`。
+- NeoForge 版本号按 HMCL 的规则反推 MC 版本（`21.1.9` → 1.21.1、`21.0.167` → 1.21、`20.4.x` → 1.20.4、`26.x` 年号方案），1.20.1 仍走 `net.neoforged:forge` 的 47.1.x。
+- `Http` 增加 `getRawText`：maven 的 `maven-metadata.xml` 是 XML，不再被「返回的是 HTML 而不是 JSON」误判。
+
 ## 1.0.7
 
 - 镜像源对话框未测速时显示「未测速」，不再把初始的 0 ms 显示成「无法连接」。

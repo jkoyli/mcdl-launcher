@@ -351,6 +351,8 @@
   var createVersion = document.getElementById('createVersion');
   var createVersionType = document.getElementById('createVersionType');
   var createLoader = document.getElementById('createLoader');
+  var createLoaderVersion = document.getElementById('createLoaderVersion');
+  var createLoaderVersionField = document.getElementById('createLoaderVersionField');
   var createName = document.getElementById('createName');
   var createMessage = document.getElementById('createMessage');
   var createProgress = document.getElementById('createProgress');
@@ -361,8 +363,23 @@
   var scanInstancesStatus = document.getElementById('scanInstancesStatus');
   var gameDirPath = document.getElementById('gameDirPath');
   var scanInProgress = false;
+  // 加载器版本下拉的状态；提前声明，避免初始化阶段的同步渲染读到 undefined
+  var loaderVersionState = { loader: '', mcVersion: '', entries: [], loading: false, error: '' };
   var instancesRailBtn = document.getElementById('instancesRailBtn');
   var isCreateOpen = false;
+  // 从实例详情页「自动安装」进来时记下目标游戏目录；常规新建留空，走默认目录
+  var createGameDir = '';
+
+  // 加载器显示名与当前选择；提前声明，初始化阶段的同步渲染可能已经用到
+  var LOADER_LABELS = { Vanilla: '原版', Fabric: 'Fabric', Quilt: 'Quilt', Forge: 'Forge', NeoForge: 'NeoForge' };
+
+  function loaderLabelOf(value) {
+    return LOADER_LABELS[value] || '原版';
+  }
+
+  function currentLoaderValue() {
+    return createLoader && createLoader.value ? createLoader.value : 'Vanilla';
+  }
 
   function setText(id, value) {
     var node = document.getElementById(id);
@@ -902,7 +919,10 @@
 
   function defaultInstanceName() {
     var version = createVersion && createVersion.value ? createVersion.value : '';
-    return version ? version + ' · 原版' : '新实例 · 原版';
+    var loader = currentLoaderValue();
+    var label = loaderLabelOf(loader);
+    if (!version) return '新实例 · ' + label;
+    return version + ' · ' + label;
   }
 
   function updateSuggestedName(force) {
@@ -914,12 +934,106 @@
     }
   }
 
+  // ---------------- 加载器版本列表 ----------------
+
+  function setLoaderVersionFieldVisible(visible) {
+    if (!createLoaderVersionField) return;
+    createLoaderVersionField.hidden = !visible;
+  }
+
+  function renderLoaderVersionOptions() {
+    if (!createLoaderVersion) return;
+
+    var previous = createLoaderVersion.value;
+    createLoaderVersion.innerHTML = '';
+
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    if (loaderVersionState.loading) {
+      placeholder.textContent = '正在读取加载器版本…';
+    } else if (loaderVersionState.error) {
+      placeholder.textContent = '读取失败 · 使用最新稳定版';
+    } else {
+      placeholder.textContent = '最新稳定版';
+    }
+    createLoaderVersion.appendChild(placeholder);
+
+    loaderVersionState.entries.forEach(function (entry) {
+      if (!entry || !entry.version) return;
+      var option = document.createElement('option');
+      option.value = entry.version;
+      option.textContent = entry.version + (entry.note ? ' · ' + entry.note : '');
+      createLoaderVersion.appendChild(option);
+    });
+
+    createLoaderVersion.disabled = installInProgress || loaderVersionState.loading;
+
+    // 重新渲染（换类型 / 换版本后的刷新）时保留用户已经选中的构建
+    if (previous) {
+      for (var i = 0; i < createLoaderVersion.options.length; i += 1) {
+        if (createLoaderVersion.options[i].value === previous) {
+          createLoaderVersion.value = previous;
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * 拉取当前「游戏版本 + 加载器」可用的构建列表。
+   * 同一个组合只请求一次；force 用于换版本 / 重选加载器时刷新。
+   */
+  function refreshLoaderVersions(force) {
+    var loader = currentLoaderValue();
+    var mcVersion = createVersion && createVersion.value ? createVersion.value : '';
+
+    setLoaderVersionFieldVisible(loader !== 'Vanilla');
+
+    if (loader === 'Vanilla' || !mcVersion) {
+      loaderVersionState = { loader: loader, mcVersion: mcVersion, entries: [], loading: false, error: '' };
+      renderLoaderVersionOptions();
+      return;
+    }
+
+    var same = loaderVersionState.loader === loader && loaderVersionState.mcVersion === mcVersion;
+    if (!force && same && (loaderVersionState.loading || loaderVersionState.entries.length > 0)) {
+      renderLoaderVersionOptions();
+      return;
+    }
+
+    var api = window.launcherAPI;
+    if (!api || typeof api.listLoaders !== 'function') {
+      loaderVersionState = { loader: loader, mcVersion: mcVersion, entries: [], loading: false, error: '桥接不可用' };
+      renderLoaderVersionOptions();
+      return;
+    }
+
+    loaderVersionState = { loader: loader, mcVersion: mcVersion, entries: [], loading: true, error: '' };
+    renderLoaderVersionOptions();
+
+    api.listLoaders({ loader: loader, mcVersion: mcVersion }).then(function (data) {
+      if (loaderVersionState.loader !== loader || loaderVersionState.mcVersion !== mcVersion) return;
+      loaderVersionState.loading = false;
+      loaderVersionState.error = '';
+      loaderVersionState.entries = (data && data.versions) || [];
+      renderLoaderVersionOptions();
+    }).catch(function (error) {
+      if (loaderVersionState.loader !== loader || loaderVersionState.mcVersion !== mcVersion) return;
+      console.error('[loaders] failed to list versions:', error);
+      loaderVersionState.loading = false;
+      loaderVersionState.error = error && error.message ? error.message : String(error);
+      loaderVersionState.entries = [];
+      renderLoaderVersionOptions();
+    });
+  }
+
   function setCreateBusy(busy) {
     installInProgress = !!busy;
 
     if (createVersionType) createVersionType.disabled = installInProgress || versionsLoading;
     if (createVersion) createVersion.disabled = installInProgress || versionsLoading;
     if (createLoader) createLoader.disabled = installInProgress;
+    if (createLoaderVersion) createLoaderVersion.disabled = installInProgress || loaderVersionState.loading;
     if (createName) createName.disabled = installInProgress;
     if (createBack) createBack.disabled = installInProgress;
     if (createSubmit) createSubmit.disabled = installInProgress || !versionsLoaded || !createVersion.value;
@@ -975,6 +1089,7 @@
     }
 
     updateSuggestedName(!createName.value.trim());
+    refreshLoaderVersions(false);
     if (createMessage) {
       createMessage.classList.remove('is-error');
       createMessage.textContent = list.length === 0
@@ -1169,6 +1284,9 @@
     if (!mainStage || !stageCreate) return;
     if (installInProgress) return;
 
+    // 常规新建：目标目录回到默认；「自动安装」会在调用后再覆盖成实例所在目录
+    createGameDir = '';
+
     showPanel('create');
 
     if (createName) createName.classList.remove('is-invalid');
@@ -1187,6 +1305,8 @@
 
     setCreateBusy(false);
     if (createVersion) createVersion.disabled = !versionsLoaded;
+    setLoaderVersionFieldVisible(currentLoaderValue() !== 'Vanilla');
+    refreshLoaderVersions(false);
 
     window.setTimeout(function () {
       if (createVersion) createVersion.focus();
@@ -1245,8 +1365,10 @@
 
     api.createInstance({
       version: version,
-      loader: 'Vanilla',
-      name: name
+      loader: currentLoaderValue(),
+      loaderVersion: createLoaderVersion ? createLoaderVersion.value : '',
+      name: name,
+      gameDir: createGameDir
     })
       .then(function (snapshot) {
         setCreateBusy(false);
@@ -1257,6 +1379,9 @@
 
         if (createForm) createForm.reset();
         if (createVersionType) createVersionType.value = 'release';
+        createGameDir = '';
+        if (createLoader) createLoader.value = 'Vanilla';
+        setLoaderVersionFieldVisible(false);
         renderVersionOptions();
 
         closeCreatePanel({ focus: true });
@@ -1292,6 +1417,15 @@
 
   if (createVersion) {
     createVersion.addEventListener('change', function () {
+      updateSuggestedName(false);
+      refreshLoaderVersions(true);
+    });
+  }
+
+  if (createLoader) {
+    createLoader.addEventListener('change', function () {
+      setLoaderVersionFieldVisible(currentLoaderValue() !== 'Vanilla');
+      refreshLoaderVersions(true);
       updateSuggestedName(false);
     });
   }
@@ -3728,13 +3862,52 @@
   // ---------------- 页签：自动安装 ----------------
 
   var INSTALLER_ENTRIES = [
-    { name: 'Forge', desc: 'net.minecraftforge · 1.7.10 – 最新' },
-    { name: 'NeoForge', desc: 'net.neoforged · 1.20.1 起' },
-    { name: 'Fabric', desc: 'net.fabricmc · 1.14 起' },
-    { name: 'Quilt', desc: 'org.quiltmc · 1.18 起' },
-    { name: 'LiteLoader', desc: '1.5.2 – 1.12.2' },
-    { name: 'OptiFine', desc: '各版本独立发布' }
+    { name: 'Forge', key: 'Forge', desc: 'net.minecraftforge · 1.7.10 – 最新', auto: true },
+    { name: 'NeoForge', key: 'NeoForge', desc: 'net.neoforged · 1.20.1 起', auto: true },
+    { name: 'Fabric', key: 'Fabric', desc: 'net.fabricmc · 1.14 起', auto: true },
+    { name: 'Quilt', key: 'Quilt', desc: 'org.quiltmc · 1.18 起', auto: true },
+    { name: 'LiteLoader', key: '', desc: '1.5.2 – 1.12.2 · 已停止更新', auto: false },
+    { name: 'OptiFine', key: '', desc: '各版本独立发布 · 需手动下载安装器', auto: false }
   ];
+
+  /**
+   * 「自动安装」页签的入口：直接带着当前实例的游戏版本跳到新建实例页，
+   * 那里的加载器版本下拉和进度条是现成的，避免再写一套安装流程。
+   */
+  function startLoaderInstall(loaderKey) {
+    var instance = typeof getSelectedInstance === 'function' ? getSelectedInstance() : null;
+    var mcVersion = instance && instance.versionName ? String(instance.versionName) : '';
+
+    openCreatePanel();
+    createGameDir = instance && instance.gameDir ? instance.gameDir : '';
+
+    if (createLoader) createLoader.value = loaderKey;
+    setLoaderVersionFieldVisible(true);
+
+    if (mcVersion && createVersion) {
+      var known = false;
+      for (var i = 0; i < createVersion.options.length; i += 1) {
+        if (createVersion.options[i].value === mcVersion) known = true;
+      }
+      if (!known) {
+        var option = document.createElement('option');
+        option.value = mcVersion;
+        option.textContent = mcVersion;
+        createVersion.appendChild(option);
+      }
+      createVersion.value = mcVersion;
+    }
+
+    refreshLoaderVersions(true);
+    updateSuggestedName(true);
+
+    if (createMessage) {
+      createMessage.classList.remove('is-error');
+      createMessage.textContent = mcVersion
+        ? '将为 Minecraft ' + mcVersion + ' 新建一个 ' + loaderLabelOf(loaderKey) + ' 实例'
+        : '请选择游戏版本后再安装 ' + loaderLabelOf(loaderKey);
+    }
+  }
 
   function renderInstallerList() {
     var list = document.getElementById('detailInstallerList');
@@ -3767,9 +3940,18 @@
       button.type = 'button';
       button.className = 'dialog-btn';
       button.textContent = '安装';
-      button.disabled = true;
-      button.title = '加载器安装待接入';
+      button.disabled = !entry.auto;
+      button.title = entry.auto
+        ? '用当前实例的游戏版本新建一个 ' + entry.name + ' 实例'
+        : (entry.name === 'OptiFine'
+          ? 'OptiFine 需要从官网手动下载安装器，暂未接入'
+          : 'LiteLoader 已停止更新，暂未接入');
       button.setAttribute('data-control-key', 'button.install');
+
+      button.addEventListener('click', function () {
+        if (!entry.auto) return;
+        startLoaderInstall(entry.key);
+      });
 
       actions.appendChild(button);
       row.appendChild(main);

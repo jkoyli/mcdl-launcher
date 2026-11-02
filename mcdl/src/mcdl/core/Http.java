@@ -61,6 +61,19 @@ public final class Http {
     /** 带自定义请求头（如 CurseForge 的 x-api-key）的文本请求。 */
     public static String getText(List<String> urls, java.util.Map<String, String> headers,
                                  Consumer<String> log) throws IOException {
+        return fetchText(urls, headers, log, true);
+    }
+
+    /**
+     * 读取非 JSON 的文本（如 maven 的 maven-metadata.xml）。
+     * 与 {@link #getText} 的区别只有一条：不把以 {@code <} 开头的响应当成错误页。
+     */
+    public static String getRawText(List<String> urls, Consumer<String> log) throws IOException {
+        return fetchText(urls, java.util.Map.of(), log, false);
+    }
+
+    private static String fetchText(List<String> urls, java.util.Map<String, String> headers,
+                                    Consumer<String> log, boolean rejectHtml) throws IOException {
         IOException last = null;
         for (String url : urls) {
             for (int attempt = 1; attempt <= 2; attempt++) {
@@ -78,7 +91,7 @@ public final class Http {
                     if (code / 100 == 2) {
                         String body = resp.body();
                         String trimmed = body == null ? "" : body.stripLeading();
-                        if (trimmed.startsWith("<")) {
+                        if (rejectHtml && trimmed.startsWith("<")) {
                             throw new RetryableException("返回的是 HTML 而不是 JSON：" + url);
                         }
                         return body;
