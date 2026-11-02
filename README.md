@@ -26,7 +26,9 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
   → 填名称 / 版本 / 作者 / 认证服务器与 4 个开关，打包成可被其他启动器导入的 zip。
 - **启动游戏** — 解析版本 JSON（含 `inheritsFrom` 合并），拼接 classpath、natives 与启动参数，
   自动匹配 Java，回传进程 PID、退出码与失败原因；日志窗口支持自动滚动 / 导出 / 结束进程 / 导出运行栈，
-  异常退出时弹出游戏崩溃窗口（导出崩溃信息 / 查看日志 / 帮助）。
+  异常退出时弹出游戏崩溃窗口（导出崩溃信息 / 查看日志 / 帮助）。启动前先校验必需文件
+  （缺文件不拉起 Java，可按清单一键修复）；界面崩溃分三层恢复，兜底是零依赖恢复页。
+  失败模式的完整清单见[失败路径审计](docs/failure-path-audit.md)。
 - **账户** — 离线账号、微软账号（应用内登录窗口）与第三方 authlib-injector 服务器登录；
   账号页包含微软登录、添加账户（离线 / 正版登录页签）、认证服务器向导、离线皮肤与删除确认五个弹窗。
   令牌仅存本机，不进入渲染进程。
@@ -36,7 +38,10 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
   下载（版本列表源 / 下载源 / 附加内容源）、关于（版本与开源许可）。
 - **数据安全** — 所有状态文件（账号、实例设置、别名、扫描缓存、启动脚本、设置）都走
   **原子写**：同目录临时文件 → `fsync` → `rename` 覆盖，断电或强杀不会留下 0 字节 / 半截 JSON；
-  点关闭或系统关机时**先取消在飞任务并等它们写完盘**（最多 5 秒）再退出，而不是直接 kill。
+  关闭窗口时若还有安装 / 下载任务在跑、或刚保存的写入还没落盘，先取消任务并等它们收尾（≤5 秒）、
+  再等排队写入落盘（≤3 秒）才退出；两者都没有时和以前一样，立即关。
+  规则见[开发文档](docs/development.md#持久化所有状态写入必须原子)，失败模式清单见
+  [失败路径审计](docs/failure-path-audit.md)。
 
 ## 环境要求
 
@@ -121,6 +126,7 @@ mcdl-launcher/
 | --- | --- |
 | [docs/development.md](docs/development.md) | 模块划分、启动与账户实现、IPC 通道、数据文件 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 启动失败、无窗口、执行策略等常见问题 |
+| [docs/failure-path-audit.md](docs/failure-path-audit.md) | 失败路径审计：PCL2 / HMCL 历史 bug 的复现判定、修复点与测试清单 |
 | [mcdl/README.md](mcdl/README.md) | 上游 `mcdl` 下载器说明 |
 
 ## 已知限制
@@ -130,12 +136,10 @@ mcdl-launcher/
 - 「下载中心」的「世界」页签还没有在线源（Modrinth 无世界分类，CurseForge 需要 API Key）。
 - 新闻区仍是占位内容。
 - 离线皮肤只做保存与预览，游戏内生效还需要自定义皮肤服务。
-- **主题**：只有浅色 / 深色两套与自定义主色；没有主题包（自定义 CSS）机制，相关入口保留为「暂不支持」。
-  浅色是**反相方案**（`filter: invert(1) hue-rotate(180deg)` + 用户内容反向抵消），原生控件已用
-  `color-scheme: light` 对齐，但图片仍可能有轻微色偏、浅色下壁纸的「暗化」更接近「提亮」。
-  抗锯齿、标题栏透明、窗口透明同理保留禁用。
-- **主题设置存在 `localStorage`**（键 `mcdl.theme.v1`），不在 `launcher-settings.json` 里，
-  因此不随设置文件备份/迁移；主进程补上设置白名单后会自动切回文件存储（渲染层已写好探测）。
+- **主题**：只有浅色 / 深色与自定义主色，没有主题包（自定义 CSS）机制；浅色是**反相方案**
+  （`filter: invert(1) hue-rotate(180deg)`，原生控件用 `color-scheme: light` 对齐），个别图片仍可能有
+  轻微色偏。抗锯齿、标题栏透明、窗口透明同理保留禁用。设置存在 `localStorage`（键 `mcdl.theme.v1`），
+  不随设置文件备份 / 迁移。已知副作用与排查见[排障](docs/troubleshooting.md)。
 - 启动脚本三件套（`.ps1` / `.bat` / `data.json`）是三次独立原子写，**不是跨文件事务**。
 
 ## 许可证

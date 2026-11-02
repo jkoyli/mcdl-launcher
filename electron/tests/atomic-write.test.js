@@ -111,6 +111,17 @@ test('临时文件名带 pid + 随机串，且与目标同目录', () => {
   assert.ok(tmp.includes(String(process.pid)));
 });
 
+test('pendingWrites：写入期间计数 > 0，落盘后归零', async () => {
+  const { pendingWrites } = require('../atomic-write');
+  const dir = await tempDir();
+  const file = path.join(dir, 'count.json');
+  assert.equal(pendingWrites(), 0, '空闲时必须是 0');
+  const task = writeFileAtomic(file, 'x', { encoding: 'utf8' });
+  assert.ok(pendingWrites() >= 1, '写入排队期间必须 > 0（退出流程靠它决定要不要等）');
+  await task;
+  assert.equal(pendingWrites(), 0);
+});
+
 test('flushWrites：等到所有排队写入落盘后才返回，队列归零', async () => {
   const { flushWrites, _internal } = require('../atomic-write');
   const dir = await tempDir();

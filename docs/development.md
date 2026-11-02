@@ -57,10 +57,14 @@ electron/
 6. **关键文件完整性闸门**（`launch-preflight.js`）：在 spawn 之前校验
    客户端 jar / 每个依赖库 / 每个 natives 包 / 资源索引 /（第三方账号的）authlib-injector。
    缺失或校验失败 → 抛 `LAUNCH_PREFLIGHT_FAILED`，**不拉起 Java**，并把结构化清单交给界面。
-   校验强度：`auto`（默认，只对客户端 jar、资源索引、log4j、authlib 算 SHA-1；
-   库与 natives 只查存在与非空）、`true`（全部算 SHA-1）、`false`（只查存在与非空）。
+   校验强度由设置项 `verifyFiles` 决定：`null`（默认，内部走 `auto`：只对客户端 jar、资源索引、
+   log4j、authlib 算 SHA-1，库与 natives 只查存在与非空）、`true`（所有带 `sha1` 的条目都比对）、
+   `false`（只查存在与非空）。每一类失败模式的复现判定与处置见[失败路径审计](failure-path-audit.md)。
 7. 主进程用 `javaw.exe` 拉起进程，stdout/stderr 写入
    `<gameDir>/logs/mcdl-launcher-<时间戳>.log`。
+   **启动成功以 `'spawn'` 事件为准**：`spawn()` 的 `ENOENT` / `EACCES` 是异步 `'error'` 事件，
+   `try/catch` 抓不到；`launchInstance` 等 `'spawn'` / `'error'` 先到者再 resolve，失败时抛错并写日志，
+   不会再出现「已启动 · PID -」然后什么都没发生。
 8. **等游戏窗口真的出现**（`game-window.js`）：spawn 只代表 Java 进程被创建，
    游戏还要加载资源 / 初始化 LWJGL / 加载模组才有窗口。Windows 上用一个长驻
    PowerShell 子进程轮询 `Get-Process -Id <pid>` 的 `MainWindowHandle`（非 0 即窗口已出现），
@@ -265,6 +269,11 @@ MCDL_USER_DATA（环境变量，最高优先）
 | --- | --- |
 | `MCDL_GAME_DIR` | 游戏目录 |
 | `MCDL_USER_DATA` | 账号 / 设置所在的数据目录（覆盖自动选择） |
+| `MCDL_JAR` | `mcdl.jar` 路径 |
+| `MCDL_JAVA` | 运行 `mcdl.jar` 的 Java |
+| `MCDL_RENDER` | `gpu` 或 `software`，覆盖渲染策略 |
+| `MCDL_DISABLE_GPU` | 设为 `1` 时禁用硬件加速（等价于 `MCDL_RENDER=software`） |
+| `MCDL_MSA_CLIENT_ID` | 覆盖微软登录使用的 client id |
 
 ### 持久化：所有状态写入必须原子
 
@@ -304,8 +313,8 @@ await writeJsonAtomic(target, state);          // 2 空格缩进 + 末尾换行
 allowQuit=false  shutdownPromise=null
   ├─ 已 allowQuit            → 放行
   ├─ shutdownPromise 已存在   → preventDefault，吞掉重复点击
-  ├─ 无在飞任务              → 不拦，立即关
-  └─ 有任务 → preventDefault → beginShutdown():
+  ├─ 既无在飞任务、也无排队写入 → 不拦，立即关
+  └─ 有任务或排队写入 → preventDefault → beginShutdown():
         cancelAllTasks() → waitForTasksIdle(≤5s) → flushWrites(≤3s)
         → allowQuit=true → win.destroy() → app.quit()
 ```
@@ -318,11 +327,11 @@ allowQuit=false  shutdownPromise=null
 - Windows 关机 / 注销时 Electron **不会**发 `before-quit`，只有窗口的 `session-end`，已单独处理。
 - 超时是硬上限：等不到就走，最坏留下 `.tmp` 孤儿，但目标文件一定是「旧的完整版本」或「新的完整版本」。
 - 新增长任务时，用 `beginTask()` / `finish()` 包住，否则退出时不会被等待。
-| `MCDL_JAR` | `mcdl.jar` 路径 |
-| `MCDL_JAVA` | 运行 `mcdl.jar` 的 Java |
-| `MCDL_RENDER` | `gpu` 或 `software`，覆盖渲染策略 |
-| `MCDL_DISABLE_GPU` | 设为 `1` 时禁用硬件加速（等价于 `MCDL_RENDER=software`） |
-| `MCDL_MSA_CLIENT_ID` | 覆盖微软登录使用的 client id |
+- 触发条件是 **`inFlightCount() > 0 || pendingWrites() > 0`**。只判断任务会漏掉「刚点保存、
+  写入还没落盘」那一刻：close 直接放行，目标文件停在旧值、还留下 `.tmp`。
+  `pendingWrites()` 由 [`atomic-write.js`](../electron/atomic-write.js) 暴露，
+  所以**任何走原子写的保存都会自动纳入退出等待**，不需要额外登记。
+  用户视角的说明见[排障](troubleshooting.md#点关闭后窗口要停几秒才退出)。
 
 ## IPC 通道
 
@@ -701,6 +710,8 @@ CDN 地址时，卡片回落成项目名首字母。
 - **崩溃恢复页**（`renderer/recovery.html`，不是 dialog）：渲染进程崩溃 3 次/分钟或主文档
   加载失败时由主进程 `loadFile` 切过去。零依赖静态页，三个出口
   `recovery:reload` / `recovery:reset-workspace` / `recovery:export-diagnostics`。
+  分层策略、崩溃计数为什么不在 `did-finish-load` 清零等实现细节归[失败路径审计](failure-path-audit.md)；
+  用户看到的症状与三个出口各自清什么，见[排障](troubleshooting.md)。
 
 ### 日志窗口 / 崩溃窗口 / 游戏崩溃窗口（对照 [L5] 全局弹窗）
 
@@ -719,7 +730,9 @@ CDN 地址时，卡片回落成项目名首字母。
 - **游戏崩溃窗口**（`dlgGameCrash`）：`exit` 事件里 `code !== 0 && !stopped` 时弹出，
   显示实例 / 版本 / 运行时长 / 日志路径，并补一段日志尾部；3 个强调按钮：
   `导出游戏崩溃信息`（`crash:export`，崩溃报告 + 日志尾部打包）、`日志`（打开日志窗口）、
-  `帮助`（外链 `docs/troubleshooting.md`）。手动「结束游戏进程」不会弹这个窗口。
+  `帮助`（外链 `docs/troubleshooting.md`）。手动「结束游戏进程」不会弹这个窗口；
+  `earlyFailure: true`（15 秒内非 0 退出且没有崩溃报告）时标题换成「游戏没能启动（N 秒内退出）」，
+  引导去查文件完整性 / Java 版本 / 参数，而不是去删模组。
 
 ### 导出整合包向导（对照 export/ModpackTypeSelectionPage / ModpackFileSelectionPage / ModpackInfoPage）
 
@@ -870,6 +883,8 @@ node --test --test-isolation=none tests/atomic-write.test.js   # 只跑一个文
 - 用例放在 `electron/tests/`，覆盖 `path-guard`（路径穿越）、`modpack-guard`（zip-slip）、
   `instance-layout`（版本隔离）、`nbt-editor`（二进制往返）、`atomic-write`（原子写 / 并发 / 失败保旧）
   等纯逻辑模块；需要 Electron `app`/`dialog` 的模块不做 mock。
+- **失败路径**的用例单独一堆：`launch-preflight.test.js`（闸门 / 定向修复 / 先闸门后 spawn）与
+  `game-window.test.js`（等待窗口）。逐条清单见[失败路径审计](failure-path-audit.md)末尾的「测试」。
 - `--test-isolation=none` 让所有文件跑在同一个进程里：受限环境（禁止带管道 spawn）也能跑，
   且比默认模式快；想要严格隔离用 `test:isolated`。
 

@@ -176,10 +176,20 @@ async function writeJsonAtomic(target, value, options = {}) {
   return writeFileAtomic(target, text, { encoding: 'utf8', mode: options.mode });
 }
 
+/**
+ * 当前排队中（尚未落盘）的写入数量。
+ * 退出流程用它判断「没有任务、但还有写在飞」的情况：那时也必须走收尾，
+ * 否则最后一次设置保存会丢（目标文件停在旧值），还会留下 .tmp 孤儿。
+ */
+function pendingWrites() {
+  return pending.size;
+}
+
 module.exports = {
   writeFileAtomic,
   writeJsonAtomic,
   flushWrites,
+  pendingWrites,
   // 导出给测试用
   _internal: { tempNameFor, syncDirectory, renameWithRetry, pendingCount: () => pending.size }
 };

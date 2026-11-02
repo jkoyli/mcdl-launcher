@@ -25,7 +25,7 @@ const modpackExport = require('./modpack-export');
 const javaInstall = require('./java-install');
 const nbtEditor = require('./nbt-editor');
 const appLog = require('./app-log');
-const { writeFileAtomic, flushWrites } = require('./atomic-write');
+const { writeFileAtomic, flushWrites, pendingWrites } = require('./atomic-write');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -2069,7 +2069,9 @@ function beginShutdown(reason) {
 
   const win = mainWindow;
   const pending = inFlightCount();
-  console.log(`[shutdown] 开始优雅退出（${reason}），在飞任务 ${pending} 个`);
+  console.log(
+    `[shutdown] 开始优雅退出（${reason}），在飞任务 ${pending} 个，排队写入 ${pendingWrites()} 个`
+  );
 
   shutdownPromise = (async () => {
     if (pending > 0) {
@@ -5146,7 +5148,10 @@ function createWindow() {
    * 三条规则：
    *   - allowQuit 已置位（收尾完成）→ 放行，别拦；
    *   - shutdownPromise 已存在（正在等）→ 继续 preventDefault，吞掉重复点击，不重复等；
-   *   - 没有在飞任务 → 不拦，行为和以前完全一致（立即关）。
+   *   - 既没有在飞任务、也没有排队写入 → 不拦，行为和以前完全一致（立即关）。
+   *
+   * 注意后半个条件：只判断任务会漏掉「刚点了保存、写入还没落盘」的情况——
+   * 那时目标文件会停在旧值、还会留下 .tmp。所以排队中的原子写也算「还有事没做完」。
    */
   mainWindow.on('close', (event) => {
     if (allowQuit) return;
@@ -5156,7 +5161,7 @@ function createWindow() {
       return;
     }
 
-    if (inFlightCount() === 0) return;
+    if (inFlightCount() === 0 && pendingWrites() === 0) return;
 
     event.preventDefault();
     beginShutdown('window:close');
@@ -5169,8 +5174,8 @@ function createWindow() {
    */
   mainWindow.on('session-end', () => {
     if (allowQuit || shutdownPromise) return;
-    if (inFlightCount() === 0) return;
-    console.warn('[shutdown] 系统会话结束（关机/注销），尝试收尾在飞任务');
+    if (inFlightCount() === 0 && pendingWrites() === 0) return;
+    console.warn('[shutdown] 系统会话结束（关机/注销），尝试收尾在飞任务与未落盘的写入');
     beginShutdown('session-end');
   });
 
@@ -5320,8 +5325,8 @@ if (!gotSingleInstanceLock) {
    * 系统关机 / 任务栏关闭 / app.quit() 等非按钮路径的统一兜底。
    *
    * Electron 的顺序是 before-quit → 关闭窗口（触发 close）→ will-quit。
-   * 有在飞任务时先 preventDefault 把退出按住，再走同一套 beginShutdown；
-   * 没任务时不拦（保持原来的立即退出）。beginShutdown 结束时 allowQuit 已置位，
+   * 有在飞任务（或排队未落盘的写入）时先 preventDefault 把退出按住，再走同一套 beginShutdown；
+   * 都没有时不拦（保持原来的立即退出）。beginShutdown 结束时 allowQuit 已置位，
    * 它内部补发的 app.quit() 会真正退出，不会死循环。
    */
   app.on('before-quit', (event) => {
@@ -5333,7 +5338,7 @@ if (!gotSingleInstanceLock) {
       return;
     }
 
-    if (inFlightCount() === 0) return;
+    if (inFlightCount() === 0 && pendingWrites() === 0) return;
 
     event.preventDefault();
     beginShutdown('before-quit');

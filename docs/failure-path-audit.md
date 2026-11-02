@@ -3,12 +3,21 @@
 审计对象：`electron/`（Node 引擎 + 渲染进程）与 `mcdl/`（Java 安装后端）。
 结论优先，每一条都给出可核对的代码位置与实测证据。
 
+本文是**失败模式的唯一清单**：每一类失败、修复前的判定、修复点与测试都在这里。
+给开发者的硬约束写在[开发文档](development.md)，用户可见的症状与处理写在[排障](troubleshooting.md)，
+这两处只做链接，不再复述清单。
+
+> **阅读提示**：从「结论速览」到「建议实施顺序」是**修复前**的快照，里面的行号是当时的；
+> 加固后代码整体位移（`main.js` / `launch.js` 都长大了），行号已不可靠。核对现状请按符号名搜索
+> （例如 `verifyLaunchPlan`、`RENDERER_CRASH_LOOP`、`beginShutdown`）。「已落地的修复」一节按
+> 文件 + 符号记录，不依赖行号。
+
 ---
 
 ## 结论速览
 
-> 状态：本报告发现的问题**已全部修复**（见文末「已落地的修复」）。下表保留的是修复前的判定，
-> 用来说明「为什么当时的架构会原样复现这个错误模式」。
+> 状态：本报告发现的问题**已全部修复**（见文末「已落地的修复」；报告里标「经核实」的部分是逐条
+> 比对代码后补的更正）。下表保留的是修复前的判定，用来说明「为什么当时的架构会原样复现这个错误模式」。
 
 | # | PCL2 / HMCL 的错误模式 | 修复前是否复现 | 修复前的严重度 |
 |---|---|---|---|
@@ -110,6 +119,8 @@ if (!preflight.ok) {
 
 配套动作：`instances:maintenance` 目前只有 `redownload-assets` / `remove-assets` / `remove-libraries` / `clean`
 （`main.js:3185-3249`），缺一个「按闸门报告修复」的 `repair`，否则用户拿到清单也不知道怎么办。
+（最终落地的形态是独立的 `launcher:repair` IPC ＋ 实例管理菜单「检查并修复缺失文件」，
+**没有**往 `instances:maintenance` 里加 `repair` 动作；见文末 P0-1。）
 
 ---
 
@@ -132,6 +143,8 @@ return `-javaagent:${jar}=${apiRoot}`;
 - 已有文件只判存在，不判完整性。历史上一次被中断的下载留下了截断 jar，会**永久命中缓存**，
   之后每次启动都带着 `-javaagent` 一个坏 jar，表现为每次启动都闪退。
 - `fs.writeFile` 非原子；建议写临时文件后 `rename`，并校验哈希。
+
+> 以上三条已在 P2 落地（缓存体检 + 校验哈希 + 原子写），见「已落地的修复 → P2」。
 
 ---
 
@@ -291,7 +304,8 @@ Node 侧启动时**从不使用**这套校验（`redownload-assets` 是唯一带
 2. **P0**：`render-process-gone` 三级恢复 + 零依赖 `recovery.html`（第 3 节）。
 3. **P1**：spawn 失败语义修正（第 4 节）、Java 版本不匹配硬拦截（第 5 节）。
 4. **P2**：authlib-injector 哈希校验与原子写入（第 2 节）、启动后 15s 内退出的「启动失败」归类（第 6 节）、
-   `instances:maintenance` 增加 `repair`（按闸门清单定向重下）。
+   `instances:maintenance` 增加 `repair`（按闸门清单定向重下）。**实际落地**：修复动作做成独立的
+   `launcher:repair` IPC ＋ 实例管理菜单，没有加进 `instances:maintenance`（见 P0-1）。
 
 ---
 
@@ -310,14 +324,22 @@ Node 侧启动时**从不使用**这套校验（`redownload-assets` 是唯一带
 | `electron/renderer/renderer.js` + `index.html` | 新增 `dlgPreflight` 弹窗：逐条列出缺失项与原因，按钮「修复缺失文件」→ 修复成功后变成「重新启动」；实例管理菜单加「检查并修复缺失文件」 |
 | `electron/preload.js` | 暴露 `checkLaunchFiles` / `repairLaunchFiles` |
 
+顺带说明 `plan.warnings` 不再是死字段（第 1 节「更糟的是」那条）：首页大按钮与实例启动两处都读了
+`result.warnings[0]` 并显示在启动提示行（`requestLaunch()` / 实例启动的 `.then`）——放行但仍有非致命
+提示（例如版本 JSON 里有解析不出路径的库）时不会再被静默吞掉。
+
 校验策略（`hashCheck`）：
 
-- `'auto'`（默认）：客户端 jar、资源索引、log4j 配置、authlib 始终算 SHA-1；依赖库 / natives 只查存在与非空。
-  每次启动给几百 MB 的 libraries 算哈希会把启动拖到不可接受。
-- `true` / `false`：设置项 `verifyFiles` 可强制全量 / 全关。
+- `'auto'`（**不设置时的默认**）：客户端 jar、资源索引、log4j 配置、authlib 始终算 SHA-1；
+  依赖库 / natives 只查存在与非空。每次启动给几百 MB 的 libraries 算哈希会把启动拖到不可接受。
+- 设置项 `verifyFiles` 只有 `null` / `true` / `false` 三种取值（`null` = 走 `'auto'`；`true` = 所有带
+  `sha1` 的条目都比对；`false` = 只查存在与非空）。经核实实际是 `true` / `false` / `null`，
+  没有把 `'auto'` 暴露成设置值（`launch.js` 的 `hashModeFromSettings()` 把 `null` 映射成 `'auto'`）。
 
-修复策略：只处理清单里带 `url` 的条目，写 `.mcdl-part-*` 临时文件 → 校验大小与 SHA-1 → `rename`；
-校验失败的文件不会留在目标路径。没有下载地址的条目（整合包手工塞的 jar）留在 `skipped` 里明说。
+修复策略：只处理清单里带 `url` 的条目；先整份读进内存 → 校验大小与 SHA-1 → 通过后才落盘。
+经核实实际是 `writeFileAtomic()`（临时文件名 `.<文件名>.<pid>.<随机>.tmp` → `fsync` → `rename`），
+**不是** `.mcdl-part-*`——这个前缀在仓库里不存在。因为校验在写盘之前完成，校验失败的文件不会出现在
+目标路径。没有下载地址的条目（整合包手工塞的 jar）留在 `skipped` 里明说。
 
 ### 回放验证（真实应用 + CDP）
 
@@ -348,12 +370,18 @@ active       = []
 - `render-process-gone`：单次崩溃 → `reload()`；60 秒内第 3 次 → 判定崩溃循环，切恢复页。
   计数**不**在 `did-finish-load` 清零（否则「崩→重载成功→再崩」永远只算 1 次）。
 - `did-fail-load`（主文档）：切恢复页；忽略 `-3`（自己取消的导航），恢复页自身失败只记日志，避免死循环。
-- `unresponsive`：弹框给「继续等待 / 重新加载界面」。
+- `unresponsive`：弹框给「继续等待 / 重新加载界面」。经核实：点「重新加载界面」实际调的是
+  `forcefullyCrashRenderer()`，由 `render-process-gone` 的单次崩溃分支去 `reload()`，不是直接 `reload()`。
 - 恢复页与主界面之间用 `recoveryPageActive` 互斥，`loadMainPage()` 同时清空计数。
 
 `electron/renderer/recovery.html` + `recovery.js`（新增）：零依赖静态页（不加载主包），
 三个出口「重新加载界面 / 重置工作区 / 导出诊断」，并把原因、时间、崩溃次数、错误码显示出来。
 对应 IPC：`recovery:reload` / `recovery:reset-workspace` / `recovery:export-diagnostics`。
+经核实：恢复页用的是 preload 暴露的三个白名单方法（`reloadFromRecovery` / `resetWorkspace` /
+`exportDiagnostics`），没有为了 IPC 打开 `nodeIntegration`。
+
+「导出诊断」的实际形态：把 appLog 尾部、GPU 标志、崩溃记录与环境信息写成**一个 txt**，
+出口是系统保存对话框（默认文件名在桌面），不是静默打包到桌面。
 
 「重置工作区」只清 Chromium 侧缓存与界面状态（`Cache` / `Code Cache` / `GPUCache` /
 `Local Storage` / `Session Storage` / `Preferences` / `gpu-crash.json` 等），不动账号、实例、存档。
@@ -368,7 +396,8 @@ active       = []
 ## P2
 
 - **authlib-injector**：缓存文件先做最小体检（大小下限 + zip 魔数），不合格就删掉重下；
-  下载后按 `latest.json.checksums` 验 sha256/sha1；写临时文件后 `rename`。坏缓存不再永久命中。
+  下载后按 `latest.json.checksums` 验 sha256/sha1；写临时文件后 `rename`（走 `atomic-write.js`，含 fsync）。
+  坏缓存不再永久命中。
 - **启动失败归类**：15 秒内非 0 退出且无崩溃报告 → `earlyFailure: true`，游戏崩溃窗口换成
   「游戏没能启动」文案，并提示 Java 版本 / 文件完整性 / 参数三个方向。
 - **定向修复入口**：实例管理「检查并修复缺失文件」走同一套闸门与修复逻辑。
@@ -376,13 +405,17 @@ active       = []
 ## 测试
 
 ```
-electron/tests/launch-preflight.test.js   14 项
+electron/tests/launch-preflight.test.js   18 项
   清单结构 / 缺失 / 空文件 / 大小不符 / 默认只哈希小文件 / 客户端 jar 哈希 /
   natives 缺失 / optional 缺失不失败 / 清单为空拒绝 / 闸门先于 spawn /
   闸门放行 / 修复成功 / 修复校验失败不留残留文件 / 无下载地址留 skipped
+  （另有 4 项：启动进度按代码实际顺序、离线账号走完五步、闸门失败无 spawn 阶段、取消不 spawn）
 
-electron/ 全量                            199 项全部通过
+electron/ 全量                            224 项全部通过
 ```
+
+（经核实：`node --test --test-isolation=none` 实跑 `launch-preflight.test.js` 18 项、全量 224 项，
+0 失败。原文写的 14 / 199 是加固过程中的旧数字。）
 
 另外做了两次真实应用回放（都在独立的 `MCDL_USER_DATA` / `MCDL_GAME_DIR` 下进行）：
 
