@@ -187,7 +187,9 @@ if (openFolderBlock && !/assertOpenablePath/.test(openFolderBlock)) {
   ok('open-folder 的 path 走 assertOpenablePath（限定在数据目录 / 游戏目录内）');
 }
 
-if (!/async function writeSettings\(patch\)[\s\S]{0,1400}?assertJavaSelection/.test(mainJs)) {
+// writeSettings 现在多了第二个参数（options.trustWallFile），正则不能写死 `patch)`。
+// 窗口放宽到 2400 字符，是因为函数前半段多了壁纸字段的归一化与 wallFile 写入闸。
+if (!/async function writeSettings\(patch[\s\S]{0,2400}?assertJavaSelection/.test(mainJs)) {
   bad('IPC-05', 'settings:save: 写入 javaPath 前没有 assertJavaSelection 授权校验');
 } else {
   ok('settings:save 在落盘前校验 javaPath 授权');

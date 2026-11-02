@@ -7,9 +7,11 @@
   内容安全策略（第二道防线）：
   页面只加载自己的脚本，不联网，不允许对象/内联脚本。
   样式是内联 <style>，皮肤和实例图标是 data URL，所以 style-src / img-src 要放行它们。
+  自上传壁纸走主进程注册的 mcdl-media: 特权协议（本地 mp4 既不能直接 file://，
+  也不能 data: 转 base64），所以 img-src / media-src 额外放行这个 scheme。
   即使将来某处退化成 innerHTML 拼字符串，注入的 <script> / onerror 也不会执行。
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: mcdl-media:; font-src 'self' data:; media-src 'self' data: mcdl-media:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
 <title>MCDL Launcher · 空心囗</title>
 <!--
   ============================================================
@@ -489,7 +491,9 @@
     border: 1px solid var(--hairline);
     background: transparent;
     pointer-events: none;
-    z-index: 1;
+    /* 1 → 2：壁纸内层在 2 上是同级，靠 DOM 顺序（frame 在后）压住它，
+       保证 1px 边框与四角始终可见。 */
+    z-index: 2;
   }
 
   /* 左边框 / 上边框的极细刻度，不进入方框内部 */
@@ -589,6 +593,163 @@
 
   .frame-label__value {
     color: rgba(159, 208, 255, .46);
+  }
+
+  /* ---------------------------------------------------------
+     L1.5 自上传壁纸层
+     ---------------------------------------------------------
+     z 序（顺序不能错）：
+       1  #wallOuter  全屏 cover + 模糊 + 暗化
+       2  #wallInner  框内 contain + 同图虚化补边
+       2  .frame      1px 边框（DOM 在 wallLayer 之后，压住内层壁纸）
+       3  .main-stage 内容
+     壁纸层整体 pointer-events:none，交互全留给内容层。
+     默认样式下 #wallLayer 带 hidden，不产生任何绘制。
+     明确不做：外圈 chrome 的额外模糊、窗口透明、主题包联动。
+     --------------------------------------------------------- */
+  #wallLayer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    --wall-blur: 18px;
+    --wall-dim: .3;
+    --wall-inner-dim: .165;
+    --wall-inner-fit: contain;
+  }
+
+  #wallLayer[hidden] { display: none; }
+
+  #wallOuter {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+  }
+
+  /* inset:-6% 是给模糊留的余量：正好贴边时四边会有一圈透明毛边。 */
+  #wallOuter > img,
+  #wallOuter > video {
+    position: absolute;
+    inset: -6%;
+    width: 112%;
+    height: 112%;
+    object-fit: cover;
+    filter: blur(var(--wall-blur));
+    transform: translateZ(0);
+  }
+
+  /* 暗化必须是伪元素：跟 blur 放同一个节点上，暗化层的边缘也会被糊掉。 */
+  #wallOuter::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: rgba(0, 0, 0, var(--wall-dim));
+  }
+
+  #wallInner {
+    position: absolute;
+    left: calc(var(--frame-x) + 1px);
+    top: calc(var(--frame-y) + 1px);
+    width: calc(var(--frame-w) - 2px);
+    height: calc(var(--frame-h) - 2px);
+    z-index: 2;
+    overflow: hidden;
+  }
+
+  /* contain 的字母框补边：同图 cover + 虚化，不是纯黑。 */
+  #wallInnerFill {
+    position: absolute;
+    inset: 0;
+    background-position: center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    filter: blur(24px);
+    transform: scale(1.1);
+  }
+
+  #wallInnerFill[hidden] { display: none; }
+
+  #wallInnerMedia {
+    position: absolute;
+    inset: 0;
+  }
+
+  #wallInnerMedia > img,
+  #wallInnerMedia > video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: var(--wall-inner-fit);
+  }
+
+  /* 画中画关闭：内外同一张 cover。内层媒体铺成整窗尺寸再负偏移，
+     让两张图的裁切完全对齐，否则边框内侧会出现一道接缝。 */
+  #wallLayer.is-flat #wallInnerMedia > img,
+  #wallLayer.is-flat #wallInnerMedia > video {
+    position: absolute;
+    left: calc(-1 * (var(--frame-x) + 1px));
+    top: calc(-1 * (var(--frame-y) + 1px));
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+  }
+
+  /* 框内可读性遮罩：壁纸是用户给的任意亮图，没有这一层标题与设置项会糊。
+     复用 #bg::before / #bg::after 的网格与暗角，再叠一层跟 wallDim 联动的整体暗化。 */
+  #wallInner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.016) 0 1px, transparent 1px 4px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.016) 0 1px, transparent 1px 4px);
+    mix-blend-mode: soft-light;
+    opacity: .55;
+  }
+
+  #wallInner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background:
+      rgba(0, 0, 0, var(--wall-inner-dim)),
+      linear-gradient(115deg, rgba(6, 9, 14, .38) 0%, rgba(6, 9, 14, 0) 44%, rgba(6, 9, 14, .18) 100%),
+      radial-gradient(78% 62% at 50% 62%, rgba(0, 0, 0, .3), transparent 74%);
+  }
+
+  /* 软件渲染 / 视频省电：外层不再拿一份视频做全屏模糊，只保留框内那张。 */
+  #wallLayer.is-lite #wallOuter { display: none; }
+
+  /* 壁纸开启时，小字号内容块补一层底：图再亮，设置项的字也得读得清。
+     没开壁纸时这条规则不生效，默认样式的观感完全不变。 */
+  body.has-wallpaper .settings-block {
+    background: rgba(8, 12, 18, .58);
+  }
+
+  body.has-wallpaper .wall-card {
+    background: rgba(8, 12, 18, .42);
+  }
+
+  /* 没有底板的大字/说明文字补一点投影，防止亮色壁纸把字吃掉。 */
+  body.has-wallpaper .stage-copy,
+  body.has-wallpaper .stage-eyebrow,
+  body.has-wallpaper .stage-news,
+  body.has-wallpaper .create-intro,
+  body.has-wallpaper .create-head {
+    text-shadow: 0 1px 12px rgba(4, 8, 14, .6);
+  }
+
+  body.is-software #wallOuter > img,
+  body.is-software #wallOuter > video {
+    filter: none;
+  }
+
+  body.is-software #wallInnerFill {
+    filter: blur(10px);
   }
 
   /* ---------------------------------------------------------
@@ -3049,6 +3210,10 @@
     color: rgba(255, 154, 142, .78);
   }
 
+  .settings-status.is-ok {
+    color: rgba(159, 224, 178, .72);
+  }
+
   /* ---------------------------------------------------------
      设置页六页签：[L3] 游戏设置 / Java 管理 / 通用 / 外观 / 下载 / 关于
      --------------------------------------------------------- */
@@ -3208,6 +3373,329 @@
     line-height: 1.7;
     letter-spacing: .04em;
     color: rgba(199, 212, 230, .4);
+  }
+
+  /* ---------------------------------------------------------
+     个性化页的「行」容器
+     对应清单里的三种控件形态：LineToggle / LineSelect / LineButton。
+     未接入的项按同一套行样式占位（is-disabled + disabled 原生控件），
+     下一层接上时只换数据源，不动结构。
+     --------------------------------------------------------- */
+  .settings-line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 12px;
+    min-height: 30px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, .05);
+  }
+
+  .settings-line:last-of-type {
+    border-bottom: 0;
+  }
+
+  .settings-line__label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+    font-size: 9.5px;
+    line-height: 1.5;
+    letter-spacing: .03em;
+    color: rgba(224, 235, 248, .78);
+  }
+
+  .settings-line__hint {
+    font-size: 8px;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .settings-line__control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-self: end;
+  }
+
+  .settings-line__value {
+    max-width: 178px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8.5px;
+    letter-spacing: .04em;
+    color: rgba(159, 208, 255, .68);
+  }
+
+  .settings-line__chevron {
+    font-size: 12px;
+    line-height: 1;
+    color: rgba(199, 212, 230, .32);
+  }
+
+  .settings-line__actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .settings-line.is-disabled .settings-line__label,
+  .settings-line.is-disabled .settings-line__value {
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .settings-line__range {
+    gap: 9px;
+  }
+
+  /* LineSelect：右对齐的紧凑下拉 */
+  .line-select {
+    min-width: 92px;
+    max-width: 190px;
+    padding: 4px 6px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 3px;
+    background: rgba(10, 15, 23, .55);
+    color: rgba(226, 238, 251, .82);
+    font-family: inherit;
+    font-size: 8.5px;
+    letter-spacing: .04em;
+    cursor: pointer;
+  }
+
+  .line-select:disabled {
+    color: rgba(199, 212, 230, .28);
+    cursor: not-allowed;
+  }
+
+  .line-select option {
+    background: #0d131c;
+    color: #dfe9f6;
+  }
+
+  /* LineToggle：28×16 的小开关（不用图片，纯边框 + 圆点） */
+  .line-switch {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    width: 28px;
+    height: 16px;
+  }
+
+  .line-switch input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .line-switch input:disabled {
+    cursor: not-allowed;
+  }
+
+  .line-switch__track {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .04);
+    transition: background-color 160ms linear, border-color 160ms linear;
+  }
+
+  .line-switch__track::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(199, 212, 230, .55);
+    transition: transform 160ms cubic-bezier(.22, .8, .3, 1), background-color 160ms linear;
+  }
+
+  .line-switch input:checked + .line-switch__track {
+    border-color: rgba(159, 208, 255, .5);
+    background: rgba(159, 208, 255, .3);
+  }
+
+  .line-switch input:checked + .line-switch__track::after {
+    transform: translateX(12px);
+    background: #cfe6ff;
+  }
+
+  .line-switch input:focus-visible + .line-switch__track {
+    outline: 1px dashed rgba(159, 208, 255, .6);
+    outline-offset: 2px;
+  }
+
+  .line-switch input:disabled + .line-switch__track {
+    opacity: .45;
+  }
+
+  /* LineSlider：1px 轨道 + 空心圆点 */
+  .line-range {
+    width: 132px;
+    height: 14px;
+    margin: 0;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .line-range::-webkit-slider-runnable-track {
+    height: 1px;
+    background: rgba(255, 255, 255, .18);
+  }
+
+  .line-range::-webkit-slider-thumb {
+    width: 9px;
+    height: 9px;
+    margin-top: -4px;
+    border: 1px solid rgba(207, 230, 255, .9);
+    border-radius: 50%;
+    background: #0d131c;
+    box-shadow: 0 0 6px rgba(159, 208, 255, .45);
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  /* 壁纸库：缩略图 + 文件名 + 删除 */
+  .wall-library {
+    display: grid;
+    gap: 7px;
+    padding-top: 8px;
+  }
+
+  .wall-library__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .46);
+  }
+
+  .wall-library__head span:last-child {
+    font-weight: 400;
+    letter-spacing: .06em;
+    text-transform: none;
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .wall-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .wall-card {
+    position: relative;
+    width: 96px;
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, .02);
+    font-family: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms linear, box-shadow 150ms linear;
+  }
+
+  .wall-card:hover,
+  .wall-card:focus-visible {
+    border-color: rgba(159, 208, 255, .42);
+    outline: none;
+  }
+
+  .wall-card.is-active {
+    border-color: rgba(159, 208, 255, .62);
+    box-shadow: inset 0 0 0 1px rgba(159, 208, 255, .22);
+  }
+
+  .wall-card.is-missing {
+    border-color: rgba(255, 154, 142, .38);
+  }
+
+  .wall-card__thumb {
+    display: block;
+    width: 100%;
+    height: 52px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, .04);
+    object-fit: cover;
+  }
+
+  .wall-card__thumb--video {
+    display: grid;
+    place-items: center;
+    font-size: 15px;
+    color: rgba(159, 208, 255, .7);
+  }
+
+  .wall-card__name {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 8px;
+    letter-spacing: .02em;
+    color: rgba(224, 235, 248, .72);
+  }
+
+  .wall-card__meta {
+    display: block;
+    font-size: 7.5px;
+    letter-spacing: .02em;
+    color: rgba(199, 212, 230, .34);
+  }
+
+  .wall-card__badge {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: rgba(6, 10, 16, .72);
+    font-size: 7px;
+    letter-spacing: .08em;
+    color: rgba(159, 208, 255, .9);
+  }
+
+  .wall-card__del {
+    position: absolute;
+    right: -6px;
+    top: -6px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 50%;
+    background: #0d131c;
+    color: rgba(199, 212, 230, .7);
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .wall-card__del:hover {
+    border-color: rgba(255, 154, 142, .6);
+    color: #ff9c8e;
   }
 
   .settings-about__version {
@@ -6073,6 +6561,17 @@
     <span class="frame-label__value">74 × 78</span>
   </div>
 
+  <!-- 自上传壁纸（L1.5）。必须放在 .stage 内：.stage 有 isolation:isolate，
+       放到外面且 z-index ≥ 2 会直接盖住整个内容区。
+       这里只放固定容器，img / video 由 renderer.js 按 wallMedia 挂进来。 -->
+  <div id="wallLayer" hidden aria-hidden="true">
+    <div id="wallOuter"></div>
+    <div id="wallInner">
+      <div id="wallInnerFill" hidden></div>
+      <div id="wallInnerMedia"></div>
+    </div>
+  </div>
+
   <div class="frame" aria-hidden="true">
     <span class="frame__corner frame__corner--tl"></span>
     <span class="frame__corner frame__corner--tr"></span>
@@ -7034,20 +7533,236 @@
             </div>
           </div>
 
-          <!-- [L3] 个性化（外观） -->
+          <!-- [L3] 个性化（外观）
+               分三层：主题（未接入，控件先按清单占位）→ 背景（本轮实现）→ 窗口（未接入占位）。
+               占位控件用真实控件 + disabled，而不是一段文字：下一层接上时只换成数据源。 -->
           <div class="settings-pane" data-settings-pane="appearance" role="tabpanel" hidden>
-            <div class="settings-block">
-              <label class="settings-check" for="settingsDisableAnimations">
-                <input type="checkbox" id="settingsDisableAnimations">
-                <span>关闭动画（停掉过渡与极光层动画，界面更省电）</span>
-              </label>
 
-              <div class="settings-todo">
-                <strong>还没接入</strong>
-                <span>主题 / 导出主题 / 主题模式 / 色彩模式 / 缓存网络图片 / 背景加载方式 / 标题栏透明 / 窗口透明 / 抗锯齿 / 主题包管理</span>
+            <div class="settings-block">
+              <div class="settings-block__head">
+                <span>主题 / Theme</span>
+                <span>未接入 · 占位</span>
               </div>
 
-              <p class="settings-note">这些项依赖主题包与背景图片系统，当前只有深色一套外观。</p>
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">主题</span>
+                <span class="settings-line__control">
+                  <span class="settings-line__value">默认主题</span>
+                  <span class="settings-line__chevron" aria-hidden="true">›</span>
+                </span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">主题模式</span>
+                <span class="settings-line__control">
+                  <select class="line-select" disabled aria-label="主题模式（未接入）">
+                    <option>跟随系统</option>
+                    <option>浅色</option>
+                    <option>深色</option>
+                  </select>
+                </span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">色彩模式</span>
+                <span class="settings-line__control">
+                  <select class="line-select" disabled aria-label="色彩模式（未接入）">
+                    <option>默认</option>
+                    <option>自定义</option>
+                  </select>
+                </span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">抗锯齿</span>
+                <span class="settings-line__control">
+                  <select class="line-select" disabled aria-label="字体抗锯齿（未接入）">
+                    <option>跟随系统</option>
+                    <option>开</option>
+                    <option>关</option>
+                  </select>
+                </span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">导出当前主题</span>
+                <span class="settings-line__control">
+                  <button class="download-action" type="button" disabled>导出</button>
+                </span>
+              </div>
+
+              <!-- L4 主题包管理：这一层不做，但入口先占位，避免以后加功能时再拆结构 -->
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">
+                  主题包管理
+                  <span class="settings-line__hint">列表 / 导入 / 删除</span>
+                </span>
+                <span class="settings-line__control">
+                  <span class="settings-line__chevron" aria-hidden="true">›</span>
+                </span>
+              </div>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-block__head">
+                <span>背景 / Background</span>
+                <span>自上传 · 不联网</span>
+              </div>
+
+              <div class="settings-line">
+                <span class="settings-line__label">壁纸模式</span>
+                <span class="settings-line__control">
+                  <select class="line-select" id="settingsWallMode" aria-label="壁纸模式">
+                    <option value="default">默认样式</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </span>
+              </div>
+
+              <div id="wallCustomBlock" hidden>
+                <div class="settings-line">
+                  <span class="settings-line__label">
+                    当前壁纸
+                    <span class="settings-line__hint" id="settingsWallKind">—</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <span class="settings-line__value" id="settingsWallCurrent">未选择</span>
+                  </span>
+                  <div class="settings-line__actions">
+                    <button class="download-action" id="settingsWallPickImage" type="button">上传图片</button>
+                    <button class="download-action" id="settingsWallPickVideo" type="button">上传视频</button>
+                    <button class="download-action" id="settingsWallOpenFolder" type="button">
+                      <span>打开文件夹</span>
+                      <span aria-hidden="true">↗</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">
+                    画中画效果
+                    <span class="settings-line__hint">关 = 内外同一张 cover</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <label class="line-switch">
+                      <input type="checkbox" id="settingsWallPip" aria-label="画中画效果">
+                      <span class="line-switch__track" aria-hidden="true"></span>
+                    </label>
+                  </span>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">内层适配</span>
+                  <span class="settings-line__control">
+                    <select class="line-select" id="settingsWallFit" aria-label="内层适配方式">
+                      <option value="contain">完整显示（contain）</option>
+                      <option value="cover">铺满裁切（cover）</option>
+                    </select>
+                  </span>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">模糊强度</span>
+                  <span class="settings-line__control settings-line__range">
+                    <input class="line-range" id="settingsWallBlur" type="range" min="0" max="40" step="1" value="18" aria-label="框外模糊强度">
+                    <span class="settings-line__value" id="settingsWallBlurValue">18</span>
+                  </span>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">框外暗化</span>
+                  <span class="settings-line__control settings-line__range">
+                    <input class="line-range" id="settingsWallDim" type="range" min="0" max="70" step="1" value="30" aria-label="框外暗化">
+                    <span class="settings-line__value" id="settingsWallDimValue">30</span>
+                  </span>
+                </div>
+
+                <div class="settings-line">
+                  <span class="settings-line__label">
+                    背景加载方式
+                    <span class="settings-line__hint">多张时生效</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <select class="line-select" id="settingsWallPolicy" aria-label="背景加载方式">
+                      <option value="single">固定当前</option>
+                      <option value="startup">每次启动随机</option>
+                      <option value="random">每次切换随机</option>
+                    </select>
+                  </span>
+                </div>
+
+                <div class="settings-line is-disabled" aria-disabled="true">
+                  <span class="settings-line__label">
+                    缓存网络图片
+                    <span class="settings-line__hint">N/A · 不支持网络壁纸</span>
+                  </span>
+                  <span class="settings-line__control">
+                    <label class="line-switch">
+                      <input type="checkbox" disabled aria-label="缓存网络图片（不支持）">
+                      <span class="line-switch__track" aria-hidden="true"></span>
+                    </label>
+                  </span>
+                </div>
+
+                <div class="wall-library">
+                  <div class="wall-library__head">
+                    <span>壁纸库</span>
+                    <span id="wallListCount">0 张</span>
+                  </div>
+                  <div class="wall-list" id="wallList" role="list" aria-label="已上传的壁纸"></div>
+                  <p class="settings-note" id="wallListEmpty">还没有上传壁纸。图片会复制进数据目录，视频只记录路径、不复制。</p>
+                </div>
+              </div>
+
+              <!-- 状态行放在自定义块外面：默认样式下也要能看到"文件丢失""已保存"这类提示 -->
+              <div class="settings-actions">
+                <span class="settings-status" id="settingsWallStatus" role="status" aria-live="polite">—</span>
+              </div>
+
+              <p class="settings-note">
+                壁纸全部来自本机，不联网、不上传。视频用双视频解码（内外各一），1080p 约多占
+                60–120 MB 显存；软件渲染下会自动降为静态首帧。
+              </p>
+            </div>
+
+            <div class="settings-block">
+              <div class="settings-block__head">
+                <span>窗口 / Window</span>
+                <span>未接入 · 占位</span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">标题栏透明</span>
+                <span class="settings-line__control">
+                  <label class="line-switch">
+                    <input type="checkbox" disabled aria-label="标题栏透明（未接入）">
+                    <span class="line-switch__track" aria-hidden="true"></span>
+                  </label>
+                </span>
+              </div>
+
+              <div class="settings-line is-disabled" aria-disabled="true">
+                <span class="settings-line__label">窗口透明</span>
+                <span class="settings-line__control">
+                  <label class="line-switch">
+                    <input type="checkbox" disabled aria-label="窗口透明（未接入）">
+                    <span class="line-switch__track" aria-hidden="true"></span>
+                  </label>
+                </span>
+              </div>
+
+              <div class="settings-line">
+                <span class="settings-line__label">
+                  关闭动画
+                  <span class="settings-line__hint">停掉过渡、极光与壁纸视频</span>
+                </span>
+                <span class="settings-line__control">
+                  <label class="line-switch">
+                    <input type="checkbox" id="settingsDisableAnimations" aria-label="关闭动画">
+                    <span class="line-switch__track" aria-hidden="true"></span>
+                  </label>
+                </span>
+              </div>
             </div>
           </div>
 

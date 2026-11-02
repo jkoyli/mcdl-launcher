@@ -1,9 +1,13 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Menu, dialog, session: electronSession } = require('electron');
+const {
+  app, BrowserWindow, ipcMain, shell, Menu, dialog, session: electronSession,
+  protocol, nativeImage
+} = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { Readable } = require('node:stream');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const mcdl = require('./mcdl-service');
@@ -21,6 +25,24 @@ const modpackGuard = require('./modpack-guard');
 const IS_DEV = process.argv.includes('--dev');
 
 console.log(`[main] booting Electron app (dev=${IS_DEV})`);
+
+/**
+ * 自上传壁纸用的特权协议。
+ *
+ * 必须在 app ready 之前登记：Chromium 对未登记的自定义 scheme 会当成 opaque origin，
+ * `<img src>` 也许能显示，但 <video> 的 Range 请求与 CSP 的 `mcdl-media:` 匹配都不稳定。
+ * `standard: true` 是"这个 scheme 有 origin"的关键，`stream: true` 让响应可以是流
+ * （视频不能等整段读完再播）。
+ *
+ * 渲染进程是 loadFile() 起的（origin = file://），所以本地 mp4 既不能用 <video src="file://">
+ * 播放（会被 CSP / 本地文件策略拦），也不能塞 data: URL（base64 会把内存打爆）。
+ */
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'mcdl-media',
+    privileges: { standard: true, stream: true, bypassCSP: false, supportFetchAPI: false }
+  }
+]);
 
 /**
  * 数据目录选择。
@@ -347,6 +369,86 @@ const DEFAULT_SETTINGS = {
   javaPath: ''
 };
 
+// ---------------- 自上传壁纸：数据契约与文件边界 ----------------
+
+/**
+ * 壁纸只有两种来源，都在本机：
+ *   图片 → 复制进 <userData>/backgrounds/，settings 里只存裸文件名；
+ *   视频 → 只记绝对路径（不复制，几百 MB 的视频复制一份太贵），协议只服务"当前那一个"。
+ *
+ * 明确不做，别以后再问：
+ *   ✗ 网络壁纸 / URL 来源（清单里的 launcher.background.network.cache 因此标 N/A）
+ *   ✗ 主题包联动（背景独立于主题；主题包管理是另一层）
+ *   ✗ 外圈 chrome（标题栏 / 导航 / 右栏）的额外模糊
+ *   ✗ 窗口透明 / 标题栏透明（属另外两项）
+ */
+const WALL_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+const WALL_VIDEO_EXTS = new Set(['.mp4', '.webm']);
+const WALL_MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm'
+};
+
+const WALL_IMAGE_MAX_EDGE = 8192;                       // 再大就是显存杀手（8K 贴图 ~130 MB）
+const WALL_IMAGE_WARN_BYTES = 50 * 1024 * 1024;         // 只提示，不阻断
+const WALL_VIDEO_WARN_BYTES = 500 * 1024 * 1024;
+const WALL_THUMB_WIDTH = 160;
+const WALL_NAME_MAX = 4096;
+
+function wallpaperRoot() {
+  return path.join(app.getPath('userData'), 'backgrounds');
+}
+
+function wallpaperThumbRoot() {
+  return path.join(wallpaperRoot(), '.thumbs');
+}
+
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024 * 1024) return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (n >= 1024 * 1024) return `${Math.round(n / (1024 * 1024))} MB`;
+  return `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+
+/**
+ * wallFile 的取值随 wallMedia 变，校验也只做类型 / 形状（不碰文件系统）：
+ *   图片 = backgrounds 内的裸文件名（带分隔符就等于"读 backgrounds 外的任意文件"）；
+ *   视频 = 本机绝对路径，词法上必须过 assertLocalPath（拒 UNC / 设备路径）。
+ * 运行期文件是否还在，由渲染层的加载失败回落处理（L5）。
+ */
+function normalizeWallFile(raw, media) {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value || value.length > WALL_NAME_MAX || value.includes('\0')) return '';
+
+  if (media === 'video') {
+    try {
+      const resolved = pathGuard.assertLocalPath(value, '壁纸视频');
+      return WALL_VIDEO_EXTS.has(path.extname(resolved).toLowerCase()) ? resolved : '';
+    } catch {
+      return '';
+    }
+  }
+
+  if (!WALL_IMAGE_EXTS.has(path.extname(value).toLowerCase())) return '';
+  return path.basename(value) === value ? value : '';
+}
+
+function clampWallNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+const WALL_MODES = new Set(['default', 'custom']);
+const WALL_MEDIA_KINDS = new Set(['image', 'video']);
+const WALL_POLICIES = new Set(['single', 'random', 'startup']);
+const WALL_INNER_FITS = new Set(['contain', 'cover']);
+
 const DEFAULT_EXTRA_SETTINGS = {
   gameIsolation: 'auto',       // auto | isolated | global
   disableAprilFools: false,
@@ -354,7 +456,16 @@ const DEFAULT_EXTRA_SETTINGS = {
   versionListSource: 'auto',   // auto | official | bmclapi
   downloadSource: 'auto',
   addonSource: 'modrinth',     // modrinth（curseforge 需要 API Key）
-  disableAnimations: false
+  disableAnimations: false,
+  // 壁纸（L0 数据契约）：默认样式与改动前逐像素一致，全部默认值都不启用任何新图层。
+  wallMode: 'default',         // default | custom
+  wallMedia: 'image',          // image | video
+  wallFile: '',                // 图片 = backgrounds 内文件名；视频 = 绝对路径
+  wallPolicy: 'single',        // single | random | startup
+  wallBlur: 18,                // 0-40
+  wallDim: 30,                 // 0-70
+  wallInnerFit: 'contain',     // contain | cover
+  wallPip: true                // 画中画：true = 内外双图；false = 内外同一张 cover
 };
 
 const ISOLATION_MODES = new Set(['auto', 'isolated', 'global']);
@@ -368,6 +479,13 @@ function normalizeExtraSettings(raw) {
   const isolation = String(raw.gameIsolation || '').trim();
   const addon = String(raw.addonSource || '').trim().toLowerCase();
 
+  // 壁纸：枚举走白名单、数值 clamp、wallFile 按 media 校验形状。
+  // 任何一个不合法都回落到默认值，绝不把非法值写盘。
+  const wallMedia = WALL_MEDIA_KINDS.has(String(raw.wallMedia || '').trim())
+    ? String(raw.wallMedia).trim()
+    : 'image';
+  const wallPipRaw = raw.wallPip === undefined ? true : raw.wallPip;
+
   return {
     gameIsolation: ISOLATION_MODES.has(isolation) ? isolation : 'auto',
     disableAprilFools: Boolean(raw.disableAprilFools),
@@ -375,7 +493,21 @@ function normalizeExtraSettings(raw) {
     versionListSource: source(raw.versionListSource, 'auto'),
     downloadSource: source(raw.downloadSource, 'auto'),
     addonSource: ADDON_SOURCES.has(addon) ? addon : 'modrinth',
-    disableAnimations: Boolean(raw.disableAnimations)
+    disableAnimations: Boolean(raw.disableAnimations),
+    wallMode: WALL_MODES.has(String(raw.wallMode || '').trim())
+      ? String(raw.wallMode).trim()
+      : 'default',
+    wallMedia,
+    wallFile: normalizeWallFile(raw.wallFile, wallMedia),
+    wallPolicy: WALL_POLICIES.has(String(raw.wallPolicy || '').trim())
+      ? String(raw.wallPolicy).trim()
+      : 'single',
+    wallBlur: clampWallNumber(raw.wallBlur, 0, 40, 18),
+    wallDim: clampWallNumber(raw.wallDim, 0, 70, 30),
+    wallInnerFit: WALL_INNER_FITS.has(String(raw.wallInnerFit || '').trim())
+      ? String(raw.wallInnerFit).trim()
+      : 'contain',
+    wallPip: wallPipRaw === undefined || wallPipRaw === null ? true : Boolean(wallPipRaw)
   };
 }
 
@@ -408,7 +540,14 @@ async function readJavaIdentity() {
   }
 }
 
-async function writeSettings(patch) {
+/**
+ * @param {object} patch
+ * @param {{trustWallFile?: boolean}} [options]
+ *   trustWallFile 只给 wallpaper:pick 用：视频壁纸存的是绝对路径，而协议会照着
+ *   settings.wallFile 去读文件，所以渲染进程不能自己改它（否则等于一条"按扩展名
+ *   读任意本地文件"的通道）。图片壁纸是 backgrounds 内的裸文件名，随时可改。
+ */
+async function writeSettings(patch, options = {}) {
   const current = await readSettings();
   const merged = launcher.normalizeSettings({ ...current, ...patch });
   const next = {
@@ -419,6 +558,15 @@ async function writeSettings(patch) {
     javaPath: merged.javaPath,
     ...normalizeExtraSettings({ ...current, ...patch })
   };
+
+  const requestedWallFile =
+    patch && typeof patch.wallFile === 'string' ? patch.wallFile.trim() : '';
+  if (!options.trustWallFile && requestedWallFile && requestedWallFile !== current.wallFile) {
+    const isManagedName = normalizeWallFile(requestedWallFile, 'image') === requestedWallFile;
+    if (!isManagedName) {
+      throw new Error('壁纸文件只能通过「上传图片 / 上传视频」选择');
+    }
+  }
 
   // javaPath 会直接变成 spawn 的目标：换了值就必须过授权（对话框登记过 / 启动器自己枚举到的），
   // 否则渲染进程（或一次 XSS）只要写设置就能让启动器执行任意程序。
@@ -984,6 +1132,450 @@ function sanitizeDisplayName(value) {
     .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// ---------------- 自上传壁纸：文件 / 协议 ----------------
+
+async function ensureWallpaperDirs() {
+  await fs.mkdir(wallpaperThumbRoot(), { recursive: true });
+}
+
+function hashFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fsSync.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/** 文件名会进 URL 与资源管理器：只留字母 / 数字 / 下划线 / 连字符。 */
+function sanitizeWallBaseName(raw) {
+  const base = path.basename(String(raw || '')).replace(/\.[^.]+$/, '');
+  const cleaned = base
+    .replace(/[^\p{L}\p{N}_-]+/gu, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+  return cleaned || 'wallpaper';
+}
+
+function wallpaperFileName(hash, originalName, ext) {
+  return `${String(hash).slice(0, 12)}-${sanitizeWallBaseName(originalName)}${ext}`;
+}
+
+function wallpaperThumbName(name) {
+  return `${name}.png`;
+}
+
+function wallpaperLabel(name) {
+  const stripped = path.basename(name).replace(/^[0-9a-f]{12}-/, '');
+  return stripped || path.basename(name);
+}
+
+function wallpaperMediaUrl(kind, name) {
+  if (kind === 'video') {
+    // 绝对路径里有盘符、反斜杠、中文：base64url 之后只剩 [A-Za-z0-9_-]，
+    // 不会和 URL 的路径规范化（.. / %5C / 大小写）打架。
+    return `mcdl-media://ext/${Buffer.from(name, 'utf8').toString('base64url')}`;
+  }
+  return `mcdl-media://bg/${encodeURIComponent(name)}`;
+}
+
+function sameLocalPath(a, b) {
+  const left = path.resolve(String(a || ''));
+  const right = path.resolve(String(b || ''));
+  return process.platform === 'win32'
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+/**
+ * 只认扩展名不够：改名的 exe / 网页被当背景加载时，至少会表现为"选了但不显示"。
+ * 这里按文件头核对真实容器格式（和皮肤 PNG 校验同一套思路）。
+ */
+async function wallpaperSignature(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  let head;
+  try {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      head = Buffer.alloc(16);
+      await handle.read(head, 0, 16, 0);
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
+  }
+
+  const ascii = head.toString('latin1');
+  if (ext === '.png') return head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+  if (ext === '.jpg' || ext === '.jpeg') return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  if (ext === '.gif') return ascii.startsWith('GIF87a') || ascii.startsWith('GIF89a');
+  if (ext === '.webp') return ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP';
+  if (ext === '.mp4') return ascii.slice(4, 8) === 'ftyp';
+  if (ext === '.webm') return head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3;
+  return false;
+}
+
+/**
+ * 生成缩略图。
+ * 列表里如果直接拿原图当 64px 缩略图，Chromium 会按原尺寸解码 —— 一张 8K 就 ~130 MB，
+ * 几张就能把渲染进程顶爆。所以落盘一份 160px 的 png，顺手拿到真实尺寸做超大图提示。
+ */
+async function makeWallpaperThumb(filePath, name) {
+  try {
+    const image = nativeImage.createFromPath(filePath);
+    if (image.isEmpty()) return null;
+    const size = image.getSize();
+    const thumb = image.resize({ width: WALL_THUMB_WIDTH, quality: 'good' });
+    await ensureWallpaperDirs();
+    await fs.writeFile(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)), thumb.toPNG());
+    return { width: size.width, height: size.height };
+  } catch (error) {
+    console.warn('[wallpaper] 缩略图生成失败:', error.message);
+    return null;
+  }
+}
+
+async function importWallpaperImage(sourcePath) {
+  const ext = path.extname(sourcePath).toLowerCase();
+  if (!WALL_IMAGE_EXTS.has(ext)) {
+    throw new Error('只支持 png / jpg / jpeg / webp / gif 图片');
+  }
+
+  let stat;
+  try {
+    stat = await fs.stat(sourcePath);
+  } catch {
+    throw new Error('找不到这个文件');
+  }
+  if (!stat.isFile()) throw new Error('请选择一个文件');
+
+  if (!(await wallpaperSignature(sourcePath))) {
+    throw new Error('这个文件的内容不是有效图片（扩展名被改过？）');
+  }
+
+  const hash = await hashFile(sourcePath);
+  const name = wallpaperFileName(hash, path.basename(sourcePath), ext);
+  const target = path.join(wallpaperRoot(), name);
+
+  let exists = null;
+  try {
+    exists = await fs.stat(target);
+  } catch {
+    exists = null;
+  }
+
+  if (!exists) {
+    await ensureWallpaperDirs();
+    // 用户直接挑 backgrounds 里已有的那张：源和目标是同一个文件，不能再拷一次。
+    if (!sameLocalPath(sourcePath, target)) {
+      await fs.copyFile(sourcePath, target);
+    }
+  }
+
+  // 同一张图重复上传时走哈希命中，只在缩略图缺失时补一次。
+  let thumbInfo = null;
+  try {
+    await fs.stat(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)));
+  } catch {
+    thumbInfo = await makeWallpaperThumb(target, name);
+  }
+  if (!thumbInfo) thumbInfo = { width: 0, height: 0 };
+
+  return { name, label: wallpaperLabel(name), size: stat.size, ...thumbInfo };
+}
+
+async function inspectWallpaperVideo(sourcePath) {
+  const target = pathGuard.assertLocalPath(sourcePath, '壁纸视频');
+  const ext = path.extname(target).toLowerCase();
+  if (!WALL_VIDEO_EXTS.has(ext)) throw new Error('只支持 mp4 / webm 视频');
+
+  let stat;
+  try {
+    stat = await fs.stat(target);
+  } catch {
+    throw new Error('找不到这个文件');
+  }
+  if (!stat.isFile()) throw new Error('请选择一个文件');
+
+  if (!(await wallpaperSignature(target))) {
+    throw new Error('这个文件的内容不是有效视频（扩展名被改过？）');
+  }
+
+  let real = target;
+  try {
+    real = await fs.realpath(target);
+  } catch {
+    real = target;
+  }
+
+  return { path: real, size: stat.size };
+}
+
+async function listWallpapers(settings) {
+  const root = wallpaperRoot();
+  const items = [];
+  let entries = [];
+
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch {
+    entries = [];
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (entry.name.startsWith('.')) continue;
+    if (!WALL_IMAGE_EXTS.has(path.extname(entry.name).toLowerCase())) continue;
+
+    let stat = null;
+    try {
+      stat = await fs.stat(path.join(root, entry.name));
+    } catch {
+      continue;
+    }
+
+    let thumb = '';
+    try {
+      await fs.stat(path.join(wallpaperThumbRoot(), wallpaperThumbName(entry.name)));
+      thumb = `mcdl-media://thumb/${encodeURIComponent(wallpaperThumbName(entry.name))}`;
+    } catch {
+      // 老数据（或 nativeImage 解不了的 webp/gif）：退回原图，至少能显示
+      thumb = wallpaperMediaUrl('image', entry.name);
+    }
+
+    items.push({
+      name: entry.name,
+      label: wallpaperLabel(entry.name),
+      kind: 'image',
+      external: false,
+      size: stat.size,
+      mtime: stat.mtimeMs,
+      url: wallpaperMediaUrl('image', entry.name),
+      thumb,
+      missing: false
+    });
+  }
+
+  items.sort((a, b) => (a.mtime || 0) - (b.mtime || 0));
+
+  // 引用的图片被手动删掉（用户直接动 backgrounds 目录）时也算"丢失"。
+  let missing = false;
+  if (settings.wallFile && settings.wallMedia === 'image') {
+    const known = items.some((item) => item.name === settings.wallFile);
+    if (!known) missing = true;
+  }
+
+  // 视频只在"当前引用"里存在：它没有被复制进来，列表里也就只有这一条。
+  if (settings.wallMedia === 'video' && settings.wallFile) {
+    let stat = null;
+    try {
+      stat = await fs.stat(settings.wallFile);
+    } catch {
+      stat = null;
+    }
+    const exists = Boolean(stat && stat.isFile());
+    if (!exists) missing = true;
+
+    items.push({
+      name: settings.wallFile,
+      label: path.basename(settings.wallFile),
+      kind: 'video',
+      external: true,
+      size: exists ? stat.size : 0,
+      mtime: exists ? stat.mtimeMs : 0,
+      url: exists ? wallpaperMediaUrl('video', settings.wallFile) : '',
+      thumb: '',
+      missing: !exists
+    });
+  }
+
+  for (const item of items) {
+    item.active = item.kind === 'video'
+      ? sameLocalPath(item.name, settings.wallFile)
+      : item.name === settings.wallFile;
+  }
+
+  return { root, items, missing };
+}
+
+function parseByteRange(header, size) {
+  const value = String(header || '').trim();
+  if (!value) return null;
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (!match) return { invalid: true };
+  if (match[1] === '' && match[2] === '') return { invalid: true };
+
+  let start;
+  let end;
+  if (match[1] === '') {
+    // `bytes=-500`：最后 500 字节
+    const length = Number(match[2]);
+    if (!Number.isFinite(length) || length <= 0) return { invalid: true };
+    start = Math.max(0, size - length);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return { invalid: true };
+  if (start > end || start >= size) return { invalid: true };
+  return { start, end };
+}
+
+/**
+ * 返回可被 <video> 拖动的响应：Range → 206 + Content-Range。
+ * 用 fs.createReadStream 而不是 readFile：几百 MB 的视频不能整段进内存。
+ */
+async function streamWallpaperMedia(request, filePath, mime, cacheMode) {
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch {
+    return new Response('Not Found', { status: 404 });
+  }
+  if (!stat.isFile()) return new Response('Not Found', { status: 404 });
+
+  const headers = new Headers({
+    'Content-Type': mime,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': cacheMode === 'immutable'
+      ? 'public, max-age=31536000, immutable'
+      : 'no-cache'
+  });
+
+  const range = parseByteRange(request.headers.get('range'), stat.size);
+  if (range && range.invalid) {
+    headers.set('Content-Range', `bytes */${stat.size}`);
+    headers.set('Content-Length', '0');
+    return new Response(null, { status: 416, headers });
+  }
+
+  const start = range ? range.start : 0;
+  const end = range ? range.end : stat.size - 1;
+  const length = stat.size === 0 ? 0 : end - start + 1;
+
+  headers.set('Content-Length', String(length));
+  if (range) headers.set('Content-Range', `bytes ${start}-${end}/${stat.size}`);
+
+  if (request.method === 'HEAD' || length === 0) {
+    return new Response(null, { status: range ? 206 : 200, headers });
+  }
+
+  const stream = fsSync.createReadStream(filePath, { start, end });
+  // 客户端取消（拖进度条 / 关闭页面）时流会被提前销毁：错误要自己接住，
+  // 否则会冒泡成 uncaughtException。
+  stream.on('error', (error) => {
+    if (error && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      console.warn('[wallpaper] 读取中断:', error.message);
+    }
+  });
+  return new Response(Readable.toWeb(stream), {
+    status: range ? 206 : 200,
+    headers
+  });
+}
+
+async function serveWallpaperMedia(request) {
+  const url = new URL(request.url);
+  const host = String(url.hostname || '').toLowerCase();
+  const raw = url.pathname.replace(/^\/+/, '');
+  let segment;
+  try {
+    segment = decodeURIComponent(raw);
+  } catch {
+    throw new Error('壁纸 URL 编码非法');
+  }
+
+  if (host === 'bg' || host === 'thumb') {
+    const isThumb = host === 'thumb';
+    if (!segment || path.basename(segment) !== segment || segment.includes('\0')) {
+      throw new Error('壁纸名称非法');
+    }
+
+    const root = isThumb ? wallpaperThumbRoot() : wallpaperRoot();
+    const checkName = isThumb ? segment.replace(/\.png$/i, '') : segment;
+    const ext = path.extname(checkName).toLowerCase();
+    if (!WALL_IMAGE_EXTS.has(ext)) throw new Error('壁纸扩展名不在白名单');
+
+    const target = path.join(root, segment);
+    const real = await pathGuard.assertInsideReal(root, target, '壁纸文件');
+    return streamWallpaperMedia(
+      request,
+      real,
+      WALL_MIME[path.extname(real).toLowerCase()] || 'application/octet-stream',
+      'immutable'
+    );
+  }
+
+  if (host === 'ext') {
+    let target;
+    try {
+      target = Buffer.from(segment, 'base64url').toString('utf8');
+    } catch {
+      throw new Error('视频路径编码非法');
+    }
+
+    const resolved = pathGuard.assertLocalPath(target, '壁纸视频');
+    const ext = path.extname(resolved).toLowerCase();
+    if (!WALL_VIDEO_EXTS.has(ext)) throw new Error('视频扩展名不在白名单');
+
+    // 只服务"当前设置里那一支视频"：否则这条通道就是"按扩展名读任意本地文件"。
+    const settings = await readSettings();
+    if (settings.wallMedia !== 'video' || !settings.wallFile) {
+      throw new Error('当前没有启用视频壁纸');
+    }
+    if (!sameLocalPath(resolved, settings.wallFile)) {
+      throw new Error('不是当前壁纸视频');
+    }
+
+    const real = await fs.realpath(resolved);
+    return streamWallpaperMedia(request, real, WALL_MIME[ext] || 'video/mp4', 'no-cache');
+  }
+
+  throw new Error(`未知的壁纸 host：${host}`);
+}
+
+function registerWallpaperProtocol() {
+  protocol.handle('mcdl-media', async (request) => {
+    try {
+      return await serveWallpaperMedia(request);
+    } catch (error) {
+      console.warn('[wallpaper] 拒绝媒体请求:', request.url, error.message);
+      return new Response('Forbidden', {
+        status: 403,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
+    }
+  });
+}
+
+async function removeWallpaperEntry(payload, settings) {
+  const kind = payload && payload.kind === 'video' ? 'video' : 'image';
+  const name = String((payload && payload.name) || '');
+  if (!name) throw new Error('缺少壁纸名称');
+
+  if (kind === 'video') {
+    // 视频是"引用"，不是拷贝：只清引用，绝不删用户的源文件。
+    if (settings.wallMedia !== 'video' || !sameLocalPath(name, settings.wallFile)) {
+      throw new Error('这不是当前的视频壁纸');
+    }
+    return;
+  }
+
+  if (path.basename(name) !== name) throw new Error('壁纸名称非法');
+  if (!WALL_IMAGE_EXTS.has(path.extname(name).toLowerCase())) throw new Error('壁纸名称非法');
+
+  const target = path.join(wallpaperRoot(), name);
+  // realpath 之后再删：backgrounds 里如果有人放了 junction，字符串判断拦不住。
+  const real = await pathGuard.assertInsideReal(wallpaperRoot(), target, '壁纸文件');
+  await fs.rm(real, { force: true });
+  await fs.rm(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)), { force: true });
 }
 
 function registerIpcHandlers() {
@@ -2354,6 +2946,105 @@ function registerIpcHandlers() {
     return readSettings();
   });
 
+  // ---------------- 壁纸 ----------------
+
+  /** 列表 + 当前设置一次给全：渲染层只需要一次往返就能画好壁纸。 */
+  ipcMain.handle('wallpaper:list', async (event) => {
+    assertAppWindow(event);
+    const settings = await readSettings();
+    return { settings, ...(await listWallpapers(settings)) };
+  });
+
+  /**
+   * 上传壁纸。
+   * 图片复制进 backgrounds（哈希名，重名即命中）；视频只记路径，不复制。
+   * 返回更新后的设置与列表，渲染层不用再自己拼一次。
+   */
+  ipcMain.handle('wallpaper:pick', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const media = payload && payload.media === 'video' ? 'video' : 'image';
+
+    const result = await dialog.showOpenDialog(win, {
+      title: media === 'video' ? '选择壁纸视频' : '选择壁纸图片',
+      buttonLabel: '设为壁纸',
+      properties: ['openFile'],
+      filters: media === 'video'
+        ? [{ name: '视频', extensions: ['mp4', 'webm'] }]
+        : [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+
+    const source = result.filePaths[0];
+    const warnings = [];
+    let wallFile = '';
+    let item = null;
+
+    if (media === 'video') {
+      const info = await inspectWallpaperVideo(source);
+      wallFile = info.path;
+      if (info.size > WALL_VIDEO_WARN_BYTES) {
+        warnings.push(
+          `这个视频有 ${formatBytes(info.size)}：双解码会多占 60–120 MB 显存，4K 可能掉帧`
+        );
+      }
+      item = {
+        kind: 'video',
+        label: path.basename(info.path),
+        size: info.size,
+        width: 0,
+        height: 0
+      };
+    } else {
+      const imported = await importWallpaperImage(source);
+      wallFile = imported.name;
+      if (imported.size > WALL_IMAGE_WARN_BYTES) {
+        warnings.push(`这张图有 ${formatBytes(imported.size)}，加载与模糊可能影响流畅度`);
+      }
+      if (imported.width > WALL_IMAGE_MAX_EDGE || imported.height > WALL_IMAGE_MAX_EDGE) {
+        warnings.push(
+          `这张图是 ${imported.width}×${imported.height}，超过 8K 会很吃显存`
+        );
+      }
+      item = {
+        kind: 'image',
+        label: imported.label,
+        size: imported.size,
+        width: imported.width,
+        height: imported.height
+      };
+    }
+
+    const settings = await writeSettings(
+      { wallMode: 'custom', wallMedia: media, wallFile },
+      { trustWallFile: true }
+    );
+    return { settings, ...(await listWallpapers(settings)), item, warnings };
+  });
+
+  /** 删除壁纸：图片删文件，视频只清引用（源文件是用户的，不碰）。 */
+  ipcMain.handle('wallpaper:remove', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const current = await readSettings();
+    await removeWallpaperEntry(payload, current);
+
+    const removedName = String((payload && payload.name) || '');
+    const wasActive = current.wallMedia === 'video'
+      ? sameLocalPath(removedName, current.wallFile)
+      : removedName === current.wallFile;
+
+    // 删掉正在用的那张 → 回默认样式，不能让设置指向一个不存在的文件。
+    const patch = wasActive ? { wallFile: '', wallMode: 'default' } : {};
+    const settings = await writeSettings(patch, { trustWallFile: true });
+    return { settings, ...(await listWallpapers(settings)) };
+  });
+
+  ipcMain.handle('wallpaper:open-folder', async (event) => {
+    assertAppWindow(event);
+    await openFolderPath(wallpaperRoot());
+    return true;
+  });
+
   /** 关于页：版本、运行时与数据目录。 */
   ipcMain.handle('app:info', async (event) => {
     assertAppWindow(event);
@@ -2562,6 +3253,13 @@ if (!gotSingleInstanceLock) {
     }
 
     registerIpcHandlers();
+
+    // 壁纸目录与协议要在窗口加载前就位：renderer 一启动就会去取 wallpaper:list。
+    ensureWallpaperDirs().catch((error) => {
+      console.warn('[wallpaper] 无法创建壁纸目录:', error.message);
+    });
+    registerWallpaperProtocol();
+
     createWindow();
 
     readSettings()

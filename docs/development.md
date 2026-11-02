@@ -439,7 +439,15 @@ Modrinth 没有世界分类，CurseForge 需要 API Key。
 | `versionListSource` | `auto` | 版本列表的 `--source`：`auto` / `official` / `bmclapi` |
 | `downloadSource` | `auto` | 安装原版 / 加载器时的 `--source` |
 | `addonSource` | `modrinth` | 附加内容默认源；CurseForge 需要 API Key，选项禁用 |
-| `disableAnimations` | `false` | 给 `body` 加 `no-motion`，停掉过渡与极光层动画 |
+| `disableAnimations` | `false` | 给 `body` 加 `no-motion`，停掉过渡、极光层与壁纸视频 |
+| `wallMode` | `default` | 壁纸模式：`default` 原样 / `custom` 启用自上传壁纸 |
+| `wallMedia` | `image` | `image` / `video`，由「上传图片 / 上传视频」写入，渲染层不能单独改 |
+| `wallFile` | `''` | 图片 = `backgrounds/` 内的裸文件名；视频 = 本机绝对路径 |
+| `wallPolicy` | `single` | `single` 固定 / `startup` 每次启动随机一次 / `random` 每次重建随机 |
+| `wallBlur` | `18` | 框外模糊 0–40px |
+| `wallDim` | `30` | 框外暗化 0–70%，框内另叠 `0.12 + 0.6×` |
+| `wallInnerFit` | `contain` | 框内 contain / cover；画中画关闭时该控件禁用 |
+| `wallPip` | `true` | 画中画：`true` 内外双图，`false` 内外同一张 cover |
 
 - 游戏设置页签保留表单 + 「保存设置」；其余页签的控件改完立即 `saveSettings`（`saveSettingsPatch()`）。
 - 下载源三项会分别进入 `mcdl --list`、`--install`、`--install-loader`、`--list-loaders`。
@@ -447,6 +455,34 @@ Modrinth 没有世界分类，CurseForge 需要 API Key。
   Java 还没接入（按钮禁用并注明）。
 - 关于页签通过 `app:info` 显示版本、Electron / Chromium / Node、平台与数据目录，并提供项目主页 /
   开源许可两个外链；用户协议入口未单独提供。
+
+外观页签按 `docs/history/ui-tree-controls.html` 的 [L3] 个性化分层：**主题**（主题 / 主题模式 /
+色彩模式 / 抗锯齿 / 导出当前主题 / 主题包管理）与**窗口**（标题栏透明 / 窗口透明）这一轮不做，
+但都按 `LineSelect` / `LineToggle` / `LineButton` 的真实控件先占位（`is-disabled` + 原生 `disabled`），
+下一层接上时只换数据源，不动结构。**背景**一组是已实现的部分，见下节。
+
+### 自上传壁纸（清单外新增）
+
+清单里的 `launcher.background.load_policy`（背景加载方式）落在 `wallPolicy` 上，其余 7 个键是新增的。
+
+- **图层**：`#wallLayer` 插在 `.stage` 内、`.frame` 之前（`.stage` 有 `isolation:isolate`，
+  放到外面且 z-index ≥ 2 会盖住整个内容区）。`#wallOuter` 全屏 `cover` + `blur(var(--wall-blur))`
+  + 暗化伪元素；`#wallInner` 用 `--frame-x/y/w/h` 对齐边框内侧，`contain` + 同图虚化补边；
+  `.frame` 的 z-index 从 1 提到 2，靠 DOM 顺序压住内层壁纸，保证 1px 边框与四角可见。
+- **可读性**：`#wallInner` 里叠了一层跟随 `wallDim` 的暗化 + `#bg` 原有的暗角与网格；
+  壁纸开启时 `body.has-wallpaper` 会给 `.settings-block` 补半透明底、给无底板的大字补投影。
+- **画中画关闭**：内层媒体铺成 `100vw × 100vh` 再用负偏移对齐，内外是同一张连续的 cover 图；
+  在小盒子里直接 `object-fit:cover` 会以盒子为中心重新裁切，边框处出现接缝。
+- **视频**：内外各一个 `<video>`（`muted loop playsinline preload=auto`），内层为主时钟，
+  每 500ms 检查漂移、超过 0.3s 就把外层 seek 过去；切后台双暂停；软渲染 / 关动画时降为静态首帧
+  并隐藏外壳（`is-lite`）。1080p 双解码大约多占 60–120 MB 显存。
+- **文件**：`<userData>/backgrounds/` 存图片（`<sha1 前 12 位>-<原名>.<ext>`）与 `.thumbs/` 里的
+  160px 缩略图；视频只记绝对路径、**不复制也不删除**。删除当前壁纸会把 `wallMode` 一并回落到
+  `default`。
+- **协议**：`mcdl-media://bg/<name>` 服务图片、`mcdl-media://thumb/<name>` 服务缩略图、
+  `mcdl-media://ext/<base64url>` 服务**当前那一支**视频；响应支持 `Range`（206 + `Content-Range`），
+  否则 `<video>` 拖进度会先读完整段。登记在 `app.whenReady()` 之前，特权为
+  `{ standard: true, stream: true }`，CSP 里放行 `img-src` / `media-src`。
 
 ### 世界管理（对照 [L4] 世界管理 与 [L4] 世界详情）
 
@@ -546,15 +582,20 @@ Modrinth 没有世界分类，CurseForge 需要 API Key。
 - IPC handler 的调用方校验（`assertAppWindow`）除了比对 webContents，还要求
   `event.senderFrame === mainWindow.webContents.mainFrame` 且来源是 `file://`；
   这样将来引入 iframe / webview 时，子框架也调不到这些特权通道。
+- **壁纸只能从对话框来**：`mcdl-media://` 的 `bg` / `thumb` 通道只接受 `backgrounds/` 内的裸文件名
+  （`path.basename` 相等 + realpath 越界判定），`ext` 通道只服务"当前 `settings.wallFile`"那一个路径。
+  对应地，`settings:save` 禁止渲染进程把 `wallFile` 改成 `backgrounds/` 之外的值——否则这条协议就是
+  "按扩展名读任意本地文件"的通道。上传时还会核对文件头（改名的 exe 过不了）。
 - 启动入口不要加 `--no-sandbox`：它会关掉整个 Chromium 进程沙箱，`webPreferences.sandbox` 随之失效。
   排查问题请用 `npm run start:troubleshoot`。
 
 回归检查（三份脚本，各管一层）：
 
 ```powershell
-node docs/security/audit.js          # 静态边界（命中高危退出码 1，可接 CI）
-node docs/security/poc.js            # 攻击模拟：每条发现一个断言
-node docs/security/runtime-check.js  # 运行时：真的启动一次，验证 IPC 与 CSP 生效
+node docs/security/audit.js            # 静态边界（命中高危退出码 1，可接 CI）
+node docs/security/poc.js              # 攻击模拟：每条发现一个断言
+node docs/security/runtime-check.js    # 运行时：真的启动一次，验证 IPC 与 CSP 生效
+node docs/security/wallpaper-check.js  # 壁纸：协议 / 图层 / 视频同步 / 删除与降级
 ```
 
 细节与历史见 [security-audit.md](security-audit.md)。
@@ -586,8 +627,8 @@ cd electron; npm.cmd run dev   # 等价（需先安装依赖）
 - 资源包启用 / 禁用：要读写 `options.txt` 的 `resourcePacks`，未做。
 - 世界的「进入世界」直启（`--quickPlaySingleplayer`）、数据包启用 / 禁用（`level.dat` 的 DataPacks）
   与新建世界未做。
-- 设置页的外观页签：主题包 / 主题模式 / 色彩模式 / 背景 / 标题栏透明 / 窗口透明 / 抗锯齿仍未接入，
-  目前只有「关闭动画」与深色一套外观。
+- 设置页的外观页签：背景（自上传壁纸）已接入；主题包 / 主题模式 / 色彩模式 / 标题栏透明 /
+  窗口透明 / 抗锯齿仍是 `disabled` 占位，等主题包层一起做。
 - Java 管理的自动安装 / 恢复 Java 未接入，需要 Adoptium 之类的下载与运行时注册流程。
 - 设置页的「预设」「版本隔离（按实例覆盖）」仍未做。
 - 内容更新（`instance.update`）与清理项（`instance.manage.remove_assets` / `clean` 等）：未做。

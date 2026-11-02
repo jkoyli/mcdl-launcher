@@ -272,6 +272,21 @@ const launcherAPI = {
   getPreferences: () => ipcRenderer.invoke('settings:preferences'),
 
   /**
+   * 壁纸（L1）：
+   *   list()        → { settings, items, root, missing }
+   *   pick(media)   → { settings, items, missing, item, warnings } 或 null（取消）
+   *   remove(item)  → { settings, items, missing }
+   * 媒体本身走 mcdl-media:// 协议，这里只传列表与设置。
+   */
+  listWallpapers: () => ipcRenderer.invoke('wallpaper:list'),
+
+  pickWallpaper: (media) => ipcRenderer.invoke('wallpaper:pick', { media: media === 'video' ? 'video' : 'image' }),
+
+  removeWallpaper: (payload) => ipcRenderer.invoke('wallpaper:remove', payload || {}),
+
+  openWallpaperFolder: () => ipcRenderer.invoke('wallpaper:open-folder'),
+
+  /**
    * 关于页：版本、Electron / Node、数据目录、仓库地址。
    */
   getAppInfo: () => ipcRenderer.invoke('app:info'),

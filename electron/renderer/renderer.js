@@ -2760,6 +2760,8 @@
   function applyAnimationPreference(settings) {
     var disabled = Boolean(settings && settings.disableAnimations);
     document.body.classList.toggle('no-motion', disabled);
+    // 视频壁纸跟着「关闭动画」一起停：继续解码既费电又和新设置相悖。
+    if (wall && wall.settings) wallApply(wall.settings, wall.items);
   }
 
   function fillSettingsFields(settings, runtimes) {
@@ -2783,6 +2785,9 @@
       settingsJavaCount.textContent = (runtimes ? runtimes.length : 0) + ' 个';
     }
     applyAnimationPreference(settings);
+    // settings:get 比 wallpaper:list 慢（要扫 Java），只用它同步一次控件显示值；
+    // 图层与列表以壁纸面板自己的那份数据为准，已经同步过就不再覆盖。
+    if (!wall.loaded) wallSyncControls(settings);
   }
 
   function loadSettings() {
@@ -2840,6 +2845,754 @@
         return null;
       });
   }
+
+  // ---------------------------------------------------------
+  // 自上传壁纸
+  //   L2 图层：#wallOuter 全屏 cover + 模糊 + 暗化；#wallInner 框内 contain + 同图虚化补边
+  //   L3 视频：内外各一个 <video>，内层为主时钟
+  //   L4 控件：外观页 7 个控件 + 壁纸库
+  //   L5 降级：软件渲染 / 关动画 / 文件丢失 / 编码不支持
+  // 默认样式下 #wallLayer 带 hidden，零绘制、零回归。
+  // ---------------------------------------------------------
+  var WALL_DEFAULTS = {
+    wallMode: 'default',
+    wallMedia: 'image',
+    wallFile: '',
+    wallPolicy: 'single',
+    wallBlur: 18,
+    wallDim: 30,
+    wallInnerFit: 'contain',
+    wallPip: true
+  };
+  var WALL_INNER_DIM_BASE = 0.12;    // 框内固定的一层可读性底
+  var WALL_INNER_DIM_RATIO = 0.6;    // 再叠 wallDim × 0.6
+  var WALL_DRIFT_SECONDS = 0.3;      // 内外视频允许的最大漂移
+  var WALL_SAVE_DELAY = 500;         // 滑块延迟写盘
+
+  var wallLayer = document.getElementById('wallLayer');
+  var wallOuter = document.getElementById('wallOuter');
+  var wallInnerMedia = document.getElementById('wallInnerMedia');
+  var wallInnerFill = document.getElementById('wallInnerFill');
+
+  var wallPane = {
+    mode: document.getElementById('settingsWallMode'),
+    custom: document.getElementById('wallCustomBlock'),
+    current: document.getElementById('settingsWallCurrent'),
+    kind: document.getElementById('settingsWallKind'),
+    pickImage: document.getElementById('settingsWallPickImage'),
+    pickVideo: document.getElementById('settingsWallPickVideo'),
+    openFolder: document.getElementById('settingsWallOpenFolder'),
+    pip: document.getElementById('settingsWallPip'),
+    fit: document.getElementById('settingsWallFit'),
+    blur: document.getElementById('settingsWallBlur'),
+    blurValue: document.getElementById('settingsWallBlurValue'),
+    dim: document.getElementById('settingsWallDim'),
+    dimValue: document.getElementById('settingsWallDimValue'),
+    policy: document.getElementById('settingsWallPolicy'),
+    list: document.getElementById('wallList'),
+    listCount: document.getElementById('wallListCount'),
+    listEmpty: document.getElementById('wallListEmpty'),
+    status: document.getElementById('settingsWallStatus')
+  };
+
+  var wall = {
+    settings: null,
+    items: [],
+    root: '',
+    missing: false,
+    base: '',
+    chosen: null,
+    sessionPicked: false,
+    innerVideo: null,
+    outerVideo: null,
+    syncTimer: 0,
+    saveTimer: 0,
+    pending: null,
+    saveChain: null,
+    loaded: false
+  };
+
+  function wallNum(value, fallback) {
+    var n = Number(value);
+    return isFinite(n) ? n : fallback;
+  }
+
+  function wallClampNumber(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function wallSetStatus(text, tone) {
+    setHint(wallPane.status, text || '—', tone);
+  }
+
+  function wallSizeLabel(bytes) {
+    var n = Number(bytes) || 0;
+    if (!n) return '—';
+    if (n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (n >= 1024 * 1024) return Math.round(n / (1024 * 1024)) + ' MB';
+    return Math.max(1, Math.round(n / 1024)) + ' KB';
+  }
+
+  function wallMotionOff() {
+    if (document.body.classList.contains('no-motion')) return true;
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function wallSoftwareMode() {
+    return document.body.classList.contains('is-software');
+  }
+
+  /** 只改 CSS 变量：拖滑块时实时生效、不重建 DOM、不写盘。 */
+  function wallApplyVars(settings) {
+    if (!wallLayer) return;
+    settings = settings || WALL_DEFAULTS;
+    var blur = wallClampNumber(wallNum(settings.wallBlur, 18), 0, 40);
+    var dim = wallClampNumber(wallNum(settings.wallDim, 30), 0, 70);
+
+    wallLayer.style.setProperty('--wall-blur', blur + 'px');
+    wallLayer.style.setProperty('--wall-dim', (dim / 100).toFixed(3));
+    wallLayer.style.setProperty('--wall-inner-dim',
+      (WALL_INNER_DIM_BASE + dim * WALL_INNER_DIM_RATIO / 100).toFixed(3));
+    wallLayer.style.setProperty('--wall-inner-fit',
+      settings.wallInnerFit === 'cover' ? 'cover' : 'contain');
+    wallLayer.classList.toggle('is-flat', settings.wallPip === false);
+  }
+
+  function wallPauseAll() {
+    var list = [wall.innerVideo, wall.outerVideo];
+    for (var i = 0; i < list.length; i += 1) {
+      if (!list[i]) continue;
+      try {
+        list[i].pause();
+      } catch (error) {
+        // 元素可能已经被移除
+      }
+    }
+  }
+
+  function wallPlayAll() {
+    var list = [wall.innerVideo, wall.outerVideo];
+    for (var i = 0; i < list.length; i += 1) {
+      var video = list[i];
+      if (!video) continue;
+      var played = video.play();
+      // 自动播放被拒（没静音 / 策略变化）时静默失败，画面停在首帧总比崩掉好。
+      if (played && typeof played.catch === 'function') played.catch(function () {});
+    }
+  }
+
+  /** 拆掉图层与解码器。注意：它会把 #wallLayer 设为 hidden。 */
+  function wallTeardown() {
+    if (wall.syncTimer) {
+      window.clearInterval(wall.syncTimer);
+      wall.syncTimer = 0;
+    }
+
+    wallPauseAll();
+    wall.innerVideo = null;
+    wall.outerVideo = null;
+
+    var nodes = [wallInnerMedia, wallOuter];
+    for (var i = 0; i < nodes.length; i += 1) {
+      var node = nodes[i];
+      if (!node) continue;
+      while (node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    if (wallInnerFill) {
+      wallInnerFill.hidden = true;
+      wallInnerFill.style.backgroundImage = '';
+    }
+    if (wallLayer) wallLayer.hidden = true;
+    document.body.classList.remove('has-wallpaper');
+  }
+
+  function wallFail(reason) {
+    wallTeardown();
+    wallSetStatus(reason + '，已回到默认样式', 'error');
+  }
+
+  function wallCreateVideo(url) {
+    var video = document.createElement('video');
+    video.muted = true;
+    video.loop = true;
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.disablePictureInPicture = true;
+    video.setAttribute('muted', '');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('disablepictureinpicture', '');
+    video.setAttribute('aria-hidden', 'true');
+    video.src = url;
+    return video;
+  }
+
+  function wallMountImage(item) {
+    var failed = function () {
+      wallFail('壁纸图片加载失败');
+    };
+
+    var outerImg = document.createElement('img');
+    outerImg.alt = '';
+    outerImg.decoding = 'async';
+    outerImg.addEventListener('error', failed);
+    outerImg.src = item.url;
+    wallOuter.appendChild(outerImg);
+
+    var innerImg = document.createElement('img');
+    innerImg.alt = '';
+    innerImg.decoding = 'async';
+    innerImg.addEventListener('error', failed);
+    innerImg.src = item.url;
+    wallInnerMedia.appendChild(innerImg);
+
+    // 补边只在画中画开启时有意义：关掉时内外是同一条连续的 cover 图。
+    if (wall.settings && wall.settings.wallPip !== false) {
+      wallInnerFill.style.backgroundImage = 'url("' + item.url + '")';
+      wallInnerFill.hidden = false;
+    } else {
+      wallInnerFill.style.backgroundImage = '';
+      wallInnerFill.hidden = true;
+    }
+  }
+
+  /**
+   * @param {object} item 壁纸条目
+   * @param {boolean} lite 软件渲染 / 关动画：只留首帧，不做全屏模糊
+   */
+  function wallMountVideo(item, lite) {
+    var failed = function () {
+      wallFail('视频加载失败，可能是不支持的编码（建议 mp4 / h264 或 webm）');
+    };
+
+    var inner = wallCreateVideo(item.url);
+    inner.addEventListener('error', failed);
+    wallInnerMedia.appendChild(inner);
+    wall.innerVideo = inner;
+
+    if (lite) {
+      // 只解码一帧：暂停在第一帧，不跑渲染循环。
+      inner.addEventListener('loadeddata', function () {
+        if (wall.innerVideo !== inner) return;
+        try {
+          inner.pause();
+          inner.currentTime = 0.01;
+        } catch (error) {
+          // 忽略 seek 失败
+        }
+      });
+      return;
+    }
+
+    var outer = wallCreateVideo(item.url);
+    outer.addEventListener('error', failed);
+    wallOuter.appendChild(outer);
+    wall.outerVideo = outer;
+
+    inner.addEventListener('canplay', function () {
+      if (wall.innerVideo !== inner) return;
+      if (!document.hidden) wallPlayAll();
+    });
+
+    // 以内层为主时钟：外层（背景那张）追内层，用户看的是框内那张。
+    wall.syncTimer = window.setInterval(function () {
+      if (!wall.innerVideo || !wall.outerVideo) return;
+      if (wall.innerVideo.paused || wall.outerVideo.paused) return;
+      if (wall.innerVideo.readyState < 2 || wall.outerVideo.readyState < 2) return;
+      if (Math.abs(wall.innerVideo.currentTime - wall.outerVideo.currentTime) > WALL_DRIFT_SECONDS) {
+        try {
+          wall.outerVideo.currentTime = wall.innerVideo.currentTime;
+        } catch (error) {
+          // 元数据还没就绪时 seek 会抛，下一轮再试
+        }
+      }
+    }, 500);
+  }
+
+  function wallBaseKey(settings, items, motionOff, software) {
+    var names = [];
+    for (var i = 0; i < items.length; i += 1) {
+      names.push(items[i].name + (items[i].active ? '!' : '') + (items[i].missing ? '?' : ''));
+    }
+    return [
+      settings.wallMode,
+      settings.wallMedia,
+      settings.wallFile,
+      settings.wallPip === false ? '0' : '1',
+      settings.wallInnerFit,
+      settings.wallPolicy,
+      motionOff ? 'm' : '',
+      software ? 's' : '',
+      names.join(',')
+    ].join('|');
+  }
+
+  function wallChooseItem(settings, items) {
+    var pool = [];
+    for (var i = 0; i < items.length; i += 1) {
+      if (!items[i].missing && items[i].url) pool.push(items[i]);
+    }
+    if (!pool.length) return null;
+
+    var active = null;
+    for (var j = 0; j < pool.length; j += 1) {
+      if (pool[j].active) active = pool[j];
+    }
+
+    function stillPooled(candidate) {
+      if (!candidate) return false;
+      for (var k = 0; k < pool.length; k += 1) {
+        if (pool[k].name === candidate.name) return pool[k];
+      }
+      return false;
+    }
+
+    // single：只认"当前那一张"。找不到就说明文件丢了 —— 不能顺手换成列表里的
+    // 另一张，那会让"壁纸没了"表现成"壁纸被换了"。
+    if (settings.wallPolicy === 'single') return active;
+
+    if (settings.wallPolicy === 'startup') {
+      // 每次启动只掷一次：判断依据是本次会话是否已经选过。
+      var kept = stillPooled(wall.chosen);
+      if (kept && wall.sessionPicked) return kept;
+      wall.chosen = pool[Math.floor(Math.random() * pool.length)];
+      wall.sessionPicked = true;
+      return wall.chosen;
+    }
+
+    // random：每次重建（切页 / 改设置 / 重新上传）重掷一次
+    wall.chosen = pool[Math.floor(Math.random() * pool.length)];
+    return wall.chosen;
+  }
+
+  function wallActive(settings) {
+    return Boolean(settings && settings.wallMode === 'custom' && settings.wallFile);
+  }
+
+  /**
+   * 应用壁纸。
+   * @param {object} settings
+   * @param {Array} items
+   * @param {{force?: boolean}} [options]
+   */
+  function wallApply(settings, items, options) {
+    if (!wallLayer) return;
+    settings = settings || WALL_DEFAULTS;
+    items = items || [];
+
+    wall.settings = settings;
+    wall.items = items;
+
+    // 变量每次都刷：拖滑块要实时生效。
+    wallApplyVars(settings);
+
+    var software = wallSoftwareMode();
+    var motionOff = wallMotionOff();
+    var baseKey = wallBaseKey(settings, items, motionOff, software);
+
+    if (!options || !options.force) {
+      if (baseKey === wall.base) return;
+    }
+    wall.base = baseKey;
+
+    if (!wallActive(settings)) {
+      wallTeardown();
+      return;
+    }
+
+    var item = wallChooseItem(settings, items);
+    if (!item || !item.url) {
+      wallTeardown();
+      if (wall.missing) {
+        wallSetStatus('壁纸文件不见了（被移动或删除），已回到默认样式', 'error');
+      }
+      return;
+    }
+
+    wallTeardown();
+
+    var lite = item.kind === 'video' && (software || motionOff);
+    wallLayer.hidden = false;
+    document.body.classList.add('has-wallpaper');
+    wallLayer.classList.toggle('is-video', item.kind === 'video');
+    wallLayer.classList.toggle('is-lite', lite);
+
+    if (item.kind === 'video') {
+      wallMountVideo(item, lite);
+    } else {
+      wallMountImage(item);
+    }
+  }
+
+  // ---- 外观页控件 ----
+
+  function wallSyncControls(settings) {
+    if (!wallPane.mode || !settings) return;
+
+    var mode = settings.wallMode === 'custom' ? 'custom' : 'default';
+    var blur = wallClampNumber(wallNum(settings.wallBlur, 18), 0, 40);
+    var dim = wallClampNumber(wallNum(settings.wallDim, 30), 0, 70);
+    var pip = settings.wallPip !== false;
+
+    wallPane.mode.value = mode;
+    if (wallPane.custom) wallPane.custom.hidden = mode !== 'custom';
+    if (wallPane.pip) wallPane.pip.checked = pip;
+    if (wallPane.fit) {
+      wallPane.fit.value = settings.wallInnerFit === 'cover' ? 'cover' : 'contain';
+      wallPane.fit.disabled = !pip;
+    }
+    if (wallPane.policy) wallPane.policy.value = settings.wallPolicy || 'single';
+    if (wallPane.blur) wallPane.blur.value = String(blur);
+    if (wallPane.blurValue) wallPane.blurValue.textContent = String(blur);
+    if (wallPane.dim) wallPane.dim.value = String(dim);
+    if (wallPane.dimValue) wallPane.dimValue.textContent = String(dim);
+
+    var fitLine = wallPane.fit && wallPane.fit.closest ? wallPane.fit.closest('.settings-line') : null;
+    if (fitLine) fitLine.classList.toggle('is-disabled', !pip);
+
+    var active = null;
+    for (var i = 0; i < wall.items.length; i += 1) {
+      if (wall.items[i].active) active = wall.items[i];
+    }
+
+    if (wallPane.current) {
+      wallPane.current.textContent = active ? active.label : '未选择';
+      wallPane.current.title = active ? active.name : '';
+    }
+    if (wallPane.kind) {
+      wallPane.kind.textContent = active
+        ? (active.kind === 'video' ? '视频 · 引用' : '图片')
+        : '—';
+    }
+  }
+
+  function wallRenderList(items, settings) {
+    if (!wallPane.list) return;
+
+    while (wallPane.list.firstChild) wallPane.list.removeChild(wallPane.list.firstChild);
+
+    var custom = settings && settings.wallMode === 'custom';
+    for (var i = 0; i < items.length; i += 1) {
+      wallPane.list.appendChild(wallBuildCard(items[i], custom));
+    }
+
+    if (wallPane.listCount) wallPane.listCount.textContent = items.length + ' 项';
+    if (wallPane.listEmpty) wallPane.listEmpty.hidden = items.length > 0;
+  }
+
+  function wallBuildCard(item, custom) {
+    var card = document.createElement('div');
+    card.className = 'wall-card';
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('tabindex', '0');
+    if (item.active && custom) card.classList.add('is-active');
+    if (item.missing) card.classList.add('is-missing');
+
+    if (item.kind === 'video') {
+      var videoThumb = document.createElement('span');
+      videoThumb.className = 'wall-card__thumb wall-card__thumb--video';
+      videoThumb.textContent = '▶';
+      card.appendChild(videoThumb);
+    } else {
+      var img = document.createElement('img');
+      img.className = 'wall-card__thumb';
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.src = item.thumb || item.url;
+      card.appendChild(img);
+    }
+
+    var name = document.createElement('span');
+    name.className = 'wall-card__name';
+    name.textContent = item.label;
+    name.title = item.name;
+    card.appendChild(name);
+
+    var meta = document.createElement('span');
+    meta.className = 'wall-card__meta';
+    meta.textContent = item.missing
+      ? '文件已丢失'
+      : (item.external ? '引用 · ' : '') + wallSizeLabel(item.size);
+    card.appendChild(meta);
+
+    if (item.active && custom) {
+      var badge = document.createElement('span');
+      badge.className = 'wall-card__badge';
+      badge.textContent = '当前';
+      card.appendChild(badge);
+    }
+
+    var del = document.createElement('button');
+    del.className = 'wall-card__del';
+    del.type = 'button';
+    del.textContent = '×';
+    del.title = item.kind === 'video' ? '清除引用（不删除原文件）' : '删除这张壁纸';
+    del.setAttribute('aria-label', del.title + '：' + item.label);
+    del.addEventListener('click', function (event) {
+      event.stopPropagation();
+      wallAskRemove(item);
+    });
+    card.appendChild(del);
+
+    card.addEventListener('click', function () {
+      wallActivate(item);
+    });
+    card.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      wallActivate(item);
+    });
+
+    return card;
+  }
+
+  function wallActivate(item) {
+    if (!item || item.missing) return;
+    if (item.kind === 'video') {
+      // 视频只能通过「上传视频」换：引用路径不允许渲染层自己写。
+      wallSetStatus('视频壁纸请用「上传视频」重新选择');
+      return;
+    }
+    if (wall.settings && wall.settings.wallMode === 'custom' &&
+        wall.settings.wallFile === item.name) {
+      return;
+    }
+    wallSave({ wallMode: 'custom', wallMedia: 'image', wallFile: item.name }, '已切换壁纸');
+  }
+
+  function wallAskRemove(item) {
+    var detail = item.kind === 'video'
+      ? '只会清除引用，不会删除原视频文件。'
+      : '图片会从数据目录中删除，此操作不可撤销。';
+    askConfirm('确定移除壁纸「' + item.label + '」吗？\n' + detail, function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.removeWallpaper !== 'function') {
+        wallSetStatus('主进程桥接不可用', 'error');
+        return;
+      }
+      wallSetStatus('正在移除…');
+      api.removeWallpaper({ name: item.name, kind: item.kind })
+        .then(function (result) {
+          if (!result) return;
+          wallAcknowledge(result);
+          wallSetStatus('已移除「' + item.label + '」', 'ok');
+        })
+        .catch(function (error) {
+          wallSetStatus(describeLaunchError(error), 'error');
+        });
+    }, '移除');
+  }
+
+  /** 主进程返回的 { settings, items, root, missing } 统一落到界面与图层。 */
+  function wallAcknowledge(payload) {
+    if (!payload) return;
+    var settings = payload.settings || WALL_DEFAULTS;
+    var items = payload.items || [];
+
+    wall.root = payload.root || wall.root;
+    wall.missing = Boolean(payload.missing);
+    // 先落数据再同步控件：wallSyncControls 要靠 wall.items 找"当前那一张"。
+    wall.settings = settings;
+    wall.items = items;
+    wallSyncControls(settings);
+    wallRenderList(items, settings);
+    wallApply(settings, items);
+  }
+
+  function wallSave(patch, okText) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.saveSettings !== 'function') {
+      wallSetStatus('主进程桥接不可用', 'error');
+      return Promise.resolve(null);
+    }
+
+    wallSetStatus('正在保存…');
+
+    // 串行化：连续拖滑块时后发的响应不能覆盖先发的。
+    var run = function () {
+      return api.saveSettings(patch)
+        .then(function (saved) {
+          wallSetStatus(okText || '已保存', 'ok');
+          return wallRefresh(false).then(function () {
+            return saved;
+          });
+        })
+        .catch(function (error) {
+          wallSetStatus(describeLaunchError(error), 'error');
+          return null;
+        });
+    };
+
+    wall.saveChain = (wall.saveChain || Promise.resolve()).then(run, run);
+    return wall.saveChain;
+  }
+
+  function wallQueueSave(patch) {
+    if (!patch) return;
+    wall.pending = wall.pending || {};
+    for (var key in patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, key)) wall.pending[key] = patch[key];
+    }
+    if (wall.saveTimer) window.clearTimeout(wall.saveTimer);
+    wall.saveTimer = window.setTimeout(wallFlushSave, WALL_SAVE_DELAY);
+  }
+
+  function wallFlushSave() {
+    if (wall.saveTimer) {
+      window.clearTimeout(wall.saveTimer);
+      wall.saveTimer = 0;
+    }
+    var patch = wall.pending;
+    wall.pending = null;
+    if (!patch) return;
+    wallSave(patch, '已保存');
+  }
+
+  function wallRefresh() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.listWallpapers !== 'function') return Promise.resolve(null);
+
+    return api.listWallpapers()
+      .then(function (payload) {
+        if (!payload) return null;
+        wall.loaded = true;
+        wallAcknowledge(payload);
+        if (wall.missing) {
+          wallSetStatus('壁纸文件不见了（被移动或删除），已回到默认样式', 'error');
+        }
+        return payload;
+      })
+      .catch(function (error) {
+        wallSetStatus(describeLaunchError(error), 'error');
+        return null;
+      });
+  }
+
+  function wallPick(media) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.pickWallpaper !== 'function') {
+      wallSetStatus('主进程桥接不可用', 'error');
+      return;
+    }
+
+    wallSetStatus(media === 'video' ? '正在选择视频…' : '正在选择图片…');
+
+    api.pickWallpaper(media)
+      .then(function (payload) {
+        if (!payload) {
+          wallSetStatus('已取消');
+          return;
+        }
+        wallAcknowledge(payload);
+
+        var warnings = payload.warnings || [];
+        if (warnings.length) {
+          wallSetStatus(warnings.join('；'), 'error');
+        } else {
+          wallSetStatus('壁纸已更新', 'ok');
+        }
+      })
+      .catch(function (error) {
+        wallSetStatus(describeLaunchError(error), 'error');
+      });
+  }
+
+  function wallBindSlider(input, valueNode, key) {
+    if (!input) return;
+
+    var paint = function () {
+      if (valueNode) valueNode.textContent = input.value;
+    };
+
+    input.addEventListener('input', function () {
+      paint();
+      // 实时预览：只改 CSS 变量，延迟 500ms 才写盘（否则每拖一下写一次盘）。
+      var preview = {};
+      for (var k in WALL_DEFAULTS) {
+        if (Object.prototype.hasOwnProperty.call(WALL_DEFAULTS, k)) {
+          preview[k] = wall.settings ? wall.settings[k] : WALL_DEFAULTS[k];
+        }
+      }
+      preview[key] = Number(input.value);
+      wallApplyVars(preview);
+
+      var patch = {};
+      patch[key] = Number(input.value);
+      wallQueueSave(patch);
+    });
+
+    input.addEventListener('change', function () {
+      paint();
+      wallFlushSave();
+    });
+  }
+
+  if (wallPane.mode) {
+    wallPane.mode.addEventListener('change', function () {
+      var mode = wallPane.mode.value === 'custom' ? 'custom' : 'default';
+      if (wallPane.custom) wallPane.custom.hidden = mode !== 'custom';
+      wallSave({ wallMode: mode }, mode === 'custom' ? '已启用自定义壁纸' : '已回到默认样式');
+    });
+  }
+
+  if (wallPane.pickImage) {
+    wallPane.pickImage.addEventListener('click', function () {
+      wallPick('image');
+    });
+  }
+
+  if (wallPane.pickVideo) {
+    wallPane.pickVideo.addEventListener('click', function () {
+      wallPick('video');
+    });
+  }
+
+  if (wallPane.openFolder) {
+    wallPane.openFolder.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openWallpaperFolder !== 'function') return;
+      api.openWallpaperFolder().catch(function (error) {
+        wallSetStatus(describeLaunchError(error), 'error');
+      });
+    });
+  }
+
+  if (wallPane.pip) {
+    wallPane.pip.addEventListener('change', function () {
+      var pip = Boolean(wallPane.pip.checked);
+      if (wallPane.fit) {
+        wallPane.fit.disabled = !pip;
+        var line = wallPane.fit.closest ? wallPane.fit.closest('.settings-line') : null;
+        if (line) line.classList.toggle('is-disabled', !pip);
+      }
+      wallSave({ wallPip: pip }, pip ? '画中画已开启' : '画中画已关闭（内外同一张 cover）');
+    });
+  }
+
+  if (wallPane.fit) {
+    wallPane.fit.addEventListener('change', function () {
+      wallSave({ wallInnerFit: wallPane.fit.value === 'cover' ? 'cover' : 'contain' }, '已保存');
+    });
+  }
+
+  if (wallPane.policy) {
+    wallPane.policy.addEventListener('change', function () {
+      wall.chosen = null;
+      wall.sessionPicked = false;
+      wallSave({ wallPolicy: wallPane.policy.value }, '已保存');
+    });
+  }
+
+  wallBindSlider(wallPane.blur, wallPane.blurValue, 'wallBlur');
+  wallBindSlider(wallPane.dim, wallPane.dimValue, 'wallDim');
+
+  // 切到后台时暂停两路解码；回到前台再恢复。
+  document.addEventListener('visibilitychange', function () {
+    if (!wall.innerVideo && !wall.outerVideo) return;
+    if (document.hidden) wallPauseAll();
+    else wallPlayAll();
+  });
 
   function setSettingsTab(tab) {
     settingsTab = tab || 'game';
@@ -7634,6 +8387,10 @@
         console.warn('[settings] could not load preferences:', error);
       });
   }
+
+  // 壁纸：开机第一帧就用 wallpaper:list 画好（它不触发 Java 扫描），
+  // 不等 settings:get，否则会先看到几秒默认渐变再闪一下壁纸。
+  wallRefresh();
 
   syncPages();
   switchHint();
