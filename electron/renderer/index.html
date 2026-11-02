@@ -6739,7 +6739,126 @@
     overflow-wrap: anywhere;
   }
 
+  /* 启动进度：只列真的发生了的步骤（对照 HMCL 的启动弹窗，但不写没有的步骤） */
+  .launch-steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 1px;
+    max-height: 42vh;
+    overflow: auto;
+  }
+
+  .launch-step {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 4px 10px;
+    padding: 6px 2px;
+    border-radius: 4px;
+  }
+
+  .launch-step[data-state="running"] { background: rgba(255, 255, 255, .035); }
+
+  .launch-step__icon {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    font-size: 10px;
+    line-height: 1;
+    color: rgba(199, 212, 230, .3);
+  }
+
+  .launch-step[data-state="running"] .launch-step__icon { color: #7fb2ff; }
+  .launch-step[data-state="done"] .launch-step__icon { color: #63d68f; }
+  .launch-step[data-state="failed"] .launch-step__icon { color: #ff8f86; }
+
+  .launch-step__body { min-width: 0; }
+
+  .launch-step__label {
+    font-size: 10.5px;
+    line-height: 1.6;
+    color: rgba(230, 238, 246, .88);
+    overflow-wrap: anywhere;
+  }
+
+  .launch-step[data-state="pending"] .launch-step__label { color: rgba(199, 212, 230, .42); }
+
+  .launch-step__detail {
+    margin-top: 1px;
+    font-size: 8.5px;
+    line-height: 1.6;
+    color: rgba(170, 186, 204, .66);
+    overflow-wrap: anywhere;
+  }
+
+  .launch-step[data-state="failed"] .launch-step__detail { color: #ffab9f; }
+
+  /* 进度条：只在「正在做」的那一行下面出现，样式对齐 HMCL 的细条 */
+  .launch-step__bar {
+    grid-column: 2;
+    position: relative;
+    height: 2px;
+    margin-top: 6px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: rgba(127, 178, 255, .16);
+  }
+
+  .launch-step__bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgba(127, 178, 255, 0), #7fb2ff, rgba(127, 178, 255, 0));
+    animation: launch-step-sweep 1.1s linear infinite;
+  }
+
+  @keyframes launch-step-sweep {
+    from { left: -40%; }
+    to { left: 100%; }
+  }
+
+  /* 软件渲染时不做动画（和 body.is-software 的降级策略一致） */
+  body.is-software .launch-step__bar::after { animation: none; left: 0; width: 100%; opacity: .5; }
+
   .crash-trace--short { max-height: 28vh; }
+
+  /* 启动前完整性闸门：缺什么就列什么，不让用户自己去猜 */
+  .preflight-list {
+    margin: 0;
+    padding: 8px 10px;
+    max-height: 30vh;
+    overflow: auto;
+    list-style: none;
+    border: 1px solid rgba(255, 150, 140, .18);
+    border-radius: 4px;
+    background: rgba(30, 10, 12, .34);
+    font-family: "Consolas", "Cascadia Mono", monospace;
+    font-size: 9px;
+    line-height: 1.7;
+    color: rgba(255, 196, 188, .82);
+    overflow-wrap: anywhere;
+  }
+
+  .preflight-list:empty { display: none; }
+
+  .preflight-list li + li { border-top: 1px solid rgba(255, 255, 255, .05); }
+
+  .preflight-list li { padding: 4px 0; }
+
+  .preflight-list .preflight-kind {
+    display: inline-block;
+    min-width: 72px;
+    color: rgba(199, 212, 230, .55);
+  }
+
+  .preflight-list .preflight-reason { color: #ffab9f; }
 
   .crash-summary { display: grid; gap: 4px; }
 
@@ -9128,6 +9247,48 @@
         </div>
         <button class="dialog-btn dialog-btn--primary" id="gameCrashLogs" type="button" data-control-key="logwindow.title">日志</button>
         <button class="dialog-btn dialog-btn--primary" id="gameCrashHelp" type="button" data-control-key="help">帮助</button>
+        <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
+      </div>
+    </section>
+
+    <!-- 启动进度：每一步都是引擎真的做了的事，进度条只出现在正在执行的那一行 -->
+    <section class="dialog dialog--wide" id="dlgLaunchProgress" role="dialog" aria-modal="true" aria-labelledby="dlgLaunchProgressTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgLaunchProgressTitle">启动游戏</h2>
+      </div>
+      <div class="dialog-body">
+        <ol class="launch-steps" id="launchSteps"></ol>
+        <p class="dialog-status" id="launchProgressStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn dialog-btn--primary" id="launchProgressCancel" type="button">取消</button>
+        </div>
+        <button class="dialog-btn" id="launchProgressClose" type="button" hidden>关闭</button>
+      </div>
+    </section>
+
+    <!-- 启动前完整性闸门失败（对照 PCL2 的「带病启动」教训：缺文件就不拉 Java） -->
+    <section class="dialog dialog--wide" id="dlgPreflight" role="dialog" aria-modal="true" aria-labelledby="dlgPreflightTitle" hidden>
+      <div class="dialog-head">
+        <h2 class="dialog-title" id="dlgPreflightTitle">实例文件不完整</h2>
+        <button class="dialog-x" type="button" data-dialog-close aria-label="关闭">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="crash-summary">
+          <strong id="preflightHeadline">已中止启动（没有拉起 Java）</strong>
+          <span id="preflightMeta">—</span>
+        </div>
+        <p class="dialog-text">下面这些文件缺失或校验不通过。启动器不会带着残缺的列表去启动游戏，所以这次没有启动。</p>
+        <ul class="preflight-list" id="preflightList"></ul>
+        <p class="dialog-text" id="preflightHint">可以点「修复缺失文件」重新下载；也可以到实例管理里重新安装这个版本。</p>
+        <p class="dialog-status" id="preflightStatus" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <div class="dialog-foot__left">
+          <button class="dialog-btn dialog-btn--primary" id="preflightRepair" type="button">修复缺失文件</button>
+          <button class="dialog-btn" id="preflightFolder" type="button">打开实例文件夹</button>
+        </div>
         <button class="dialog-btn" type="button" data-dialog-close>关闭</button>
       </div>
     </section>

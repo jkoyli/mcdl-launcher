@@ -270,17 +270,55 @@ async function resolveClientJar(gameDir, chain, merged) {
 }
 
 /**
+ * 把版本 JSON 里的下载条目（artifact / classifier）转成「完整性闸门」能直接用的描述。
+ *
+ * 只搬运启动器真的会拿去校验的字段：
+ *   path（已由调用方补成绝对路径）、sha1、size、url。
+ * 第三方 JSON 里这些字段常常缺失，缺失就只做存在性 / 非空检查。
+ */
+function describeArtifact(entry, filePath, name) {
+  const descriptor = { path: filePath, name: String(name || '') };
+  if (!entry || typeof entry !== 'object') return descriptor;
+
+  if (typeof entry.sha1 === 'string' && /^[0-9a-f]{40}$/i.test(entry.sha1)) {
+    descriptor.sha1 = entry.sha1.toLowerCase();
+  }
+  const size = Number(entry.size);
+  if (Number.isFinite(size) && size > 0) descriptor.size = size;
+  if (typeof entry.url === 'string' && /^https?:\/\//i.test(entry.url)) {
+    descriptor.url = entry.url;
+  }
+  return descriptor;
+}
+
+/**
  * 计算 classpath 与需要解压的 natives。
- * @returns {{classpath:string[], natives:Array<{path:string,name:string}>, skipped:string[]}}
+ *
+ * 除了给启动参数用的路径数组，还返回带 sha1 / size / url 的 `classpathArtifacts`、
+ * `nativeArtifacts`——启动前的完整性闸门与「修复缺失文件」都只认这两个列表，
+ * 不再各自去解析一遍版本 JSON。
+ *
+ * @returns {{
+ *   classpath:string[],
+ *   natives:Array<{path:string,name:string}>,
+ *   skipped:string[],
+ *   classpathArtifacts:Array<{path:string,name:string,sha1?:string,size?:number,url?:string}>,
+ *   nativeArtifacts:Array<{path:string,name:string,sha1?:string,size?:number,url?:string}>
+ * }}
  */
 function collectLibraries(merged, gameDir, features) {
   const librariesDir = path.join(gameDir, 'libraries');
   const classpath = [];
   const natives = [];
   const skipped = [];
+  const classpathArtifacts = [];
+  const nativeArtifacts = [];
 
   for (const library of merged.libraries) {
     if (!rulesAllow(library.rules, features)) continue;
+
+    const downloads = library && library.downloads;
+    const classifier = nativeClassifier(library);
 
     // 旧版 natives 是同一个 library 的额外 classifier：主 jar 进 classpath，
     // classifier jar 解压到 natives 目录。现代版本 natives 本身就是 artifact。
@@ -289,7 +327,16 @@ function collectLibraries(merged, gameDir, features) {
       const resolvedNative = path.join(librariesDir, nativePath);
       // 版本 JSON 来自第三方整合包 / 其他启动器，artifact.path 里的 `..\` 不能穿出 libraries。
       if (isInside(librariesDir, resolvedNative)) {
-        natives.push({ path: resolvedNative, name: String(library.name || nativePath) });
+        const name = String(library.name || nativePath);
+        natives.push({ path: resolvedNative, name });
+        const classifierEntry = classifier && downloads && downloads.classifiers
+          ? downloads.classifiers[classifier]
+          : null;
+        nativeArtifacts.push(describeArtifact(
+          classifierEntry || (downloads && downloads.artifact),
+          resolvedNative,
+          name
+        ));
       } else {
         skipped.push(String(library.name || nativePath));
       }
@@ -299,7 +346,9 @@ function collectLibraries(merged, gameDir, features) {
     if (artifact) {
       const resolvedArtifact = path.join(librariesDir, artifact);
       if (isInside(librariesDir, resolvedArtifact)) {
+        const name = String(library.name || artifact);
         classpath.push(resolvedArtifact);
+        classpathArtifacts.push(describeArtifact(downloads && downloads.artifact, resolvedArtifact, name));
       } else {
         skipped.push(String(library.name || artifact));
       }
@@ -308,7 +357,7 @@ function collectLibraries(merged, gameDir, features) {
     }
   }
 
-  return { classpath, natives, skipped };
+  return { classpath, natives, skipped, classpathArtifacts, nativeArtifacts };
 }
 
 module.exports = {
@@ -326,5 +375,6 @@ module.exports = {
   loadVersionChain,
   mergeChain,
   resolveClientJar,
+  describeArtifact,
   collectLibraries
 };

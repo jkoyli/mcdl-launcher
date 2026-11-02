@@ -6,6 +6,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 
+const { writeFileAtomic } = require('./atomic-write');
+
 // mcdl 是 mcdl-launcher 的内置子模块：
 //   mcdl-launcher/electron/mcdl-service.js
 //   mcdl-launcher/mcdl/mcdl.jar
@@ -192,7 +194,7 @@ async function ensureGameDir(dir = DEFAULT_GAME_DIR) {
       layout: 'minecraft',
       createdAt: new Date().toISOString()
     };
-    await fs.writeFile(marker, JSON.stringify(markerData, null, 2), 'utf8').catch(() => {});
+    await writeFileAtomic(marker, JSON.stringify(markerData, null, 2), { encoding: 'utf8' }).catch(() => {});
   }
 
   return resolved;

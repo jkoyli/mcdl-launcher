@@ -673,10 +673,12 @@
       return api.launchGame({ instanceId: selected ? selected.id : null })
         .then(function (result) {
           if (result && result.ok) {
-            setLaunchNote(
-              '已启动 ' + (result.versionId || '') + ' · Java ' + result.javaMajor + ' · ' + result.memoryMb + ' MB',
-              false
-            );
+            var note = '已启动 ' + (result.versionId || '') + ' · Java ' + result.javaMajor + ' · ' + result.memoryMb + ' MB';
+            // 闸门放行但仍有非致命提示（例如版本 JSON 里有无法解析的库）时别吞掉。
+            if (result.warnings && result.warnings.length) {
+              note += ' · ' + result.warnings[0];
+            }
+            setLaunchNote(note, Boolean(result.warnings && result.warnings.length));
           }
           return result;
         })
@@ -2665,6 +2667,8 @@
     dump: document.getElementById('dlgDump'),
     crash: document.getElementById('dlgCrash'),
     gameCrash: document.getElementById('dlgGameCrash'),
+    preflight: document.getElementById('dlgPreflight'),
+    launchProgress: document.getElementById('dlgLaunchProgress'),
     shot: document.getElementById('dlgShot'),
     javaDownload: document.getElementById('dlgJavaDownload'),
     nbt: document.getElementById('dlgNbt'),
@@ -3420,8 +3424,19 @@
       logFile: data.logFile || ''
     };
 
+    var early = Boolean(data.earlyFailure);
+
     if (gameCrashPane.headline) {
-      gameCrashPane.headline.textContent = '游戏异常退出（退出码 ' + (data.code === undefined || data.code === null ? '?' : data.code) + '）';
+      gameCrashPane.headline.textContent = early
+        ? '游戏没能启动（' + formatUptime(data.uptimeMs) + '内退出）'
+        : '游戏异常退出（退出码 ' + (data.code === undefined || data.code === null ? '?' : data.code) + '）';
+    }
+    if (gameCrashPane.hint) {
+      // 「启动失败」和「玩到一半崩了」的下一步动作完全不同，别用同一句话糊过去。
+      gameCrashPane.hint.textContent = early
+        ? '还没有进到主界面就退出了。常见原因：Java 版本不对、实例文件不完整、启动参数被整合包改坏。' +
+          '可以先导出崩溃信息，或者查看本次日志确认第一行报错。'
+        : '可以先导出崩溃信息，或者打开本次启动的日志查看完整堆栈。';
     }
     if (gameCrashPane.meta) {
       var parts = [];
@@ -3492,6 +3507,360 @@
           setHint(gameCrashPane.status, describeLaunchError(error), 'error');
         });
     });
+  }
+
+  // ---------------- 启动前完整性闸门窗口 ----------------
+  //
+  // 这是「失败路径当一等公民」的界面落点：主进程在 spawn 之前判定缺文件，
+  // 这里把缺失清单逐条列出来，并给一个能直接重下的按钮——而不是等游戏闪退后再猜。
+
+  var preflightPane = {
+    headline: document.getElementById('preflightHeadline'),
+    meta: document.getElementById('preflightMeta'),
+    list: document.getElementById('preflightList'),
+    hint: document.getElementById('preflightHint'),
+    status: document.getElementById('preflightStatus'),
+    repair: document.getElementById('preflightRepair'),
+    folder: document.getElementById('preflightFolder')
+  };
+
+  var preflightState = {
+    instanceId: '',
+    versionId: '',
+    failures: [],
+    repaired: false,
+    busy: false
+  };
+
+  function preflightReasonText(item) {
+    var reason = item && item.reason;
+    if (reason === 'missing') return '缺失';
+    if (reason === 'empty') return '文件是空的（下载不完整）';
+    if (reason === 'size') {
+      return '大小不符（期望 ' + item.expectedSize + ' 字节，实际 ' + item.actualSize + ' 字节）';
+    }
+    if (reason === 'hash') return '校验和不符（文件被改动或下载到了旧文件）';
+    if (reason === 'unreadable') return '读取失败' + (item.error ? '：' + item.error : '');
+    return item && item.description ? String(item.description) : '有问题';
+  }
+
+  function renderPreflightFailures(failures) {
+    if (!preflightPane.list) return;
+    preflightPane.list.textContent = '';
+
+    failures.forEach(function (item) {
+      var li = document.createElement('li');
+
+      var kind = document.createElement('span');
+      kind.className = 'preflight-kind';
+      kind.textContent = item.label || item.kind || '文件';
+      li.appendChild(kind);
+
+      var name = document.createElement('span');
+      name.textContent = item.relative || item.path || '';
+      li.appendChild(name);
+
+      var reason = document.createElement('span');
+      reason.className = 'preflight-reason';
+      reason.textContent = '  ' + preflightReasonText(item);
+      li.appendChild(reason);
+
+      preflightPane.list.appendChild(li);
+    });
+  }
+
+  function setPreflightRepairLabel(text) {
+    if (!preflightPane.repair) return;
+    preflightPane.repair.textContent = text;
+  }
+
+  /**
+   * @param {object} payload
+   *   { instanceId, versionId, message, count, failures, repaired? }
+   */
+  function openPreflightWindow(payload) {
+    var data = payload || {};
+    var failures = Array.isArray(data.failures) ? data.failures : [];
+
+    preflightState = {
+      instanceId: String(data.instanceId || ''),
+      versionId: String(data.versionId || ''),
+      failures: failures,
+      repaired: Boolean(data.repaired),
+      busy: false
+    };
+
+    var instance = preflightState.instanceId ? instanceById(preflightState.instanceId) : getSelectedInstance();
+
+    if (preflightPane.headline) {
+      preflightPane.headline.textContent = data.repaired
+        ? '缺失文件已修复，可以重新启动'
+        : '已中止启动（没有拉起 Java）';
+    }
+
+    if (preflightPane.meta) {
+      var parts = [];
+      if (instance) parts.push(instanceLabel(instance));
+      if (preflightState.versionId) parts.push(preflightState.versionId);
+      if (failures.length && !data.repaired) parts.push('缺失 / 不一致 ' + failures.length + ' 项');
+      preflightPane.meta.textContent = parts.join(' · ') || '—';
+    }
+
+    renderPreflightFailures(failures);
+
+    if (preflightPane.hint) {
+      preflightPane.hint.textContent = data.repaired
+        ? '文件已经补齐并通过校验，点「重新启动」即可。'
+        : '可以点「修复缺失文件」重新下载；也可以到实例管理里重新安装这个版本。';
+    }
+
+    if (preflightPane.repair) {
+      preflightPane.repair.disabled = failures.length === 0 && !data.repaired;
+      setPreflightRepairLabel(data.repaired ? '重新启动' : '修复缺失文件');
+    }
+
+    setHint(preflightPane.status, '');
+    if (openDialogName !== 'preflight') openDialog('preflight');
+  }
+
+  function runPreflightRepair() {
+    var api = window.launcherAPI;
+    if (!api || typeof api.repairLaunchFiles !== 'function') {
+      setHint(preflightPane.status, '主进程桥接不可用，无法修复', 'error');
+      return;
+    }
+    if (!preflightState.instanceId) {
+      setHint(preflightPane.status, '不知道要修哪个实例，请在实例管理里重新安装', 'error');
+      return;
+    }
+    if (preflightState.busy) return;
+
+    preflightState.busy = true;
+    if (preflightPane.repair) preflightPane.repair.disabled = true;
+    setHint(preflightPane.status, '正在重新下载缺失文件…');
+
+    api.repairLaunchFiles({ instanceId: preflightState.instanceId })
+      .then(function (result) {
+        var after = result && result.after ? result.after : { failures: [] };
+
+        if (result && result.ok) {
+          openPreflightWindow({
+            instanceId: preflightState.instanceId,
+            versionId: preflightState.versionId,
+            repaired: true,
+            failures: []
+          });
+          return;
+        }
+
+        renderPreflightFailures(after.failures || []);
+        var failedCount = (result && result.failed ? result.failed.length : 0) +
+          (result && result.skipped ? result.skipped.length : 0);
+        var message = '还有 ' + ((after.failures || []).length) + ' 项没修好';
+        if (failedCount > 0 && result.failed && result.failed.length > 0) {
+          message += '：' + result.failed[0].label + ' — ' + result.failed[0].message;
+        } else if (result && result.skipped && result.skipped.length > 0) {
+          message += '，其中 ' + result.skipped.length + ' 项没有下载地址，需要重新安装该版本';
+        }
+        setHint(preflightPane.status, message, 'error');
+      })
+      .catch(function (error) {
+        setHint(preflightPane.status, describeLaunchError(error), 'error');
+      })
+      .then(function () {
+        preflightState.busy = false;
+        if (preflightPane.repair) preflightPane.repair.disabled = false;
+      });
+  }
+
+  if (preflightPane.repair) {
+    preflightPane.repair.addEventListener('click', function () {
+      // 已经修好了：这个按钮变成「重新启动」。
+      if (preflightState.repaired) {
+        var instance = instanceById(preflightState.instanceId);
+        closeDialog();
+        if (instance) launchInstanceFlow(instance, false);
+        return;
+      }
+      runPreflightRepair();
+    });
+  }
+
+  if (preflightPane.folder) {
+    preflightPane.folder.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.openInstanceFolder !== 'function' || !preflightState.instanceId) return;
+      api.openInstanceFolder({ instanceId: preflightState.instanceId })
+        .then(function () { setHint(preflightPane.status, '已打开实例文件夹', 'ok'); })
+        .catch(function (error) { setHint(preflightPane.status, describeLaunchError(error), 'error'); });
+    });
+  }
+
+  // ---------------- 启动进度窗口 ----------------
+  //
+  // 对照 HMCL 的「启动游戏」弹窗，但只写引擎**真的做了**的事：
+  // 每一步都由 main.js 的 stage 事件驱动，没有「预计要做」的占位步骤，
+  // 进度条只出现在正在执行的那一行。
+
+  var launchProgressPane = {
+    list: document.getElementById('launchSteps'),
+    status: document.getElementById('launchProgressStatus'),
+    cancel: document.getElementById('launchProgressCancel'),
+    close: document.getElementById('launchProgressClose')
+  };
+
+  var STAGE_LABELS = {
+    account: '准备账号信息',
+    instance: '读取实例与版本 JSON',
+    java: '查找 Java 运行时',
+    libraries: '解析依赖库与 natives 清单',
+    natives: '解压 natives',
+    logging: '准备 log4j 配置',
+    assets: '读取资源索引',
+    args: '组装启动参数',
+    authlib: '准备 authlib-injector',
+    verify: '校验必需文件（完整性闸门）',
+    spawn: '拉起 Java 进程',
+    window: '等待游戏窗口出现'
+  };
+
+  var STAGE_ICONS = { pending: '·', running: '→', done: '✓', failed: '×' };
+
+  var launchProgressState = {
+    launchId: '',
+    versionId: '',
+    cancelled: false,
+    failed: false
+  };
+
+  function stageLabel(stage) {
+    return STAGE_LABELS[stage] || String(stage || '未知步骤');
+  }
+
+  function resetLaunchSteps() {
+    if (!launchProgressPane.list) return;
+    launchProgressPane.list.textContent = '';
+  }
+
+  /** 找到（或按首次出现顺序创建）某一步对应的行。 */
+  function launchStepRow(stage) {
+    if (!launchProgressPane.list) return null;
+    var id = 'step-' + String(stage || '');
+    var existing = launchProgressPane.list.querySelector('[data-stage="' + String(stage) + '"]');
+    if (existing) return existing;
+
+    var li = document.createElement('li');
+    li.className = 'launch-step';
+    li.setAttribute('data-stage', String(stage || ''));
+    li.id = id;
+    li.setAttribute('data-state', 'pending');
+
+    var icon = document.createElement('span');
+    icon.className = 'launch-step__icon';
+    icon.textContent = STAGE_ICONS.pending;
+    li.appendChild(icon);
+
+    var body = document.createElement('div');
+    body.className = 'launch-step__body';
+
+    var label = document.createElement('div');
+    label.className = 'launch-step__label';
+    label.textContent = stageLabel(stage);
+    body.appendChild(label);
+
+    var detail = document.createElement('div');
+    detail.className = 'launch-step__detail';
+    body.appendChild(detail);
+
+    li.appendChild(body);
+    launchProgressPane.list.appendChild(li);
+    return li;
+  }
+
+  function applyLaunchStage(stage, state, detail) {
+    if (!stage) return;
+    var row = launchStepRow(stage);
+    if (!row) return;
+
+    var finalState = state === 'done' || state === 'failed' ? state : 'running';
+    row.setAttribute('data-state', finalState);
+
+    var icon = row.querySelector('.launch-step__icon');
+    if (icon) icon.textContent = STAGE_ICONS[finalState] || '·';
+
+    var detailEl = row.querySelector('.launch-step__detail');
+    if (detailEl) detailEl.textContent = detail ? String(detail) : '';
+
+    // 进度条只跟着「正在做」的那一行走。
+    var previousBar = launchProgressPane.list.querySelector('.launch-step__bar');
+    if (previousBar) previousBar.remove();
+    if (finalState === 'running') {
+      var bar = document.createElement('div');
+      bar.className = 'launch-step__bar';
+      row.appendChild(bar);
+    }
+
+    // 让新出现的那一行保持在可视区域内（步骤会多到超出一屏）。
+    try {
+      row.scrollIntoView({ block: 'nearest' });
+    } catch (error) {
+      // 老版本不支持参数对象，忽略即可
+    }
+  }
+
+  function setLaunchProgressStatus(text, tone) {
+    if (!launchProgressPane.status) return;
+    launchProgressPane.status.textContent = text || '';
+    if (tone) launchProgressPane.status.setAttribute('data-tone', tone);
+  }
+
+  function setLaunchProgressPhase(phase) {
+    // phase: 'preparing' | 'spawned'（等窗口）| 'ready'（窗口已出现）| 'failed' | 'cancelling'
+    var showCancel = phase === 'preparing' || phase === 'cancelling' || phase === 'spawned';
+    if (launchProgressPane.cancel) {
+      launchProgressPane.cancel.hidden = !showCancel;
+      launchProgressPane.cancel.disabled = phase === 'cancelling';
+      launchProgressPane.cancel.textContent = phase === 'cancelling'
+        ? '正在取消…'
+        : (phase === 'spawned' ? '停止游戏' : '取消');
+    }
+    if (launchProgressPane.close) {
+      launchProgressPane.close.hidden = showCancel;
+    }
+  }
+
+  function openLaunchProgress(versionId) {
+    resetLaunchSteps();
+    setLaunchProgressStatus('正在准备启动…');
+    setLaunchProgressPhase('preparing');
+    if (openDialogName !== 'launchProgress') openDialog('launchProgress');
+  }
+
+  function closeLaunchProgress() {
+    if (openDialogName === 'launchProgress') closeDialog();
+  }
+
+  if (launchProgressPane.cancel) {
+    launchProgressPane.cancel.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.stopLaunch !== 'function') return;
+      launchProgressState.cancelled = true;
+      setLaunchProgressPhase('cancelling');
+      setLaunchProgressStatus('正在取消启动…');
+
+      api.stopLaunch(launchProgressState.launchId || '')
+        .then(function (stopped) {
+          // false = 进程已经自己结束了，交给 exit 事件收尾。
+          if (!stopped) setLaunchProgressStatus('启动已经结束');
+        })
+        .catch(function (error) {
+          setLaunchProgressStatus(describeLaunchError(error), 'error');
+        });
+    });
+  }
+
+  if (launchProgressPane.close) {
+    launchProgressPane.close.addEventListener('click', closeLaunchProgress);
   }
 
   // 主进程侧的未捕获异常：渲染进程还活着就弹崩溃窗口。
@@ -6328,10 +6697,12 @@
     api.launchGame({ instanceId: instance.id, test: Boolean(test) })
       .then(function (result) {
         if (result && result.ok) {
+          var warning = result.warnings && result.warnings.length ? result.warnings[0] : '';
           setInstancePanelStatus(
             (test ? '测试启动已完成 · PID ' : '已启动 · PID ') + (result.pid || '-') +
-            ' · Java ' + result.javaMajor,
-            'ok'
+            ' · Java ' + result.javaMajor +
+            (warning ? ' · ' + warning : ''),
+            warning ? 'error' : 'ok'
           );
           window.launcherAPI.onLaunchProgress && setLaunchNote(
             (test ? '测试启动 ' : '已启动 ') + (result.versionId || '') + ' · PID ' + (result.pid || '-'),
@@ -7358,6 +7729,7 @@
   var DETAIL_MANAGE_ITEMS = [
     { action: 'screenshots', label: '截图管理' },
     { action: 'log', label: '查看日志（清单外新增）' },
+    { action: 'preflight', label: '检查并修复缺失文件' },
     { action: 'redownload-assets', label: '更新游戏资源文件' },
     { action: 'remove-assets', label: '删除所有游戏资源文件', danger: true },
     { action: 'remove-libraries', label: '删除所有库文件', danger: true },
@@ -7387,6 +7759,36 @@
     var instance = detailInstance();
     if (!api || !instance || typeof api.runInstanceMaintenance !== 'function') {
       setDetailStatus('主进程桥接不可用，无法执行维护操作', 'error');
+      return;
+    }
+
+    // 「检查并修复缺失文件」：先跑闸门，缺什么就直接开清单窗口（同一套 UI 与修复逻辑）。
+    if (action === 'preflight') {
+      if (typeof api.checkLaunchFiles !== 'function') {
+        setDetailStatus('主进程桥接不可用，无法检查文件', 'error');
+        return;
+      }
+      setDetailStatus('正在检查实例文件…');
+      api.checkLaunchFiles({ instanceId: instance.id })
+        .then(function (result) {
+          if (result && result.ok) {
+            setDetailStatus(
+              '文件检查通过（已检查 ' + (result.checked || 0) + ' 个文件）' +
+              (result.warnings && result.warnings.length ? ' · ' + result.warnings[0] : ''),
+              'ok'
+            );
+            return;
+          }
+          setDetailStatus('发现 ' + ((result && result.count) || 0) + ' 项缺失或不一致', 'error');
+          openPreflightWindow({
+            instanceId: instance.id,
+            versionId: result ? result.versionId : '',
+            failures: (result && result.failures) || []
+          });
+        })
+        .catch(function (error) {
+          setDetailStatus(describeLaunchError(error), 'error');
+        });
       return;
     }
 
@@ -9772,8 +10174,41 @@
           setLogStateLabel('正在启动…', 'ok');
           setHint(logPane.status, '');
         }
+      } else if (payload.phase === 'begin') {
+        // 启动真正开始（还没 spawn）：开进度窗口，并记下 launchId 以便取消。
+        // 主进程与引擎都会发 begin（同一个 launchId），按 id 去重，避免把已经出现的步骤清掉。
+        var sameLaunch = launchProgressState.launchId && launchProgressState.launchId === payload.launchId;
+        if (!sameLaunch || openDialogName !== 'launchProgress') {
+          launchProgressState = {
+            launchId: payload.launchId || '',
+            versionId: payload.versionId || '',
+            cancelled: false,
+            failed: false
+          };
+          openLaunchProgress(payload.versionId);
+        }
+      } else if (payload.phase === 'stage') {
+        applyLaunchStage(payload.stage, payload.state, payload.detail);
+        if (payload.state === 'failed') {
+          launchProgressState.failed = true;
+          setLaunchProgressStatus(describeLaunchError({ message: payload.detail || '这一步失败了' }), 'error');
+          setLaunchProgressPhase('failed');
+        } else if (payload.stage === 'window' && payload.state === 'done') {
+          // 游戏窗口真的出现了：这才是「启动完成」，弹窗可以收起来了。
+          // 超时那条也走 done（游戏可能仍在加载），所以不能一律标成成功色。
+          var windowReady = String(payload.detail || '').indexOf('游戏窗口已出现') === 0;
+          setLaunchProgressStatus(payload.detail || '游戏窗口已出现', windowReady ? 'ok' : '');
+          setLaunchProgressPhase('ready');
+          window.setTimeout(function () {
+            if (openDialogName === 'launchProgress' && !launchProgressState.failed) closeLaunchProgress();
+          }, 900);
+        }
       } else if (payload.phase === 'spawned') {
-        setLaunchNote('游戏已启动 · PID ' + (payload.pid || '-'), false);
+        // 进程起来了，但游戏还要加载一会儿才有窗口：弹窗继续保持，
+        // 把「取消」换成「停止游戏」，等待期间的每一步都来自游戏自己的日志。
+        setLaunchNote('游戏正在启动 · PID ' + (payload.pid || '-'), false);
+        setLaunchProgressStatus('Java 进程已启动（PID ' + (payload.pid || '-') + '），等待游戏窗口出现…');
+        setLaunchProgressPhase('spawned');
         if (openDialogName === 'log') {
           logState.file = payload.logFile || '';
           logState.launchId = payload.launchId || '';
@@ -9785,10 +10220,35 @@
       } else if (payload.phase === 'output') {
         // 日志窗口开着就实时续上（启动器不写第二份流，界面直接吃同一份输出）。
         if (openDialogName === 'log') appendLiveLog(payload.stream, payload.text);
+      } else if (payload.phase === 'preflight-failed') {
+        // 主进程在 spawn 之前就判定缺文件：直接开「缺什么」的清单窗口。
+        setLaunchProgressPhase('failed');
+        openPreflightWindow(payload);
+        setLaunchNote('实例文件不完整，已中止启动（没有拉起 Java）', true);
+      } else if (payload.phase === 'repair-progress') {
+        if (openDialogName === 'preflight') {
+          setHint(preflightPane.status, payload.message || '正在修复…');
+        }
       } else if (payload.phase === 'error') {
-        setLaunchNote(describeLaunchError({ message: payload.message }), true);
+        var message = describeLaunchError({ message: payload.message });
+        setLaunchNote(message, true);
+        if (openDialogName === 'launchProgress') {
+          launchProgressState.failed = payload.code !== 'LAUNCH_CANCELLED';
+          setLaunchProgressStatus(
+            payload.code === 'LAUNCH_CANCELLED' ? '已取消启动（没有拉起 Java）' : message,
+            payload.code === 'LAUNCH_CANCELLED' ? '' : 'error'
+          );
+          setLaunchProgressPhase('failed');
+        }
       } else if (payload.phase === 'exit') {
-        setLaunchNote('游戏已退出（code ' + payload.code + '）', payload.code !== 0);
+        setLaunchNote(
+          payload.earlyFailure
+            ? '游戏启动失败（' + Math.max(1, Math.round(Number(payload.uptimeMs) / 1000)) + ' 秒内退出）'
+            : '游戏已退出（code ' + payload.code + '）',
+          payload.code !== 0
+        );
+        // 进度窗口还开着就说明游戏在启动阶段就退了：收起它，交给崩溃窗口。
+        if (openDialogName === 'launchProgress') closeLaunchProgress();
         if (openDialogName === 'log') {
           appendLiveLog('sys', '进程结束 code=' + payload.code + ' signal=' + (payload.signal || '-') + '\n');
           refreshLogActiveState();

@@ -8,11 +8,10 @@
  */
 
 const fs = require('node:fs/promises');
-const fsSync = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { Readable } = require('node:stream');
-const { pipeline } = require('node:stream/promises');
+
+const { writeFileAtomic } = require('./atomic-write');
 
 const API_ROOT = 'https://api.modrinth.com/v2';
 const USER_AGENT = 'mcdl-launcher/0.2.0 (Electron; +https://modrinth.com)';
@@ -314,7 +313,7 @@ function cancelledError() {
 /**
  * 下载单个文件。
  *
- * `signal` 来自主进程的取消令牌：一旦 abort，fetch 立刻中断，`.part` 文件删掉，
+ * `signal` 来自主进程的取消令牌：一旦 abort，fetch 立刻中断，目标路径不会出现半截文件，
  * 已经下完的文件不受影响（下次重装会重新校验）。
  */
 async function downloadFile(url, target, expectedHashes, signal) {
@@ -335,30 +334,29 @@ async function downloadFile(url, target, expectedHashes, signal) {
     throw new ModrinthError(`下载失败（HTTP ${response.status}）`, response.status);
   }
 
-  await fs.mkdir(path.dirname(target), { recursive: true });
-
-  const temp = target + '.part';
+  // 先把响应体整份收进内存并校验，再用原子写落盘：
+  // 校验不通过时目标路径上根本不会出现文件，中断也不会留下半截 .part。
+  let buffer;
   try {
-    await pipeline(Readable.fromWeb(response.body), fsSync.createWriteStream(temp));
+    buffer = Buffer.from(await response.arrayBuffer());
   } catch (error) {
-    await fs.rm(temp, { force: true });
     if (signal && signal.aborted) throw cancelledError();
     throw new ModrinthError(`写入文件失败：${error.message}`);
   }
 
-  if (signal && signal.aborted) {
-    await fs.rm(temp, { force: true });
-    throw cancelledError();
-  }
+  if (signal && signal.aborted) throw cancelledError();
 
-  const buffer = await fs.readFile(temp);
   const expected = expectedHashes && expectedHashes.sha1 ? String(expectedHashes.sha1) : '';
   if (expected && hashOf('sha1', buffer) !== expected) {
-    await fs.rm(temp, { force: true });
     throw new ModrinthError('下载文件的 SHA1 校验失败');
   }
 
-  await fs.rename(temp, target);
+  try {
+    await writeFileAtomic(target, buffer);
+  } catch (error) {
+    if (signal && signal.aborted) throw cancelledError();
+    throw new ModrinthError(`写入文件失败：${error.message}`);
+  }
   return { path: target, size: buffer.length };
 }
 

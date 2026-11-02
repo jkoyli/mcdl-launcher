@@ -10,6 +10,8 @@
 const fs = require('node:fs/promises');
 const zlib = require('node:zlib');
 
+const { writeFileAtomic } = require('./atomic-write');
+
 const TAG_END = 0;
 const TAG_BYTE = 1;
 const TAG_SHORT = 2;
@@ -362,9 +364,8 @@ async function readFile(file) {
 async function writeFile(file, root) {
   const plain = serialize(root);
   const compressed = zlib.gzipSync(plain, { level: 6 });
-  const temp = `${file}.tmp-${Date.now()}`;
-  await fs.writeFile(temp, compressed);
-  await fs.rename(temp, file);
+  // 原子写：level.dat 写坏等于存档损坏；temp + fsync + rename 由 writeFileAtomic 统一负责。
+  await writeFileAtomic(file, compressed);
 }
 
 // ---------------- 取值 / 赋值辅助 ----------------

@@ -15,6 +15,7 @@ const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { writeFileAtomic } = require('./atomic-write');
 const { assertJavaExecutableShape } = require('./launch-spec');
 
 const IS_WINDOWS = process.platform === 'win32';
@@ -289,11 +290,11 @@ async function getJavaRuntimes(mcdlService, options = {}) {
 
   if (cacheFile && cache.length > 0) {
     try {
-      await fs.mkdir(path.dirname(cacheFile), { recursive: true });
-      await fs.writeFile(cacheFile, JSON.stringify({
+      // 原子写：缓存被强杀截断会变成非法 JSON，下次「扫描」直接报错（虽然可重建）。
+      await writeFileAtomic(cacheFile, JSON.stringify({
         scannedAt: new Date().toISOString(),
         runtimes: cache
-      }, null, 2), 'utf8');
+      }, null, 2), { encoding: 'utf8' });
     } catch {
       // 缓存写不进去不影响使用
     }

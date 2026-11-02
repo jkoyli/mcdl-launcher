@@ -14,6 +14,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { writeFileAtomic } = require('./atomic-write');
+
 function dirId(absPath) {
   return crypto.createHash('sha1').update(String(absPath).toLowerCase()).digest('hex').slice(0, 12);
 }
@@ -68,8 +70,8 @@ function createGameDirectoryStore({ storeDir, defaultDir, launcherHome }) {
 
   async function persist() {
     try {
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, JSON.stringify(state, null, 2), 'utf8');
+      // 原子写：游戏目录登记表写坏，启动器会认为「一个目录都没有」，实例全部打不开。
+      await writeFileAtomic(file, JSON.stringify(state, null, 2), { encoding: 'utf8' });
     } catch (error) {
       throw new Error(
         `无法写入游戏目录配置（${error.code || 'ERROR'}）：${file}\n` +
@@ -124,11 +126,11 @@ function createGameDirectoryStore({ storeDir, defaultDir, launcherHome }) {
     try {
       await fs.access(marker);
     } catch {
-      await fs.writeFile(marker, JSON.stringify({
+      await writeFileAtomic(marker, JSON.stringify({
         launcher: 'MCDL Launcher',
         layout: 'minecraft',
         createdAt: new Date().toISOString()
-      }, null, 2), 'utf8').catch(() => {});
+      }, null, 2), { encoding: 'utf8' }).catch(() => {});
     }
 
     return target;

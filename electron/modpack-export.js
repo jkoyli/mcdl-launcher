@@ -23,6 +23,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
+const { writeFileAtomic } = require('./atomic-write');
+
 const MAX_FILES = 20000;
 const MAX_TOTAL_BYTES = 8 * 1024 * 1024 * 1024;   // 8 GB 上限，防止把整个磁盘塞进 zip
 const HASH_LIMIT_BYTES = 256 * 1024 * 1024;       // 超过这个大小就不算 sha1（"不匹配远程文件"）
@@ -260,7 +262,8 @@ async function hashFile(file) {
 }
 
 async function writeJson(file, data) {
-  await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+  // 原子写：导出清单是最终产物，半截 JSON 会让别的启动器判定整包无效。
+  await writeFileAtomic(file, JSON.stringify(data, null, 2), { encoding: 'utf8' });
 }
 
 /**
@@ -421,7 +424,7 @@ async function exportPack(options = {}) {
     }
 
     // HMCL 家族习惯在包根放一份说明：别的启动器不认 manifest 时也能看懂。
-    await fs.writeFile(
+    await writeFileAtomic(
       path.join(staging, 'README-整合包.txt'),
       [
         `整合包：${packName}  ${packVersion}`,
@@ -437,13 +440,12 @@ async function exportPack(options = {}) {
         flags.includeLauncher ? '本包包含启动器说明（launcher/）。' : '',
         ''
       ].filter((line) => line !== '').join('\n') + '\n',
-      'utf8'
+      { encoding: 'utf8' }
     );
 
     if (flags.includeLauncher) {
       const launcherDir = path.join(staging, 'launcher');
-      await fs.mkdir(launcherDir, { recursive: true });
-      await fs.writeFile(
+      await writeFileAtomic(
         path.join(launcherDir, 'README.txt'),
         [
           'MCDL Launcher',
@@ -457,7 +459,7 @@ async function exportPack(options = {}) {
           '装上启动器后，把本整合包拖进「下载 → 整合包」即可安装。',
           ''
         ].join('\n'),
-        'utf8'
+        { encoding: 'utf8' }
       );
     }
 

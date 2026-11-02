@@ -216,6 +216,19 @@ const launcherAPI = {
    */
   launchGame: (payload) => ipcRenderer.invoke('launcher:launch', payload),
 
+  /**
+   * 启动前完整性闸门：只检查、不启动。
+   *   → { ok, checked, message, count, failures:[{label, relative, reason, description, url}], warnings }
+   * 失败时 failures 就是「缺什么」，可以直接逐条展示。
+   */
+  checkLaunchFiles: (payload) => ipcRenderer.invoke('launcher:preflight', payload || {}),
+
+  /**
+   * 按闸门清单重新下载缺失 / 损坏的文件，然后重新校验。
+   *   → { ok, before, after, repaired:[label], failed:[{label,message}], skipped:[label] }
+   */
+  repairLaunchFiles: (payload) => ipcRenderer.invoke('launcher:repair', payload || {}),
+
   stopLaunch: (launchId) => ipcRenderer.invoke('launcher:stop', launchId),
 
   getActiveLaunches: () => ipcRenderer.invoke('launcher:active'),
@@ -393,6 +406,18 @@ const launcherAPI = {
    * 整进程重启（改了主进程代码后用，标题栏「刷新」按住 Shift）。
    */
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
+
+  /**
+   * 崩溃恢复页（renderer/recovery.html）专用的最小接口。
+   *
+   * 恢复页刻意不加载 renderer.js / 主包（主包本身可能就是崩溃原因），
+   * 所以它能用的只有这三个动作，都在主进程里实现。
+   */
+  reloadFromRecovery: () => ipcRenderer.invoke('recovery:reload'),
+
+  resetWorkspace: () => ipcRenderer.invoke('recovery:reset-workspace'),
+
+  exportDiagnostics: () => ipcRenderer.invoke('recovery:export-diagnostics'),
 
   /**
    * 弹窗里的「可点击面板」：在系统浏览器打开 http(s) 页面。

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <!-- 和主界面同一套底线：不许内联脚本、不许外部资源。style 允许内联（这里只有样式）。 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>MCDL Launcher · 恢复模式</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --line: #2b333d;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #4c9aff;
+      --danger: #f0616d;
+      --ok: #4ac486;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 32px;
+      background: radial-gradient(1200px 600px at 50% -10%, #1b2531 0%, var(--bg) 60%);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .card {
+      width: min(720px, 100%);
+      padding: 28px 30px 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(240, 97, 109, 0.35);
+      background: rgba(240, 97, 109, 0.1);
+      color: var(--danger);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .badge__dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    h1 {
+      margin: 16px 0 10px;
+      font-size: 24px;
+      font-weight: 650;
+      line-height: 1.35;
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+
+    .meta {
+      margin: 14px 0 18px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #10151c;
+      color: var(--muted);
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12.5px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    button {
+      flex: 1 1 180px;
+      padding: 11px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: #1d2530;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+
+    button:hover:not(:disabled) { background: #253040; border-color: #3a4757; }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { opacity: 0.55; cursor: default; }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #06111f;
+      font-weight: 600;
+    }
+
+    button.primary:hover:not(:disabled) { background: #5aa7ff; border-color: #5aa7ff; }
+
+    button.danger { color: #ffd9dc; border-color: rgba(240, 97, 109, 0.4); }
+
+    .status {
+      min-height: 20px;
+      margin-top: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--muted);
+    }
+
+    .status[data-tone="ok"] { color: var(--ok); }
+    .status[data-tone="error"] { color: var(--danger); }
+
+    footer {
+      width: min(720px, 100%);
+      color: #6c7b8a;
+      font-size: 12.5px;
+      line-height: 1.8;
+      text-align: center;
+    }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #10151c;
+      color: #c8d4e0;
+      font-family: Consolas, monospace;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge"><span class="badge__dot"></span>恢复模式</span>
+    <h1 id="headline">启动器界面崩溃了</h1>
+    <p id="explain">
+      主界面没能正常加载，所以切到了这个页面。这个页面不依赖启动器的主程序包，
+      即使主界面一直崩溃，它也能打开。
+    </p>
+    <div class="meta" id="meta">读取崩溃信息…</div>
+    <div class="actions">
+      <button class="primary" id="reload" type="button">重新加载界面</button>
+      <button class="danger" id="reset" type="button">重置工作区</button>
+      <button id="export" type="button">导出诊断</button>
+    </div>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </main>
+
+  <footer>
+    这些操作不会删除你的游戏、存档、模组与账号。<br />
+    「重置工作区」只清启动器自己的缓存与界面状态（<code>Local Storage</code> / <code>Cache</code> / <code>Preferences</code>）。
+  </footer>
+
+  <script src="recovery.js"></script>
+</body>
+</html>

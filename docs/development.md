@@ -53,14 +53,59 @@ electron/
    - 替换版本 JSON 中的 `${...}` 占位符（账号、目录、classpath、分辨率等）。
 5. `java-runtime.js` 按版本 `javaVersion.majorVersion` 选择 Java：64 位优先、主版本相同优先，
    否则取 `>=` 要求中最小的主版本；设置里可指定固定路径。
-6. 主进程用 `javaw.exe` 拉起进程，stdout/stderr 写入
-   `<gameDir>/logs/mcdl-launcher-<时间戳>.log`，并通过 `launcher:launch-progress` 推送阶段：
-   `starting` → `spawned` → `output` → `exit`（失败为 `error`）。
-7. `exit` 事件额外带 `stopped`（是否是用户手动结束）、`logFile` 与 `crashReport`
-   （本次启动后新出现的 `<gameDir>/crash-reports/*.txt`）；渲染层据此决定是否弹「游戏崩溃窗口」。
+   **低版本 Java 会被拒绝**（手动指定与自动探测两条路径都是），不再只是打一行 warn。
+6. **关键文件完整性闸门**（`launch-preflight.js`）：在 spawn 之前校验
+   客户端 jar / 每个依赖库 / 每个 natives 包 / 资源索引 /（第三方账号的）authlib-injector。
+   缺失或校验失败 → 抛 `LAUNCH_PREFLIGHT_FAILED`，**不拉起 Java**，并把结构化清单交给界面。
+   校验强度：`auto`（默认，只对客户端 jar、资源索引、log4j、authlib 算 SHA-1；
+   库与 natives 只查存在与非空）、`true`（全部算 SHA-1）、`false`（只查存在与非空）。
+7. 主进程用 `javaw.exe` 拉起进程，stdout/stderr 写入
+   `<gameDir>/logs/mcdl-launcher-<时间戳>.log`。
+8. **等游戏窗口真的出现**（`game-window.js`）：spawn 只代表 Java 进程被创建，
+   游戏还要加载资源 / 初始化 LWJGL / 加载模组才有窗口。Windows 上用一个长驻
+   PowerShell 子进程轮询 `Get-Process -Id <pid>` 的 `MainWindowHandle`（非 0 即窗口已出现），
+   不依赖任何原生模块；其它平台退化为已知日志标记，判不出来就按超时处理（不假装成功）。
+   默认最多等 3 分钟；超时只表示「不再等」，不判定启动失败。
+9. `exit` 事件额外带 `stopped`（是否是用户手动结束）、`logFile` 与 `crashReport`
+   （本次启动后新出现的 `<gameDir>/crash-reports/*.txt`），以及 `earlyFailure`
+   （启动后 15 秒内非 0 退出且无崩溃报告）。渲染层据此决定是否弹「游戏崩溃窗口」。
 
 实例查找统一走 `rescanInstances()`（启动器目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器），
 所以从「添加游戏文件夹」加进来的实例也能直接启动 / 生成脚本。
+
+### 启动进度事件（`launcher:launch-progress`）
+
+界面上的「启动游戏」进度窗口只显示**引擎真的做了的事**，没有任何占位步骤。事件契约：
+
+| phase | 含义 |
+|---|---|
+| `begin` | 启动真正开始（还没 spawn），带 `launchId`；界面据此打开进度窗口并允许取消 |
+| `stage` | 某一步的状态变化：`{ stage, state: 'running'\|'done'\|'failed', detail }` |
+| `spawned` | Java 进程已创建（`pid` / `logFile`） |
+| `output` | 游戏输出（日志窗口实时续上） |
+| `preflight-failed` | 闸门拦下了这次启动，带缺失清单；界面切到「实例文件不完整」 |
+| `exit` / `error` | 进程退出 / 启动失败 |
+
+`stage` 的取值与顺序对应代码里的实际动作：
+
+```text
+account → instance → java → libraries → natives → logging(可选) → assets
+        → args → authlib(仅第三方账号) → verify → spawn → window
+```
+
+`detail` 是真实数据（Java 主版本与路径、依赖库数量、资源索引文件名、
+`检查 N 项（M 项比对 SHA-1…）`、PID…）。没做的步骤不会出现
+（例如离线账号没有 `authlib`，没有 natives 的版本只有一条「没有需要解压的 natives」）。
+
+`window` 是最后一步、也是唯一能代表「启动完成」的一步：等待期间每秒更新一次
+`已等待 N 秒 · 最近输出：<游戏日志最后一行>`，检测到窗口后变成
+`游戏窗口已出现（用时 N 秒）`，超时则变成 `180 秒内没有检测到游戏窗口…`（两者都用 `done`，
+区别写在 detail 里，界面据此决定用成功色还是中性色）。
+
+**取消**：`launcher:stop` 在规划/校验阶段走 `AbortController`（`launch.js` 在每个阶段边界
+用 `throwIfCancelled` 检查），保证取消后**不会**留下 Java 进程；spawn 之后则是结束进程，
+界面在等待窗口期间把按钮文案换成「停止游戏」。
+
 
 命令拼接顺序：
 
@@ -261,9 +306,12 @@ MCDL_USER_DATA（环境变量，最高优先）
 | `gamedirs:list` / `gamedirs:save` / `gamedirs:remove` | renderer → main | 游戏文件夹增删改（含相对路径开关） |
 | `gamedirs:pick` | renderer → main | 打开「选择文件夹」对话框 |
 | `launcher:launch` | renderer → main | 构造命令并启动游戏；`{ test: true }` 为测试启动（同时打开日志） |
-| `launcher:stop` | renderer → main | 结束正在运行的游戏进程 |
+| `launcher:preflight` | renderer → main | 启动前完整性检查（不启动）：`{ ok, checked, failures[], warnings }` |
+| `launcher:repair` | renderer → main | 按闸门清单重新下载缺失 / 损坏的文件并复检 |
+| `launcher:stop` | renderer → main | 结束正在运行的游戏进程；规划 / 校验阶段则中止本次启动（不 spawn） |
 | `launcher:active` | renderer → main | 列出运行中的游戏进程 |
-| `launcher:launch-progress` | main → renderer | 启动阶段与游戏输出；`exit` 里带 `stopped` / `logFile` / `crashReport` |
+| `launcher:launch-progress` | main → renderer | 启动阶段与游戏输出；`exit` 里带 `stopped` / `logFile` / `crashReport` / `earlyFailure` |
+| `recovery:reload` / `reset-workspace` / `export-diagnostics` | renderer → main | 崩溃恢复页的三个出口（重新加载 / 重置界面缓存 / 导出诊断） |
 | `logs:tail` | renderer → main | 日志窗口快照：最近一次启动日志（或该游戏目录下最新一份）的尾部 + 是否运行中 |
 | `logs:export` | renderer → main | 把日志视图（或指定文本）另存为文件，并定位到资源管理器 |
 | `logs:open-folder` | renderer → main | 打开日志文件夹：`scope=app`（启动器日志）/ `game`（`<gameDir>/logs`） |
@@ -584,6 +632,22 @@ CDN 地址时，卡片回落成项目名首字母。
 - NBT 读写由 `electron/nbt.js` 完成：完整解析 12 种 tag（含 Long / IntArray / LongArray），
   读出整棵树、改几个字段再原样写回，未知字段不会丢；写入用 gzip。
 - zip 不引入依赖：导出 / 备份用 Windows 自带的 `tar.exe`（bsdtar）`-a -c -f` 打包。
+
+### 启动进度窗口 / 实例文件不完整 / 恢复模式（对照 [L5] 全局弹窗）
+
+- **启动进度窗口**（`dlgLaunchProgress`，入口：任意一次启动）：每收到一个 `stage` 事件就
+  追加 / 更新一行，只有「正在做」的那一行下面有动画进度条（软件渲染下退化成静态条）。
+  行内容 = 步骤名（`STAGE_LABELS`）+ 引擎给的真实 `detail`。
+  **关闭时机 = 游戏窗口真的出现**（`stage: window` + `done`），不是 spawn：
+  spawn 之后界面继续显示「等待游戏窗口出现」，并把「取消」换成「停止游戏」。
+  失败时停在失败那一步，`取消` 换成 `关闭`。`取消` → `launcher:stop`，规划阶段不会 spawn。
+  设计约束：**不允许出现代码里没做的步骤**（所以没有「下载整合包」这类占位行）。
+- **实例文件不完整**（`dlgPreflight`）：闸门失败时由 `preflight-failed` 事件打开，
+  逐条列 `缺失 / 文件是空的 / 大小不符 / 校验和不符`，按钮「修复缺失文件」→ `launcher:repair`，
+  修好后同一按钮变成「重新启动」。
+- **崩溃恢复页**（`renderer/recovery.html`，不是 dialog）：渲染进程崩溃 3 次/分钟或主文档
+  加载失败时由主进程 `loadFile` 切过去。零依赖静态页，三个出口
+  `recovery:reload` / `recovery:reset-workspace` / `recovery:export-diagnostics`。
 
 ### 日志窗口 / 崩溃窗口 / 游戏崩溃窗口（对照 [L5] 全局弹窗）
 

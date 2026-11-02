@@ -25,6 +25,7 @@ const modpackExport = require('./modpack-export');
 const javaInstall = require('./java-install');
 const nbtEditor = require('./nbt-editor');
 const appLog = require('./app-log');
+const { writeFileAtomic, flushWrites } = require('./atomic-write');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -106,6 +107,13 @@ appLog.init(USER_DATA_DIR);
  * 首屏还要补一次全窗口光栅化，表现为启动后几秒明显卡顿。
  */
 const GPU_CRASH_MARKER_TTL = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * 「启动后多久内退出算启动失败」。
+ * 15 秒内非 0 退出且没有崩溃报告，基本不是玩着玩着崩了，而是根本没起来
+ * （Java 版本不对、classpath 有问题、参数被整合包改坏）。两者给用户的下一步动作不同。
+ */
+const EARLY_FAILURE_MS = 15000;
 
 function gpuCrashMarkerFile() {
   return path.join(app.getPath('userData'), 'gpu-crash.json');
@@ -227,6 +235,68 @@ app.on('child-process-gone', (_event, details) => {
 let mainWindow = null;
 let accountStore = null;
 
+// ---------------- 渲染进程崩溃恢复（分层） ----------------
+//
+// Electron 的 render-process-gone 默认没人监听：渲染进程一死，窗口就静默留个白板，
+// 用户只能强杀进程。启动器场景里这不可接受，所以要分三层：
+//   L1 单次崩溃 → reload()（多数 OOM 只要重来一次就好）；
+//   L2 短时间内连续 3 次 → 判定崩溃循环，切到零依赖静态恢复页
+//      （不加载主包：主包本身可能就是崩溃原因）；
+//   L3 恢复页给出「重新加载 / 重置工作区 / 导出诊断」三个出口。
+const RENDERER_CRASH_WINDOW_MS = 60 * 1000;
+const RENDERER_CRASH_LOOP = 3;
+
+const rendererCrashes = [];
+let recoveryPageActive = false;
+
+function recoveryPageFile() {
+  return path.join(__dirname, 'renderer', 'recovery.html');
+}
+
+function pruneRendererCrashes() {
+  const cutoff = Date.now() - RENDERER_CRASH_WINDOW_MS;
+  while (rendererCrashes.length > 0 && rendererCrashes[0] < cutoff) rendererCrashes.shift();
+}
+
+/**
+ * 切到静态恢复页。reason 会作为 query 传给页面，页面把它显示出来，
+ * 用户反馈问题时不用再猜「为什么会看到这个界面」。
+ */
+function loadRecoveryPage(reason, details = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  recoveryPageActive = true;
+
+  appLog.append('ERROR', `[recovery] showing recovery page: reason=${reason}`);
+
+  const query = {
+    reason: String(reason || 'crashed'),
+    at: String(Date.now()),
+    crashes: String(rendererCrashes.length),
+    exitCode: details && details.exitCode !== undefined ? String(details.exitCode) : '',
+    errorCode: details && details.errorCode !== undefined ? String(details.errorCode) : '',
+    errorDescription: details && details.errorDescription ? String(details.errorDescription) : ''
+  };
+
+  mainWindow.loadFile(recoveryPageFile(), { query }).catch((error) => {
+    // 恢复页都打不开就只能留日志了，但至少别再往里套一层崩溃处理。
+    console.error('[recovery] failed to load recovery page:', error.message);
+  });
+  return true;
+}
+
+/** 回到主界面（恢复页的「重新加载」/ 崩溃后自动 reload 都走这里）。 */
+function loadMainPage() {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  recoveryPageActive = false;
+  rendererCrashes.length = 0;
+  mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
+    .catch((error) => {
+      console.error('[main] loadFile failed:', error.message);
+      loadRecoveryPage('load-failed', { errorDescription: error.message });
+    });
+  return true;
+}
+
 function getAccountStore() {
   if (!accountStore) {
     accountStore = accounts.createAccountStore(app.getPath('userData'));
@@ -337,7 +407,8 @@ async function downloadSkin(url, file) {
   const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(file, buffer);
+  // 皮肤缓存半截写入 = 一张坏 PNG，渲染层拿到 base64 也画不出来；原子写避免留下中间态。
+  await writeFileAtomic(file, buffer);
   return `data:image/png;base64,${buffer.toString('base64')}`;
 }
 
@@ -405,7 +476,9 @@ const DEFAULT_SETTINGS = {
   width: launcher.DEFAULT_WIDTH,
   height: launcher.DEFAULT_HEIGHT,
   jvmArgs: '',
-  javaPath: ''
+  javaPath: '',
+  // 启动前完整性闸门的哈希强度：null = 只哈希小文件（默认），true = 全部依赖库都算，false = 只查存在与非空。
+  verifyFiles: null
 };
 
 // ---------------- 自上传壁纸：数据契约与文件边界 ----------------
@@ -612,6 +685,7 @@ async function readSettings() {
     height: normalized.height,
     jvmArgs: normalized.jvmArgs,
     javaPath: normalized.javaPath,
+    verifyFiles: normalized.verifyFiles,
     ...normalizeExtraSettings({ ...DEFAULT_EXTRA_SETTINGS, ...raw })
   };
 }
@@ -642,6 +716,7 @@ async function writeSettings(patch, options = {}) {
     height: merged.height,
     jvmArgs: merged.jvmArgs,
     javaPath: merged.javaPath,
+    verifyFiles: merged.verifyFiles,
     ...normalizeExtraSettings({ ...current, ...patch })
   };
 
@@ -672,7 +747,7 @@ async function writeSettings(patch, options = {}) {
   const file = settingsFile();
   try {
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify({
+    await writeFileAtomic(file, JSON.stringify({
       ...next,
       javaIdentity: javaIdentity || null
     }, null, 2), 'utf8');
@@ -742,13 +817,28 @@ async function resolveJavaRuntime(options = {}) {
     });
 
     if (requiredMajor && info.major < requiredMajor) {
-      console.warn(`[launch] configured Java ${info.major} is below required ${requiredMajor}`);
+      // 以前这里只打一行 warn 就照常启动，用户拿到的是 UnsupportedClassVersionError
+      // → 秒退 → 「游戏闪退」。Java 版本是启动参数的一部分，不对就该在 spawn 之前中止。
+      throw new Error(
+        `这个版本需要 Java ${requiredMajor}，但当前选择的是 Java ${info.major}。\n` +
+        '请到「设置 → Java」改成对应版本（或清空手动选择改用自动探测），再启动游戏。'
+      );
     }
     return info;
   }
 
   const runtimes = await javaRuntime.getJavaRuntimes(mcdl, { cacheFile: javaRuntimeCacheFile() });
   const picked = javaRuntime.pickJava(runtimes, requiredMajor);
+
+  // pickJava 在没有「够新」的运行时时会退而返回当前最高的那个（避免启动器完全不可用），
+  // 但对「启动游戏」来说低版本 Java 必然失败，所以这里要显式拒绝，而不是带病 spawn。
+  if (picked && requiredMajor && Number(picked.major) < Number(requiredMajor)) {
+    throw new Error(
+      `没有找到 Java ${requiredMajor}，本机最高的可用运行时是 Java ${picked.major}。\n` +
+      `请先到「设置 → Java」下载 / 选择 Java ${requiredMajor}，再启动这个版本。`
+    );
+  }
+
   return picked || null;
 }
 
@@ -807,7 +897,9 @@ async function effectiveSettings(versionDir) {
     width: merged.width,
     height: merged.height,
     jvmArgs: overrides.jvmArgs || globalSettings.jvmArgs || '',
-    javaPath: overrides.javaPath || globalSettings.javaPath || ''
+    javaPath: overrides.javaPath || globalSettings.javaPath || '',
+    // 启动前是否哈希全部依赖库。true / false / null(=只哈希小文件)。
+    verifyFiles: typeof merged.verifyFiles === 'boolean' ? merged.verifyFiles : null
   };
 }
 
@@ -1053,7 +1145,8 @@ async function readAliases() {
 async function writeAliases(aliases) {
   const file = aliasFile();
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(aliases, null, 2), 'utf8');
+  // 别名表写坏 = 整个实例列表的名字全丢，必须原子写。
+  await writeFileAtomic(file, JSON.stringify(aliases, null, 2), 'utf8');
 }
 
 function scanCacheFile() {
@@ -1076,7 +1169,7 @@ async function readScanCache() {
 async function writeScanCache(dirs) {
   const file = scanCacheFile();
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify({
+  await writeFileAtomic(file, JSON.stringify({
     dirs,
     updatedAt: new Date().toISOString()
   }, null, 2), 'utf8');
@@ -1412,7 +1505,7 @@ async function makeWallpaperThumb(filePath, name) {
     const size = image.getSize();
     const thumb = image.resize({ width: WALL_THUMB_WIDTH, quality: 'good' });
     await ensureWallpaperDirs();
-    await fs.writeFile(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)), thumb.toPNG());
+    await writeFileAtomic(path.join(wallpaperThumbRoot(), wallpaperThumbName(name)), thumb.toPNG());
     return { width: size.width, height: size.height };
   } catch (error) {
     console.warn('[wallpaper] 缩略图生成失败:', error.message);
@@ -1817,11 +1910,45 @@ async function removeWallpaperEntry(payload, settings) {
 /**
  * 长任务取消：渲染层生成 taskId，随原有 IPC 一起传下来；主进程把 AbortController
  * 登记在表里，`task:cancel` 一到就 abort，mcdl 子进程会被 kill、fetch 会被中断。
+ * 登记项同时带一个 done Promise，供退出流程等待任务真正收尾（见下面的 inFlightTasks）。
  */
 const activeTasks = new Map();
 
 const CANCEL_MESSAGE = '已取消';
 const MAX_TASK_ID_LENGTH = 80;
+
+/**
+ * 退出时等任务的硬上限。
+ *
+ * 5 秒是个折中：mcdl 子进程被 kill、fetch 被 abort 之后，收尾（含原子写的 fsync）
+ * 通常是几十毫秒；等太久会让用户以为「点了关闭没反应」，等太短则可能正好打断落盘。
+ * 超时不是失败——日志里留一条 warn，然后照常退出（绝不无限等）。
+ */
+const TASKS_IDLE_TIMEOUT_MS = 5000;
+/** 非任务型写入（设置保存 / 别名 / 壁纸）排队落盘的等待上限，短一些，别拖慢退出。 */
+const WRITES_IDLE_TIMEOUT_MS = 3000;
+
+/**
+ * 每个任务除了 AbortController，还带一个 done Promise：
+ * IPC handler 的 finally 里调用 finish() 时兑现，表示「这个任务的活（含写盘）真的干完了」。
+ * 退出流程靠它判断能不能销毁窗口。
+ *
+ * activeTasks: taskId -> entry（task:cancel 与去重用）
+ * inFlightTasks: entry 集合（取消后 activeTasks 会被清空，但任务本身可能还在收尾，
+ *                所以退出等待必须看这个集合；size 就是 inFlight 计数）
+ */
+const inFlightTasks = new Set();
+
+function inFlightCount() {
+  return inFlightTasks.size;
+}
+
+function settleTask(entry) {
+  if (!entry || entry.settled) return;
+  entry.settled = true;
+  inFlightTasks.delete(entry);
+  entry.resolveDone();
+}
 
 function beginTask(taskId) {
   const id = String(taskId || '').trim();
@@ -1831,29 +1958,166 @@ function beginTask(taskId) {
 
   // 同一个 id 重复登记时先把旧任务停掉，避免留下"永远挂着的孤儿进程"。
   const existing = activeTasks.get(id);
-  if (existing) existing.abort();
+  if (existing) {
+    try {
+      existing.controller.abort();
+    } catch {
+      // 已经结束的任务不用管
+    }
+  }
 
   const controller = new AbortController();
-  activeTasks.set(id, controller);
+  let resolveDone = () => {};
+  const done = new Promise((resolve) => {
+    resolveDone = resolve;
+  });
+  const entry = { id, controller, done, resolveDone, settled: false };
+  activeTasks.set(id, entry);
+  inFlightTasks.add(entry);
 
   return {
     id,
     signal: controller.signal,
     finish: () => {
-      if (activeTasks.get(id) === controller) activeTasks.delete(id);
+      if (activeTasks.get(id) === entry) activeTasks.delete(id);
+      settleTask(entry);
     }
   };
 }
 
 function cancelAllTasks() {
-  for (const controller of activeTasks.values()) {
+  for (const entry of activeTasks.values()) {
     try {
-      controller.abort();
+      entry.controller.abort();
     } catch {
       // 已经结束的任务不用管
     }
   }
+  // 只清「按 id 索引」的表：inFlightTasks 里的条目还要靠各自 handler 的 finally
+  // 兑现 done，退出流程才能等到它们真正停下。
   activeTasks.clear();
+}
+
+/**
+ * 取消全部在飞任务并等待它们结束（含写盘），最多等 timeoutMs。
+ *
+ * 不能只 await 一次快照：等待期间渲染层仍可能发起新任务（窗口还没销毁），
+ * 所以循环到 inFlightTasks 为空或超过 deadline 为止。
+ *
+ * @returns {Promise<{timedOut: boolean, pending: number}>}
+ */
+async function waitForTasksIdle(timeoutMs = TASKS_IDLE_TIMEOUT_MS) {
+  cancelAllTasks();
+
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  let timedOut = false;
+
+  while (inFlightTasks.size > 0) {
+    const pending = [...inFlightTasks].map((entry) => entry.done);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      timedOut = true;
+      break;
+    }
+
+    let timer = null;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), remaining);
+    });
+    try {
+      const result = await Promise.race([
+        Promise.allSettled(pending).then(() => 'idle'),
+        timeout
+      ]);
+      if (result === 'timeout') {
+        timedOut = true;
+        break;
+      }
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  if (timedOut) {
+    console.warn(
+      `[shutdown] ${inFlightTasks.size} 个任务在 ${timeoutMs}ms 内没有结束，继续退出（避免卡死）`
+    );
+  }
+  return { timedOut, pending: inFlightTasks.size };
+}
+
+/**
+ * 优雅退出状态机（只跑一次）。
+ *
+ *   allowQuit        false → close / before-quit 都必须拦下来等任务；true → 放行，别再拦
+ *   shutdownPromise  非 null 表示「收尾已经启动」，它就是防重入锁
+ *
+ * 顺序很重要：先等到任务停下，再把 allowQuit 置位并销毁窗口。
+ * 如果先销毁窗口，任务还在写盘，就回到事故现场了。
+ */
+let allowQuit = false;
+let shutdownPromise = null;
+
+/**
+ * 取消在飞任务、等它们结束（最多 TASKS_IDLE_TIMEOUT_MS），然后销毁窗口 / 继续退出。
+ *
+ * 用 win.destroy() 而不是 win.close()：destroy 不触发 close，因此不会二次进入本流程，
+ * 直接进 closed 做最后清理。
+ */
+function beginShutdown(reason) {
+  if (shutdownPromise) return shutdownPromise;
+
+  const win = mainWindow;
+  const pending = inFlightCount();
+  console.log(`[shutdown] 开始优雅退出（${reason}），在飞任务 ${pending} 个`);
+
+  shutdownPromise = (async () => {
+    if (pending > 0) {
+      // 让渲染层有机会显示「正在收尾」；没有监听者也无害（渲染层未改）。
+      if (win && !win.isDestroyed()) {
+        try {
+          win.webContents.send('window:closing', { reason, pending });
+        } catch (error) {
+          console.warn('[shutdown] 无法通知渲染层正在关闭:', error.message);
+        }
+      }
+
+      const result = await waitForTasksIdle(TASKS_IDLE_TIMEOUT_MS);
+      console.log(
+        `[shutdown] 任务收尾结束（timedOut=${result.timedOut}, pending=${result.pending}），销毁窗口`
+      );
+    }
+
+    // 非任务型写入（设置保存、别名、壁纸、皮肤缓存…）不登记在 activeTasks 里，
+    // 但此刻可能正排队落盘：等它们写完，别留下 .tmp 孤儿。
+    const flushed = await flushWrites(WRITES_IDLE_TIMEOUT_MS);
+    if (flushed.timedOut) {
+      console.warn(`[shutdown] 仍有 ${flushed.pending} 个写入未落盘，继续退出`);
+    }
+
+    allowQuit = true;
+
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+      // window:close 路径靠 window-all-closed 里的 app.quit() 收尾；
+      // before-quit 路径（系统关机 / app.quit）在 macOS 上不会触发 window-all-closed，补一次。
+      if (reason !== 'window:close') app.quit();
+    } else {
+      // 窗口已经没了（或从未创建）：已经没有 window-all-closed 可依赖，直接续上退出。
+      app.quit();
+    }
+  })().catch((error) => {
+    console.error('[shutdown] 收尾流程异常，直接销毁窗口:', error && error.message);
+    allowQuit = true;
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy();
+    } catch (destroyError) {
+      console.warn('[shutdown] 销毁窗口失败:', destroyError.message);
+    }
+    app.quit();
+  });
+
+  return shutdownPromise;
 }
 
 function isCancelledError(error) {
@@ -1916,9 +2180,9 @@ function registerIpcHandlers() {
 
   ipcMain.handle('task:cancel', (event, taskId) => {
     assertAppWindow(event);
-    const controller = activeTasks.get(String(taskId || '').trim());
-    if (!controller) return false;
-    controller.abort();
+    const task = activeTasks.get(String(taskId || '').trim());
+    if (!task) return false;
+    task.controller.abort();
     return true;
   });
 
@@ -1940,6 +2204,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('window:close', (event) => {
     const win = assertAppWindow(event);
+    // 只发一个真正的 close 请求：是否等待在飞任务由窗口的 'close' 事件统一裁决。
     setImmediate(() => {
       if (!win.isDestroyed()) win.close();
     });
@@ -2748,6 +3013,17 @@ function registerIpcHandlers() {
       resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: settings.javaPath })
     });
 
+    // 生成脚本同样要过闸门：一个必然启动失败的 .bat 比「不生成」更糟——
+    // 用户双击之后拿到的又是一句「闪退」，而且这次连启动器日志都没有。
+    const scriptPreflight = await launcher.verifyLaunchPlan(plan, {
+      hashCheck: launcher.hashModeFromSettings(settings)
+    });
+    if (!scriptPreflight.ok) {
+      const error = new Error(scriptPreflight.summary.message);
+      error.code = 'LAUNCH_PREFLIGHT_FAILED';
+      throw error;
+    }
+
     const files = launchScript.buildLaunchScriptFiles({
       plan,
       displayName: instance.displayName || versionId,
@@ -2760,9 +3036,9 @@ function registerIpcHandlers() {
       const batTarget = path.join(dir, files.names.bat);
       const dataTarget = path.join(dir, files.names.data);
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(target, '\uFEFF' + files.ps1Text, 'utf8');
-      await fs.writeFile(batTarget, files.batText, 'utf8');
-      await fs.writeFile(dataTarget, files.dataText, 'utf8');
+      await writeFileAtomic(target, '\uFEFF' + files.ps1Text, 'utf8');
+      await writeFileAtomic(batTarget, files.batText, 'utf8');
+      await writeFileAtomic(dataTarget, files.dataText, 'utf8');
       return { ps1: target, bat: batTarget, data: dataTarget, dir };
     };
 
@@ -3549,6 +3825,112 @@ function registerIpcHandlers() {
     return true;
   });
 
+  // ---------------- 崩溃恢复页（renderer/recovery.html） ----------------
+  //
+  // 恢复页是零依赖的静态页：它不能假设主包（React/Vue/我们的 renderer.js）还能跑，
+  // 因为主包本身可能就是崩溃原因。所以这三个方法是它唯一的后端能力。
+
+  /** 重新加载主界面。 */
+  ipcMain.handle('recovery:reload', async (event) => {
+    assertAppWindow(event);
+    loadMainPage();
+    return { ok: true };
+  });
+
+  /**
+   * 重置工作区：只清 Chromium 侧的缓存与界面状态，不动账号、实例、存档。
+   * 白屏 / 崩溃循环最常见的原因就是 profile 里的缓存或 Local Storage 坏了。
+   */
+  ipcMain.handle('recovery:reset-workspace', async (event) => {
+    assertAppWindow(event);
+
+    const userData = app.getPath('userData');
+    const targets = [
+      'Cache',
+      'Code Cache',
+      'GPUCache',
+      'GPUPersistentCache',
+      'DawnGraphiteCache',
+      'DawnWebGPUCache',
+      'ShaderCache',
+      'GrShaderCache',
+      'Local Storage',
+      'Session Storage',
+      'Shared Dictionary',
+      'Partitions',
+      'Preferences',
+      'gpu-crash.json'
+    ];
+
+    const removed = [];
+    const failed = [];
+
+    for (const name of targets) {
+      // 只删 userData 下的固定名字，不拼接任何外部输入。
+      const target = path.join(userData, name);
+      try {
+        await fs.rm(target, { recursive: true, force: true });
+        removed.push(name);
+      } catch (error) {
+        failed.push({ name, message: error.message });
+      }
+    }
+
+    appLog.append('WARN', `[recovery] workspace reset: removed=${removed.join(',')} failed=${failed.length}`);
+
+    // 清完立刻重载，让用户看到的是「好了」而不是一个还在的恢复页。
+    setImmediate(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        // 缓存被删了，必须重开一次 session 才会重新落盘；reload 足够。
+        loadMainPage();
+      }
+    });
+
+    return { ok: failed.length === 0, removed, failed };
+  });
+
+  /** 导出诊断：崩溃现场 + 启动器日志尾部 + 环境信息，落到桌面。 */
+  ipcMain.handle('recovery:export-diagnostics', async (event) => {
+    const win = assertAppWindow(event);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const target = path.join(app.getPath('desktop'), `mcdl-launcher-diagnostics-${stamp}.txt`);
+
+    const appLogText = appLog.tail(2000);
+    const gpu = readGpuCrashMarker();
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出诊断信息',
+      defaultPath: target,
+      filters: [{ name: '文本文件', extensions: ['txt', 'log'] }]
+    }).catch(() => ({ canceled: true }));
+    if (result.canceled || !result.filePath) return null;
+
+    const bundle = [
+      'MCDL Launcher · 崩溃恢复诊断',
+      '============================',
+      '',
+      `时间：${new Date().toISOString()}`,
+      `应用版本：${app.getVersion()}`,
+      `Electron：${process.versions.electron}  Chrome：${process.versions.chrome}  Node：${process.versions.node}`,
+      `平台：${process.platform} ${process.arch} ${require('node:os').release()}`,
+      `渲染模式：${RENDER_MODE}`,
+      `数据目录：${app.getPath('userData')}`,
+      '',
+      `渲染进程崩溃记录（最近一次窗口）：${rendererCrashes.length} 次`,
+      rendererCrashes.map((at) => `  - ${new Date(at).toISOString()}`).join('\n') || '  （无）',
+      '',
+      'GPU 崩溃标记：',
+      gpu ? JSON.stringify(gpu, null, 2) : '（无）',
+      '',
+      '===== 启动器日志（尾部 200KB） =====',
+      appLogText || '（没有日志）',
+      ''
+    ].join('\n');
+
+    await writeFileAtomic(result.filePath, bundle, 'utf8');
+    await revealPath(result.filePath).catch(() => {});
+    return { file: result.filePath, size: Buffer.byteLength(bundle, 'utf8') };
+  });
+
   ipcMain.handle('shell:open-logs', async (event) => {
     assertAppWindow(event);
     // 走和「打开文件夹」同一条路径：存在性 / 可读性预检 + explorer 直启 + 返回值检查
@@ -3763,7 +4145,7 @@ function registerIpcHandlers() {
     }
     if (!content) content = appLog.tail(4000);
 
-    await fs.writeFile(result.filePath, content, 'utf8');
+    await writeFileAtomic(result.filePath, content, 'utf8');
     await revealPath(result.filePath).catch(() => {});
     return { file: result.filePath, size: Buffer.byteLength(content, 'utf8') };
   });
@@ -3937,13 +4319,99 @@ function registerIpcHandlers() {
       ''
     ].join('\n');
 
-    await fs.writeFile(result.filePath, bundle, 'utf8');
+    await writeFileAtomic(result.filePath, bundle, 'utf8');
     await revealPath(result.filePath).catch(() => {});
     return { file: result.filePath, size: Buffer.byteLength(bundle, 'utf8') };
   });
 
+  // ---------------- 启动前完整性闸门 ----------------
+
+  /**
+   * 启动上下文：实例 → 基础目录 / 实例目录 / 账号 / 生效设置。
+   *
+   * 「启动」「预检」「修复」三条路径共用同一份解析逻辑，避免三处各写一遍
+   * 之后出现「预检说齐全、启动却报告缺文件」这种自相矛盾。
+   */
+  async function resolveLaunchContext(payload = {}) {
+    const instanceId = payload && typeof payload.instanceId === 'string' ? payload.instanceId : null;
+
+    // 用和实例列表同一套扫描（主目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器），
+    // 否则从「添加游戏文件夹」进来的实例会找不到。
+    const snapshot = await rescanInstances();
+    const instance =
+      snapshot.instances.find((item) => item.id === instanceId) ||
+      snapshot.instances.find((item) => item.id === snapshot.selectedId);
+
+    if (!instance) throw new Error('没有可启动的实例，请先创建一个实例');
+
+    const versionId = path.basename(instance.path);
+    // baseDir：versions / libraries / assets 所在的基础游戏目录；
+    // gameDir：游戏真正使用的目录（版本隔离实例 = versions/<id>）。
+    const baseDir = instance.gameDir || snapshot.gameDir;
+    const gameDir = (await instanceGameDirOf(instance)) || baseDir;
+    const settings = await effectiveSettings(instance.path);
+
+    return { instance, versionId, baseDir, gameDir, settings };
+  }
+
+  /** 解析账号（含微软令牌刷新）：没有账号就没法构造启动参数，提前失败。 */
+  async function resolveLaunchAccount({ refreshTokens = true } = {}) {
+    const store = getAccountStore();
+    let account = await store.getSelected();
+    if (!account) {
+      throw new Error('还没有选择账号，请先在「账户」页创建离线账号或登录微软账号');
+    }
+
+    if (refreshTokens && account.type === 'microsoft') {
+      try {
+        const refreshed = await accounts.ensureFreshToken(account);
+        if (refreshed.accessToken !== account.accessToken) {
+          await store.save(refreshed);
+        }
+        account = refreshed;
+      } catch (error) {
+        throw new Error(`微软账号令牌已失效，请重新登录：${error.message}`);
+      }
+    }
+
+    return { store, account };
+  }
+
+  async function buildPlanForContext(context, account) {
+    return launcher.buildLaunchPlan({
+      gameDir: context.baseDir,
+      instanceDir: context.gameDir,
+      instanceId: context.versionId,
+      account,
+      settings: context.settings,
+      dataDir: app.getPath('userData'),
+      resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: context.settings.javaPath })
+    });
+  }
+
+  /** 把闸门结果压成 IPC 能传的纯数据（Error 不能过 IPC）。 */
+  function serializePreflight(result) {
+    return {
+      ok: Boolean(result && result.ok),
+      checked: result ? result.checked : 0,
+      message: result && result.summary ? result.summary.message : '',
+      count: result && result.summary ? result.summary.count : 0,
+      failures: result && result.summary ? result.summary.failures : [],
+      optionalMissing: result && result.optionalMissing ? result.optionalMissing : []
+    };
+  }
+
+  /**
+   * 进行中的启动（还没 spawn 完）：launchId → AbortController。
+   * 「取消」要能在规划 / 校验阶段就生效，否则用户点了取消还得等 Java 被拉起来。
+   */
+  const pendingLaunches = new Map();
+
   /**
    * 真实启动：按版本 JSON 拼 java 命令并拉起游戏进程。
+   *
+   * 进度事件只报告真的发生了的事（phase = begin / stage / spawned / output /
+   * preflight-failed / exit / error），stage 的每一步都对应引擎里一次实际动作。
    */
   ipcMain.handle('launcher:launch', async (event, payload = {}) => {
     const win = assertAppWindow(event);
@@ -3956,44 +4424,30 @@ function registerIpcHandlers() {
       }
     };
 
+    const controller = new AbortController();
+
     try {
-      // 用和实例列表同一套扫描（主目录 + 用户添加的游戏文件夹 + 已缓存的其他启动器），
-      // 否则从「添加游戏文件夹」进来的实例会找不到。
-      const snapshot = await rescanInstances();
-      const instance =
-        snapshot.instances.find((item) => item.id === instanceId) ||
-        snapshot.instances.find((item) => item.id === snapshot.selectedId);
+      const context = await resolveLaunchContext(payload);
+      const { versionId, baseDir, gameDir, settings } = context;
 
-      if (!instance) throw new Error('没有可启动的实例，请先创建一个实例');
+      // 先生成 launchId 并开进度窗口：账号准备 / 文件校验都在 spawn 之前，
+      // 用户在任何一个阶段点「取消」都必须能停下来。
+      const launchId = crypto.randomUUID();
+      pendingLaunches.set(launchId, controller);
+      send({ phase: 'begin', launchId, versionId });
 
-      const versionId = path.basename(instance.path);
-      // baseDir：versions / libraries / assets 所在的基础游戏目录；
-      // gameDir：游戏真正使用的目录（版本隔离实例 = versions/<id>）。
-      // 两者传给启动计划，--gameDir 必须用后者，否则隔离实例一个 mod 都读不到。
-      const baseDir = instance.gameDir || snapshot.gameDir;
-      const gameDir = (await instanceGameDirOf(instance)) || baseDir;
-
-      const store = getAccountStore();
-      let account = await store.getSelected();
-      if (!account) {
-        throw new Error('还没有选择账号，请先在「账户」页创建离线账号或登录微软账号');
-      }
-
-      if (account.type === 'microsoft') {
-        try {
-          const refreshed = await accounts.ensureFreshToken(account);
-          if (refreshed.accessToken !== account.accessToken) {
-            await store.save(refreshed);
-          }
-          account = refreshed;
-        } catch (error) {
-          throw new Error(`微软账号令牌已失效，请重新登录：${error.message}`);
-        }
-      }
-
-      const settings = await effectiveSettings(instance.path);
-
-      send({ phase: 'starting', instanceId, versionId, memoryMb: settings.memoryMb });
+      send({ phase: 'stage', stage: 'account', state: 'running' });
+      const { store, account } = await resolveLaunchAccount();
+      send({
+        phase: 'stage',
+        stage: 'account',
+        state: 'done',
+        detail: account.type === 'microsoft'
+          ? `微软账号 ${account.name}（令牌已校验）`
+          : account.type === 'authlib'
+            ? `第三方账号 ${account.name}`
+            : `离线账号 ${account.name}`
+      });
 
       let launchContext = null;
 
@@ -4003,19 +4457,34 @@ function registerIpcHandlers() {
         instanceId: versionId,
         account,
         settings,
+        launchId,
+        signal: controller.signal,
         resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: settings.javaPath }),
         onEvent: (kind, data) => {
+          if (kind === 'begin') {
+            // 引擎重复发一次 begin（它自己也带 launchId），渲染层按 id 去重，这里只记录。
+            pendingLaunches.set(data.launchId, controller);
+            send({ phase: 'begin', launchId: data.launchId, versionId });
+            return;
+          }
+
+          if (kind === 'stage') {
+            send({ phase: 'stage', ...data });
+            return;
+          }
+
           if (kind === 'output') {
             send({ phase: 'output', stream: data.stream, text: data.text });
             return;
           }
 
           if (kind === 'spawned') {
+            pendingLaunches.delete(data.launchId);
             launchContext = {
               launchId: data.launchId,
               logFile: data.logFile || '',
               gameDir,
-              instanceId: instance.id,
+              instanceId: context.instance.id,
               versionId,
               javaPath: data.javaPath || '',
               startedAt: Date.now(),
@@ -4025,22 +4494,29 @@ function registerIpcHandlers() {
           }
 
           if (kind === 'exit') {
+            pendingLaunches.delete(data.launchId);
             const stopped = stoppedLaunches.has(data.launchId);
             stoppedLaunches.delete(data.launchId);
-            const context = launchContext && launchContext.launchId === data.launchId ? launchContext : null;
+            const previous = launchContext && launchContext.launchId === data.launchId ? launchContext : null;
 
             // 崩溃报告 / 日志路径要读盘，不能卡住事件回调，单独异步补一条 exit。
             void (async () => {
               let crashReport = '';
               if (!stopped && Number(data.code) !== 0) {
-                crashReport = await findCrashReport(gameDir, context ? context.startedAt : 0).catch(() => '');
+                crashReport = await findCrashReport(gameDir, previous ? previous.startedAt : 0).catch(() => '');
               }
+              // 启动后极短时间内退出、又没留崩溃报告：这是「启动失败」而不是「玩着玩着崩了」，
+              // 两者的下一步动作完全不同（去修文件 vs 去删 mod）。
+              const earlyFailure = !stopped && Number(data.code) !== 0 && !crashReport &&
+                Number(data.uptimeMs) > 0 && Number(data.uptimeMs) < EARLY_FAILURE_MS;
+
               markLaunchExited(data.launchId, { crashReport, exitCode: data.code, stopped });
               send({
                 phase: 'exit',
                 ...data,
                 stopped,
-                logFile: context ? context.logFile : '',
+                earlyFailure,
+                logFile: previous ? previous.logFile : '',
                 crashReport
               });
             })();
@@ -4074,9 +4550,73 @@ function registerIpcHandlers() {
       };
     } catch (error) {
       console.error('[launch] failed:', error);
-      send({ phase: 'error', message: error.message });
+      send({ phase: 'error', message: error.message, code: error.code || '' });
       throw error;
+    } finally {
+      // spawn 成功后这条记录已经删除；失败 / 取消时清掉，避免泄漏 controller。
+      for (const [id, pending] of pendingLaunches) {
+        if (pending === controller) pendingLaunches.delete(id);
+      }
     }
+  });
+
+  /**
+   * 只做启动前检查，不启动游戏：实例管理页 / 启动失败后都能调。
+   */
+  ipcMain.handle('launcher:preflight', async (event, payload = {}) => {
+    assertAppWindow(event);
+    const context = await resolveLaunchContext(payload);
+    const { account } = await resolveLaunchAccount({ refreshTokens: false });
+    const plan = await buildPlanForContext(context, account);
+    const result = await launcher.verifyLaunchPlan(plan, {
+      hashCheck: launcher.hashModeFromSettings(context.settings)
+    });
+
+    return {
+      ...serializePreflight(result),
+      instanceId: context.instance.id,
+      versionId: context.versionId,
+      warnings: plan.warnings,
+      unresolvedLibraries: plan.unresolvedLibraries || []
+    };
+  });
+
+  /**
+   * 按闸门的清单重新下载缺失 / 损坏的文件，然后重新校验。
+   */
+  ipcMain.handle('launcher:repair', async (event, payload = {}) => {
+    const win = assertAppWindow(event);
+    const context = await resolveLaunchContext(payload);
+    const { account } = await resolveLaunchAccount({ refreshTokens: false });
+    const plan = await buildPlanForContext(context, account);
+
+    const send = (message) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('launcher:launch-progress', {
+          instanceId: context.instance.id,
+          at: Date.now(),
+          phase: 'repair-progress',
+          message
+        });
+      }
+    };
+
+    const outcome = await launcher.repairLaunchPlan(plan, {
+      hashCheck: launcher.hashModeFromSettings(context.settings),
+      onProgress: send
+    });
+
+    return {
+      ok: outcome.ok,
+      before: serializePreflight(outcome.before),
+      after: serializePreflight(outcome.after),
+      repaired: outcome.repair.repaired.map((item) => item.label),
+      failed: outcome.repair.failed.map((item) => ({
+        label: item.item.label,
+        message: item.message
+      })),
+      skipped: outcome.repair.skipped.map((item) => item.label)
+    };
   });
 
   ipcMain.handle('launcher:stop', async (event, launchId) => {
@@ -4084,6 +4624,16 @@ function registerIpcHandlers() {
     const id = String(launchId || '').trim() || (launcher.listActiveLaunches()[0]?.launchId || '');
     // 记下来：手动结束游戏不算崩溃，不要让「游戏崩溃窗口」弹出来。
     if (id) stoppedLaunches.add(id);
+
+    // 还在规划 / 校验阶段：用 AbortController 让引擎在下一个阶段边界停下，
+    // 这样根本不会 spawn 出一份 Java 进程。
+    const pending = id ? pendingLaunches.get(id) : null;
+    if (pending) {
+      pending.abort();
+      pendingLaunches.delete(id);
+      return true;
+    }
+
     return launcher.stopLaunch(id);
   });
 
@@ -4430,6 +4980,12 @@ function registerIpcHandlers() {
 }
 
 function createWindow() {
+  // 窗口可能被重建（macOS 关掉窗口后从 Dock 再打开）：退出状态按窗口代次重置，
+  // 否则上一轮收尾留下的 allowQuit / shutdownPromise 会让新窗口「一点关闭就消失」
+  // 或者「关了永远不销毁」。
+  allowQuit = false;
+  shutdownPromise = null;
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -4479,17 +5035,94 @@ function createWindow() {
     console.error('[main] preload failed:', preloadPath, error);
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+  /**
+   * 主文档加载失败：以前只留一行日志，用户看到的是纯白窗口。
+   * 现在直接切恢复页（只在主界面失败时切，恢复页自己失败就只记日志，避免死循环）。
+   */
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     console.error('[main] renderer failed to load:', errorCode, errorDescription, validatedURL);
+    // -3 是我们自己取消的导航（will-navigate 拦截 / 切页），不是加载失败。
+    if (errorCode === -3) return;
+    if (isMainFrame === false) return;
+    if (recoveryPageActive) return;
+    if (/recovery\.html/i.test(String(validatedURL || ''))) return;
+
+    loadRecoveryPage('did-fail-load', { errorCode, errorDescription });
   });
 
+  /**
+   * 渲染进程崩溃：单次先 reload，短时间内连续 3 次则判定崩溃循环、切静态恢复页。
+   * reason === 'oom' 也走同一条路：OOM 后重来一次通常就能恢复。
+   */
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    const reason = details && details.reason ? details.reason : 'unknown';
     console.error('[main] renderer process gone:', details);
+    appLog.append('ERROR', `[renderer-gone] reason=${reason} exitCode=${details && details.exitCode}`);
+
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (reason === 'clean-exit') return;
+
+    if (recoveryPageActive) {
+      // 恢复页自己也被干掉了：已经无处可退，留日志，让用户用「重置工作区」路径。
+      console.error('[recovery] recovery page itself crashed');
+      return;
+    }
+
+    rendererCrashes.push(Date.now());
+    pruneRendererCrashes();
+
+    if (rendererCrashes.length >= RENDERER_CRASH_LOOP) {
+      loadRecoveryPage('crash-loop', details);
+      return;
+    }
+
+    console.warn(`[main] reloading renderer (crash ${rendererCrashes.length}/${RENDERER_CRASH_LOOP} in 60s)`);
+    mainWindow.reload();
+  });
+
+  /**
+   * 卡死（无响应）：给用户一个明确出口，而不是让窗口一直转圈。
+   * 这里有超时兜底，用户不点也不会永远挂着。
+   */
+  mainWindow.on('unresponsive', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    console.error('[main] renderer unresponsive');
+    appLog.append('WARN', '[renderer] unresponsive');
+
+    const options = {
+      type: 'warning',
+      title: '启动器界面无响应',
+      message: '启动器界面卡住了。',
+      detail: '可以再等一会儿；如果一直没恢复，选择「重新加载界面」即可（不会动游戏与实例数据）。',
+      buttons: ['继续等待', '重新加载界面'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    };
+
+    Promise.resolve(dialog.showMessageBox(mainWindow, options))
+      .then((result) => {
+        if (result && result.response === 1 && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.forcefullyCrashRenderer();
+        }
+      })
+      .catch(() => {});
+  });
+
+  // 主界面加载成功后只解除「恢复态」；崩溃计数不能在这里清零，
+  // 否则「崩溃 → reload 成功 → 再崩溃」永远只算 1 次，崩溃循环永远判定不出来。
+  // 计数靠 RENDERER_CRASH_WINDOW_MS 的时间窗自然过期。
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const url = String(mainWindow.webContents.getURL() || '');
+    if (/recovery\.html/i.test(url)) return;
+    recoveryPageActive = false;
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
     .catch((error) => {
       console.error('[main] loadFile failed:', error);
+      loadRecoveryPage('load-failed', { errorDescription: error.message });
     });
 
   mainWindow.once('ready-to-show', () => {
@@ -4507,8 +5140,43 @@ function createWindow() {
     mainWindow.webContents.send('window:maximized-changed', false);
   });
 
+  /**
+   * 关闭窗口：有在飞任务时先取消并等它们收尾（最多 5 秒），再真正销毁。
+   *
+   * 三条规则：
+   *   - allowQuit 已置位（收尾完成）→ 放行，别拦；
+   *   - shutdownPromise 已存在（正在等）→ 继续 preventDefault，吞掉重复点击，不重复等；
+   *   - 没有在飞任务 → 不拦，行为和以前完全一致（立即关）。
+   */
+  mainWindow.on('close', (event) => {
+    if (allowQuit) return;
+
+    if (shutdownPromise) {
+      event.preventDefault();
+      return;
+    }
+
+    if (inFlightCount() === 0) return;
+
+    event.preventDefault();
+    beginShutdown('window:close');
+  });
+
+  /**
+   * Windows 关机 / 注销：Electron 在 Windows 上不会为此发 before-quit，只会给窗口发 session-end。
+   * 系统只留很短的宽限期，拦不住关机；这里能做的是立刻取消任务并尽最大努力等收尾（含写盘），
+   * 而不是等窗口被销毁后才 abort。
+   */
+  mainWindow.on('session-end', () => {
+    if (allowQuit || shutdownPromise) return;
+    if (inFlightCount() === 0) return;
+    console.warn('[shutdown] 系统会话结束（关机/注销），尝试收尾在飞任务');
+    beginShutdown('session-end');
+  });
+
   mainWindow.on('closed', () => {
     // 窗口没了就没有人接收进度/取消：把还挂着的 mcdl 子进程与下载一起停掉。
+    // 正常路径下任务已经在 beginShutdown 里收尾完毕，这里只兜底极端情况（重复 abort 无害）。
     cancelAllTasks();
     mainWindow = null;
   });
@@ -4646,6 +5314,29 @@ if (!gotSingleInstanceLock) {
         createWindow();
       }
     });
+  });
+
+  /**
+   * 系统关机 / 任务栏关闭 / app.quit() 等非按钮路径的统一兜底。
+   *
+   * Electron 的顺序是 before-quit → 关闭窗口（触发 close）→ will-quit。
+   * 有在飞任务时先 preventDefault 把退出按住，再走同一套 beginShutdown；
+   * 没任务时不拦（保持原来的立即退出）。beginShutdown 结束时 allowQuit 已置位，
+   * 它内部补发的 app.quit() 会真正退出，不会死循环。
+   */
+  app.on('before-quit', (event) => {
+    if (allowQuit) return;
+
+    if (shutdownPromise) {
+      // close 已经启动收尾，或别处又发了一次退出：等它，别重复。
+      event.preventDefault();
+      return;
+    }
+
+    if (inFlightCount() === 0) return;
+
+    event.preventDefault();
+    beginShutdown('before-quit');
   });
 
   app.on('window-all-closed', () => {

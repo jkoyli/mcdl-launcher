@@ -14,6 +14,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { writeFileAtomic } = require('./atomic-write');
 const { assertInsideReal } = require('./path-guard');
 const { resolveGameDir: resolveInstanceGameDir } = require('./instance-layout');
 
@@ -48,8 +49,8 @@ async function readJson(file, fallback) {
 
 async function writeJson(file, data) {
   try {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify(data, null, 2), 'utf8');
+    // 原子写：设置 / 图标索引写坏，实例会被判成「配置损坏」而起不来。
+    await writeFileAtomic(file, JSON.stringify(data, null, 2), { encoding: 'utf8' });
   } catch (error) {
     throw new Error(`无法写入 ${path.basename(file)}（${error.code || 'ERROR'}）：${file}`);
   }
@@ -240,9 +241,9 @@ function createInstanceStore({ storeDir, launcherHome }) {
         throw new Error('图标需要是 PNG / JPG / WebP / GIF');
       }
 
-      await fs.mkdir(iconsDir, { recursive: true });
       const file = crypto.createHash('sha1').update(buffer).digest('hex').slice(0, 16) + ext;
-      await fs.writeFile(path.join(iconsDir, file), buffer);
+      // 原子写：图标文件半截会让 <img> 一直解码失败；writeFileAtomic 同时负责建目录。
+      await writeFileAtomic(path.join(iconsDir, file), buffer);
 
       const all = await loadIcons();
       all[keyOf(versionDir)] = { type: 'file', file };

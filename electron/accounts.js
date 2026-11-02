@@ -17,6 +17,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { writeFileAtomic } = require('./atomic-write');
+
 const MSA_CLIENT_ID = process.env.MCDL_MSA_CLIENT_ID || '00000000402b5328';
 const MSA_SCOPE = 'service::user.auth.xboxlive.com::MBI_SSL';
 const MSA_REDIRECT_URI = 'https://login.live.com/oauth20_desktop.srf';
@@ -509,8 +511,9 @@ function createAccountStore(storeDir) {
 
   async function persist() {
     try {
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, JSON.stringify(state, null, 2), 'utf8');
+      // 原子写：账号令牌写坏等于用户所有账号失效，绝不能留下半截 JSON。
+      // 宁可整份失败并报错，也不能覆盖成残缺文件（失败时旧文件保持原样）。
+      await writeFileAtomic(file, JSON.stringify(state, null, 2), { encoding: 'utf8' });
     } catch (error) {
       // 常见原因：目录被禁用/只读、另一个启动器实例正占用同一份 profile、安全软件拦截。
       throw new Error(
