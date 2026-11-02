@@ -14,6 +14,8 @@ const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { assertInsideReal } = require('./path-guard');
+
 const CONTENT_DIRS = {
   mods: 'mods',
   resourcepacks: 'resourcepacks',
@@ -31,11 +33,6 @@ const MAX_ICON_BYTES = 4 * 1024 * 1024;
 
 function keyOf(versionDir) {
   return path.resolve(versionDir);
-}
-
-function inside(root, target) {
-  const rel = path.relative(path.resolve(root), path.resolve(target));
-  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 async function readJson(file, fallback) {
@@ -316,9 +313,15 @@ function createInstanceStore({ storeDir, launcherHome }) {
       return { root, exists: true, entries };
     },
 
-    /** 模组启用 / 禁用：改扩展名，不动文件内容。 */
-    async setModEnabled(filePath, enabled) {
-      const target = path.resolve(filePath);
+    /**
+     * 模组启用 / 禁用：改扩展名，不动文件内容。
+     *
+     * 和 deleteContent 一样必须先确认目标在 mods 目录内——这里只改一个后缀，
+     * 但"改任意文件的后缀"在生产环境里同样是破坏性的（比如让 EDR 的配置失效）。
+     */
+    async setModEnabled(instance, filePath, enabled) {
+      const root = await contentRootFor(instance, 'mods');
+      const target = await assertInsideReal(root, String(filePath || ''), '要启停的文件');
       const name = path.basename(target);
       const isDisabled = name.toLowerCase().endsWith('.disabled');
 
@@ -334,8 +337,7 @@ function createInstanceStore({ storeDir, launcherHome }) {
     /** 删除前必须确认目标在对应内容目录内。 */
     async deleteContent({ instance, kind, target }) {
       const root = await contentRootFor(instance, kind);
-      const resolved = path.resolve(target);
-      if (!inside(root, resolved)) throw new Error('只能删除该内容目录内的文件');
+      const resolved = await assertInsideReal(root, String(target || ''), '要删除的文件');
       await fs.rm(resolved, { recursive: true, force: true });
       return true;
     },

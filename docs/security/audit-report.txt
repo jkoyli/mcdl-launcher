@@ -1,0 +1,42 @@
+## 1. IPC handler 的调用方校验
+  共 83 个 handler
+  [通过] 所有 handler 都调用了 assertAppWindow
+
+## 2. Electron 加固开关
+  [通过] contextIsolation: true
+  [通过] nodeIntegration: false
+  [通过] sandbox: true
+  [通过] setWindowOpenHandler 拒绝新窗口
+  [通过] will-navigate 拦截
+  [通过] will-frame-navigate（子框架导航）
+  [提示] 缺少 web-contents-created 统一兜底
+  [通过] setPermissionRequestHandler
+  [通过] Content-Security-Policy
+  [通过] CSP script-src 是干净的（'self'）
+
+## 3. 渲染层 HTML 注入汇聚点
+  innerHTML 赋值 38 处
+  [提示] panel.innerHTML = parts.join('\n')（需要人工确认右侧没有任何不可信数据）
+  [提示] page.target.innerHTML = html（需要人工确认右侧没有任何不可信数据）
+  [提示] dlgAddonTarget.innerHTML = html（需要人工确认右侧没有任何不可信数据）
+  [通过] 渲染进程不主动发网络请求
+
+## 4. 高价值 IPC 的入参校验
+  [通过] content-toggle 把 instance 一起传给 setModEnabled（有越界校验）
+  [通过] open-folder 的 path 走 assertOpenablePath（限定在数据目录 / 游戏目录内）
+  [通过] settings:save 在落盘前校验 javaPath 授权
+  [通过] resolveJavaRuntime 走 assertUsableJava
+  [通过] launchInstance 在 createLaunchSpec 里做使用点授权校验
+  [通过] downloads:install-pack 只接受预检产出的 token
+  [通过] 整合包走 modpack-guard 预检（条目 / 大小 / 链接条目）
+  [通过] 整合包解压后有 verifyExtractedTree 核对
+  [通过] open-folder / content-reveal 使用 realpath 判定越界
+  [通过] assertAppWindow 校验 senderFrame + 来源
+
+## 5. preload 暴露面
+  window.launcherAPI 方法数: 89
+  [通过] 没有暴露 ipcRenderer
+  [提示] preload 收到回调时没有过滤 event.senderFrame
+
+## 结论
+  没有命中高危规则。

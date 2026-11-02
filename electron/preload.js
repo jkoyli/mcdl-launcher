@@ -1,6 +1,6 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 /**
  * Only the narrow launcher API is exposed to the renderer.
@@ -120,13 +120,23 @@ const launcherAPI = {
 
   /**
    * 下载中心：整合包（本地 .zip / .mrpack）。
-   *   pickModpack 打开系统选择框并返回预览；inspectModpack 只读已知路径。
+   *
+   * 三个入口最后都汇聚到同一条管线：pickModpack（对话框）/ prepareModpack（拖拽）
+   * 只做预检并返回一次性 token；installModpack 只认 token，不认路径。
    */
   pickModpack: () => ipcRenderer.invoke('downloads:pick-pack'),
+
+  prepareModpack: (file) => ipcRenderer.invoke('downloads:prepare-pack', { file }),
 
   inspectModpack: (payload) => ipcRenderer.invoke('downloads:inspect-pack', payload),
 
   installModpack: (payload) => ipcRenderer.invoke('downloads:install-pack', payload),
+
+  /**
+   * 拖拽：把 DOM File 换成本机路径（Electron 30+ 必须走 webUtils）。
+   * 得到的路径仍然只是"候选"，要经 prepareModpack 预检才能安装。
+   */
+  pathForFile: (file) => webUtils.getPathForFile(file),
 
   onDownloadProgress: (callback) => {
     if (typeof callback !== 'function') return;
@@ -251,6 +261,12 @@ const launcherAPI = {
   getSettings: () => ipcRenderer.invoke('settings:get'),
 
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+
+  /**
+   * 自定义 Java：只能通过系统对话框选择。主进程会验证它真是 JVM 并登记指纹，
+   * 返回 { path, info, identity } 或 null（取消）。
+   */
+  pickJava: () => ipcRenderer.invoke('settings:pick-java'),
 
   /** 启动时读偏好（不触发 Java 扫描）。 */
   getPreferences: () => ipcRenderer.invoke('settings:preferences'),

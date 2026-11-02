@@ -1541,6 +1541,7 @@
 
   var settingsJavaCount = document.getElementById('settingsJavaCount');
   var settingsJavaScan = document.getElementById('settingsJavaScan');
+  var settingsJavaPick = document.getElementById('settingsJavaPick');
   var settingsJavaInstall = document.getElementById('settingsJavaInstall');
   var settingsJavaStatus = document.getElementById('settingsJavaStatus');
   var settingsLanguage = document.getElementById('settingsLanguage');
@@ -2903,6 +2904,34 @@
       settingsLoaded = false;
       setHint(settingsJavaStatus, '正在重新扫描…');
       loadSettings();
+    });
+  }
+
+  // 自定义 Java：对话框由主进程弹，选完它自己验证 + 登记指纹，这里只负责保存。
+  if (settingsJavaPick) {
+    settingsJavaPick.addEventListener('click', function () {
+      var api = window.launcherAPI;
+      if (!api || typeof api.pickJava !== 'function') {
+        setHint(settingsJavaStatus, '主进程桥接不可用，无法选择 Java');
+        return;
+      }
+
+      setHint(settingsJavaStatus, '正在验证所选 Java…');
+      api.pickJava()
+        .then(function (picked) {
+          if (!picked) {
+            setHint(settingsJavaStatus, '已取消');
+            return;
+          }
+          return saveSettingsPatch({ javaPath: picked.path }, settingsJavaStatus)
+            .then(function () {
+              settingsLoaded = false;
+              loadSettings();
+            });
+        })
+        .catch(function (error) {
+          setHint(settingsJavaStatus, '无法使用这个 Java：' + describeLaunchError(error), 'error');
+        });
     });
   }
 
@@ -6723,6 +6752,48 @@
       });
   }
 
+  /**
+   * 拖拽整合包：路径只是候选，主进程会做内容预检（条目 / 大小 / 链接条目），
+   * 通过后才会拿到安装许可（token）。
+   */
+  function dropModpackFile(event) {
+    var api = window.launcherAPI;
+    if (!api || typeof api.prepareModpack !== 'function' || typeof api.pathForFile !== 'function') {
+      setPackStatus('当前版本不支持拖拽，请用「选择文件」', 'error');
+      return;
+    }
+
+    var files = (event && event.dataTransfer && event.dataTransfer.files) || [];
+    if (files.length === 0) return;
+
+    var file = files[0];
+    var filePath = '';
+    try {
+      filePath = api.pathForFile(file);
+    } catch (error) {
+      setPackStatus('无法读取拖入文件的路径', 'error');
+      return;
+    }
+    if (!filePath) {
+      setPackStatus('无法读取拖入文件的路径', 'error');
+      return;
+    }
+
+    setPackStatus('正在检查整合包…');
+    api.prepareModpack(filePath)
+      .then(function (info) {
+        if (!info) {
+          setPackStatus('未选择整合包');
+          return;
+        }
+        applyPackInfo(info);
+      })
+      .catch(function (error) {
+        console.error('[downloads] prepare modpack failed:', error);
+        setPackStatus('这个整合包被拒绝：' + (error && error.message ? error.message : error), 'error');
+      });
+  }
+
   function openPackFilesDialog() {
     if (!packInfo) return;
     if (packFilesMeta) {
@@ -6762,7 +6833,7 @@
     setPackStatus('正在解压并安装整合包…');
 
     api.installModpack({
-      file: packInfo.path,
+      token: packInfo.token,
       name: packName ? packName.value.trim() : ''
     })
       .then(function (result) {
@@ -6875,6 +6946,33 @@
 
   if (packPick) {
     packPick.addEventListener('click', pickModpackFile);
+  }
+
+  var packDropZone = document.getElementById('packDropZone');
+  if (packDropZone) {
+    ['dragenter', 'dragover'].forEach(function (name) {
+      packDropZone.addEventListener(name, function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        packDropZone.classList.add('is-drop-target');
+      });
+    });
+
+    ['dragleave', 'dragend'].forEach(function (name) {
+      packDropZone.addEventListener(name, function (event) {
+        event.preventDefault();
+        packDropZone.classList.remove('is-drop-target');
+      });
+    });
+
+    packDropZone.addEventListener('drop', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      packDropZone.classList.remove('is-drop-target');
+      if (packBusy) return;
+      dropModpackFile(event);
+    });
   }
 
   if (packOptional) {

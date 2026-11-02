@@ -19,6 +19,8 @@ const path = require('node:path');
 const os = require('node:os');
 
 const manifest = require('./version-manifest');
+const javaRuntime = require('./java-runtime');
+const { createLaunchSpec } = require('./launch-spec');
 
 const LAUNCHER_BRAND = 'MCDL Launcher';
 const LAUNCHER_VERSION = '0.2.0';
@@ -504,7 +506,8 @@ function clampDimension(value, fallback) {
 }
 
 function javaExecutableForSpawn(javaPath) {
-  // 用 javaw.exe 启动可以避免弹出控制台窗口；stdout/stderr 管道仍然可用。
+  // 保留导出以兼容旧调用方；实际换名逻辑在 launch-spec.resolveJavaExecutable 里
+  // （那边会先确认 javaw.exe 真的存在，避免 spawn 直接 ENOENT）。
   if (process.platform === 'win32' && /java\.exe$/i.test(javaPath)) {
     return javaPath.replace(/java\.exe$/i, 'javaw.exe');
   }
@@ -533,7 +536,12 @@ async function launchInstance({ gameDir, instanceId, account, settings = {}, res
   await ensureDir(path.dirname(logFile));
   const logStream = require('node:fs').createWriteStream(logFile, { flags: 'a' });
 
-  const executable = javaExecutableForSpawn(plan.javaPath);
+  // 唯一的启动规格：可执行文件与参数都过一遍形状校验并冻结，之后不再接受任何修改。
+  // assertJava 是使用点授权校验——即使调用方绕过 resolveJava 直接塞一个 javaPath 进来，
+  // 这里仍然会拒绝未登记的路径。
+  const spec = await createLaunchSpec(plan, {
+    assertJava: (javaPath) => javaRuntime.assertUsableJava(javaPath)
+  });
   const emit = (kind, payload) => {
     if (typeof onEvent === 'function') onEvent(kind, payload);
   };
@@ -547,8 +555,8 @@ async function launchInstance({ gameDir, instanceId, account, settings = {}, res
 
   let child;
   try {
-    child = spawn(executable, plan.args, {
-      cwd: plan.gameDir,
+    child = spawn(spec.executable, spec.args, {
+      cwd: spec.gameDir,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -591,7 +599,7 @@ async function launchInstance({ gameDir, instanceId, account, settings = {}, res
   emit('spawned', {
     launchId,
     pid: child.pid || null,
-    javaPath: plan.javaPath,
+    javaPath: spec.executable,
     javaMajor: plan.javaMajor,
     logFile
   });

@@ -521,9 +521,43 @@ Modrinth 没有世界分类，CurseForge 需要 API Key。
 
 ## 安全边界
 
-- 外部链接一律交给 `shell.openExternal`，窗口内导航被拦截。
+- 外部链接一律交给 `shell.openExternal`，窗口内导航与子框架导航都被拦截；
+  `session` 的网页权限请求（摄像头 / 通知 / 剪贴板读取…）一律拒绝。
+- `index.html` 带 CSP：`script-src 'self'`，无 `unsafe-inline` / `unsafe-eval`，`connect-src 'none'`
+  （渲染进程本来就不发网络请求，这条把"XSS 之后外传数据"也掐掉）。
 - 主进程与渲染进程之间只传纯数据，不传函数或对象引用。
-- 账号令牌只写本地文件，不进入渲染进程，也不随日志输出。
+- 账号令牌只写本地文件，不进入渲染进程，也不随日志输出；**生成的启动脚本里也不含令牌**
+  （写占位符，运行时由脚本从 `accounts.json` 读一次）。
+- **路径输入一律过 `electron/path-guard.js`**：拒绝 UNC / 设备路径（`\\server\share`、`\\?\C:\`），
+  必须是绝对路径，越界判断用 `path.relative`。`openFolderPath` / `revealPath` 在做任何 `fs.*` 之前就校验，
+  因为 `fs.stat` 本身就会对 UNC 路径外发认证。
+- **可执行文件只能来自 `electron/launch-spec.js`**：文件名必须是 `java`/`javaw`，参数必须是字符串数组，
+  产出物冻结后才交给 `spawn`（`launchInstance` 不再自己拼 `spawn` 参数）。
+- **javaPath 走授权表**（`java-runtime.js`）：登记时记录 `{ real, size, mtimeMs, major }` 指纹，
+  启动时只比对指纹、不执行；唯一会执行"尚未授权"二进制的时刻是「设置 → Java → 选择 Java…」
+  对话框，以及启动器自己枚举到的 Java。文件指纹一变，授权作废并要求重选，**不再静默回退自动探测**。
+  校验放在 `createLaunchSpec` 的使用点上，新增调用方也绕不过。
+- **整合包只认一次性 token**：`pick-pack`（对话框）和 `prepare-pack`（拖拽）走同一条预检管线
+  （条目 / 大小 / 压缩比 / 链接条目 / `..` / ADS / 保留名），通过后发 10 分钟有效、用后即失效的 token；
+  `install-pack` 只认 token，并在解压后用 `verifyExtractedTree` 核对结果（出现链接或越界即整包删除）。
+- **脚本类产物只允许"模板 + 数据"**：`electron/launch-script.js` 生成固定的 `.ps1`，
+  实例名 / 参数 / Java 路径都放在同目录的 `launch-data.json` 里。
+  不要把任何用户可控字符串拼进 `.ps1` / `.bat` / `.sh` 的正文。
+- IPC handler 的调用方校验（`assertAppWindow`）除了比对 webContents，还要求
+  `event.senderFrame === mainWindow.webContents.mainFrame` 且来源是 `file://`；
+  这样将来引入 iframe / webview 时，子框架也调不到这些特权通道。
+- 启动入口不要加 `--no-sandbox`：它会关掉整个 Chromium 进程沙箱，`webPreferences.sandbox` 随之失效。
+  排查问题请用 `npm run start:troubleshoot`。
+
+回归检查（三份脚本，各管一层）：
+
+```powershell
+node docs/security/audit.js          # 静态边界（命中高危退出码 1，可接 CI）
+node docs/security/poc.js            # 攻击模拟：每条发现一个断言
+node docs/security/runtime-check.js  # 运行时：真的启动一次，验证 IPC 与 CSP 生效
+```
+
+细节与历史见 [security-audit.md](security-audit.md)。
 
 ## 开发与调试
 

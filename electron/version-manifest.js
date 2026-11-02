@@ -11,6 +11,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { isInside } = require('./path-guard');
+
 const OS_NAME = process.platform === 'win32'
   ? 'windows'
   : process.platform === 'darwin'
@@ -284,12 +286,23 @@ function collectLibraries(merged, gameDir, features) {
     // classifier jar 解压到 natives 目录。现代版本 natives 本身就是 artifact。
     const nativePath = nativeArtifactPath(library);
     if (nativePath) {
-      natives.push({ path: path.join(librariesDir, nativePath), name: String(library.name || nativePath) });
+      const resolvedNative = path.join(librariesDir, nativePath);
+      // 版本 JSON 来自第三方整合包 / 其他启动器，artifact.path 里的 `..\` 不能穿出 libraries。
+      if (isInside(librariesDir, resolvedNative)) {
+        natives.push({ path: resolvedNative, name: String(library.name || nativePath) });
+      } else {
+        skipped.push(String(library.name || nativePath));
+      }
     }
 
     const artifact = libraryArtifactPath(library);
     if (artifact) {
-      classpath.push(path.join(librariesDir, artifact));
+      const resolvedArtifact = path.join(librariesDir, artifact);
+      if (isInside(librariesDir, resolvedArtifact)) {
+        classpath.push(resolvedArtifact);
+      } else {
+        skipped.push(String(library.name || artifact));
+      }
     } else if (!nativePath) {
       skipped.push(String(library.name || '(unnamed)'));
     }

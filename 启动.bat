@@ -39,5 +39,8 @@ if not exist "node_modules\electron\dist\electron.exe" (
 rem Hardware acceleration is the default. If the GPU process crashes, the app
 rem records it and falls back to software rendering on the next launch.
 rem Force software rendering:  启动.bat --software-render
-start "" "node_modules\electron\dist\electron.exe" --no-stdio-init --no-sandbox . %*
+rem
+rem 不要加 --no-sandbox：它会关掉整个 Chromium 进程沙箱，webPreferences.sandbox
+rem 也随之失效（见 docs/security-audit.md · F2）。只在排查问题时临时手动加。
+start "" "node_modules\electron\dist\electron.exe" --no-stdio-init . %*
 endlocal

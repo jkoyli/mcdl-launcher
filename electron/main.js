@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog, session: electronSession } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -14,6 +14,9 @@ const launcher = require('./launch');
 const accounts = require('./accounts');
 const { createGameDirectoryStore } = require('./game-directories');
 const { createInstanceStore } = require('./instance-store');
+const pathGuard = require('./path-guard');
+const launchScript = require('./launch-script');
+const modpackGuard = require('./modpack-guard');
 
 const IS_DEV = process.argv.includes('--dev');
 
@@ -395,6 +398,16 @@ async function readSettings() {
   };
 }
 
+/** 授权指纹：只写盘、不读给渲染进程（渲染进程只需要 javaPath）。 */
+async function readJavaIdentity() {
+  try {
+    const raw = JSON.parse(await fs.readFile(settingsFile(), 'utf8'));
+    return raw && typeof raw.javaIdentity === 'object' ? raw.javaIdentity : null;
+  } catch {
+    return null;
+  }
+}
+
 async function writeSettings(patch) {
   const current = await readSettings();
   const merged = launcher.normalizeSettings({ ...current, ...patch });
@@ -407,10 +420,28 @@ async function writeSettings(patch) {
     ...normalizeExtraSettings({ ...current, ...patch })
   };
 
+  // javaPath 会直接变成 spawn 的目标：换了值就必须过授权（对话框登记过 / 启动器自己枚举到的），
+  // 否则渲染进程（或一次 XSS）只要写设置就能让启动器执行任意程序。
+  let javaIdentity = await readJavaIdentity();
+  if (next.javaPath && next.javaPath !== current.javaPath) {
+    const selected = await javaRuntime.assertJavaSelection(next.javaPath);
+    next.javaPath = selected.real;
+    javaIdentity = await javaRuntime.javaAuthorization(selected.real);
+  } else if (!next.javaPath) {
+    javaIdentity = null;
+  } else if (!javaIdentity) {
+    // 老配置里只有路径没有指纹：补一次登记（路径必须已被授权或来自启动器枚举）。
+    await javaRuntime.assertJavaSelection(next.javaPath);
+    javaIdentity = await javaRuntime.javaAuthorization(next.javaPath);
+  }
+
   const file = settingsFile();
   try {
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, JSON.stringify(next, null, 2), 'utf8');
+    await fs.writeFile(file, JSON.stringify({
+      ...next,
+      javaIdentity: javaIdentity || null
+    }, null, 2), 'utf8');
   } catch (error) {
     throw new Error(
       `无法写入设置文件（${error.code || 'ERROR'}）：${file}\n` +
@@ -464,14 +495,22 @@ async function resolveJavaRuntime(options = {}) {
   const javaPath = String(options.javaPath || settings.javaPath || '');
 
   if (javaPath) {
-    const info = await javaRuntime.probe(javaPath);
-    if (info) {
-      if (requiredMajor && info.major < requiredMajor) {
-        console.warn(`[launch] configured Java ${info.major} is below required ${requiredMajor}`);
-      }
-      return info;
+    // 使用点校验：已授权的直接用缓存信息（不执行），未授权的只有在启动器自己枚举到的
+    // 目录里才允许 probe 一次入表，其余一律拒绝。
+    //
+    // 注意这里**不再静默回退自动探测**：用户明确选了 JDK 21 却被悄悄换成 JDK 17，
+    // 表现为"某个版本莫名崩"，比直接报错误导得多。
+    const info = await javaRuntime.assertUsableJava(javaPath).catch((error) => {
+      throw new Error(
+        `设置的 Java 不可用：${error.message}\n` +
+          '请到「设置 → Java」重新选择，或清空该选项改用自动探测。'
+      );
+    });
+
+    if (requiredMajor && info.major < requiredMajor) {
+      console.warn(`[launch] configured Java ${info.major} is below required ${requiredMajor}`);
     }
-    console.warn('[launch] configured Java unusable, falling back to auto detect:', javaPath);
+    return info;
   }
 
   const runtimes = await javaRuntime.getJavaRuntimes(mcdl, { cacheFile: javaRuntimeCacheFile() });
@@ -650,8 +689,9 @@ async function assertShellHandoffAvailable(target) {
  * 所以先保证目录存在且可读，Windows 上直接拉起 explorer.exe，再退回 shell.openPath。
  */
 async function openFolderPath(dir) {
-  const target = path.resolve(String(dir || ''));
-  if (!target) throw new Error('缺少要打开的文件夹路径');
+  // 这里会真的去 fs.stat / mkdir / 交给资源管理器，所以必须先拒掉 UNC 与设备路径：
+  // `\\attacker\share` 在 stat 那一刻就会让 Windows 发 SMB 认证。
+  const target = pathGuard.assertLocalPath(dir, '文件夹路径');
 
   let stat = null;
   try {
@@ -694,8 +734,7 @@ async function openFolderPath(dir) {
 
 /** 在资源管理器里定位文件；文件不存在时给出明确错误，而不是假装成功。 */
 async function revealPath(filePath) {
-  const target = path.resolve(String(filePath || ''));
-  if (!target) throw new Error('缺少要定位的文件路径');
+  const target = pathGuard.assertLocalPath(filePath, '文件路径');
 
   let stat = null;
   try {
@@ -884,13 +923,67 @@ function sendInstallOutput(win, bufferState) {
 }
 
 /**
- * Only the app's own renderer may call these IPC handlers.
+ * Only the app's own renderer (main frame, local origin) may call these IPC handlers.
+ *
+ * 只比 event.sender 是不够的：同一窗口里任意子框架拿到的是同一个 webContents。
+ * 现在没有 iframe / webview，但以后加上内嵌页面时这层就不成立了，所以顺手把
+ * 主框架与来源一起钉死。
  */
 function assertAppWindow(event) {
-  if (!mainWindow || event.sender !== mainWindow.webContents) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || event.sender !== win.webContents) {
     throw new Error('Unauthorized IPC sender');
   }
-  return mainWindow;
+
+  const frame = event.senderFrame;
+  if (!frame || frame !== win.webContents.mainFrame) {
+    throw new Error('Unauthorized IPC frame');
+  }
+  if (!/^file:\/\//i.test(String(frame.url || ''))) {
+    throw new Error('Unauthorized IPC origin');
+  }
+
+  return win;
+}
+
+/**
+ * 「把某个路径交给资源管理器」的允许范围：只有启动器自己的数据目录、已登记的游戏目录。
+ *
+ * 三段式：先词法拒 UNC / 设备路径（`fs.stat` 会触发 SMB 认证），再对允许根与目标都取
+ * realpath（junction 会解析到真实目标），最后才由调用方 mkdir / 打开。
+ */
+async function assertOpenablePath(raw) {
+  const target = pathGuard.assertLocalPath(raw, '要打开的路径');
+  const roots = [app.getPath('userData')];
+
+  try {
+    const managed = await managedGameDirs();
+    roots.push(managed.primary, ...managed.dirs);
+  } catch (error) {
+    console.warn('[open-folder] 读取游戏目录失败，只允许数据目录内的路径:', error.message);
+  }
+
+  try {
+    const store = getGameDirStore();
+    roots.push(...(await store.paths()));
+  } catch {
+    // 读不到就按上面的范围来
+  }
+
+  return pathGuard.assertInsideAnyRoots(roots, target, '要打开的路径', { allowEqual: true });
+}
+
+/**
+ * 实例显示名：去掉控制字符（换行 / 制表 / 零宽分隔符）并压掉多余空白。
+ *
+ * 这些名字会出现在界面、生成的启动脚本、以及各种导出文本里；控制字符没有任何
+ * 正当用途，却能把"一行注释"变成"一条命令"。
+ */
+function sanitizeDisplayName(value) {
+  return String(value == null ? '' : value)
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function registerIpcHandlers() {
@@ -996,7 +1089,7 @@ function registerIpcHandlers() {
     const version = String(payload.version || '').trim();
     const loader = String(payload.loader || 'Vanilla');
     const loaderVersion = String(payload.loaderVersion || '').trim();
-    const requestedName = String(payload.name || '').trim();
+    const requestedName = sanitizeDisplayName(payload.name);
 
     if (!version) throw new Error('缺少游戏版本');
     const vanilla = loader === 'Vanilla' || loader === '' || loader === 'vanilla';
@@ -1007,7 +1100,7 @@ function registerIpcHandlers() {
     const requestedDir = String(payload.gameDir || '').trim();
     let gameDir;
     if (requestedDir) {
-      gameDir = path.resolve(requestedDir);
+      gameDir = pathGuard.assertLocalPath(requestedDir, '游戏目录');
       const stat = await fs.stat(gameDir).catch(() => null);
       if (!stat || !stat.isDirectory()) {
         throw new Error(`游戏目录不存在：${gameDir}`);
@@ -1137,6 +1230,23 @@ function registerIpcHandlers() {
     }
   });
 
+  /**
+   * 整合包预检：读条目 + 资源限制 + 链接条目检查，产出一次性安装许可（token）。
+   * 对话框和拖拽走同一条管线——安全由"内容已过检"保证，而不是"路径从哪来"。
+   */
+  async function preparePack(file) {
+    const prepared = await modpackGuard.prepare(file);
+
+    let inspected = {};
+    try {
+      inspected = await mcdl.inspectModpack(prepared.info.path);
+    } catch (error) {
+      console.warn('[downloads] 读取整合包摘要失败（继续按预检结果处理）:', error.message);
+    }
+
+    return { ...inspected, ...prepared.info, token: prepared.token };
+  }
+
   ipcMain.handle('downloads:pick-pack', async (event) => {
     const win = assertAppWindow(event);
     const result = await dialog.showOpenDialog(win, {
@@ -1150,18 +1260,27 @@ function registerIpcHandlers() {
     if (result.canceled || !result.filePaths.length) return null;
 
     try {
-      return await mcdl.inspectModpack(result.filePaths[0]);
+      return await preparePack(result.filePaths[0]);
     } catch (error) {
       throw new Error(`无法读取整合包: ${error.message}`);
     }
   });
 
+  /** 拖拽入口：路径来自渲染进程，所以只做预检，不直接安装。 */
+  ipcMain.handle('downloads:prepare-pack', async (event, payload = {}) => {
+    assertAppWindow(event);
+    try {
+      return await preparePack(payload && payload.file);
+    } catch (error) {
+      throw new Error(`无法读取整合包: ${error.message}`);
+    }
+  });
+
+  /** 兼容旧名字（等价于 prepare-pack）。 */
   ipcMain.handle('downloads:inspect-pack', async (event, payload = {}) => {
     assertAppWindow(event);
-    const file = String(payload.file || '').trim();
-    if (!file) throw new Error('缺少整合包文件');
     try {
-      return await mcdl.inspectModpack(file);
+      return await preparePack(payload && payload.file);
     } catch (error) {
       throw new Error(`无法读取整合包: ${error.message}`);
     }
@@ -1169,9 +1288,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('downloads:install-pack', async (event, payload = {}) => {
     const win = assertAppWindow(event);
-    const file = String(payload.file || '').trim();
-    const requestedName = String(payload.name || '').trim();
-    if (!file) throw new Error('缺少整合包文件');
+    // 只认预检产出的 token，不认路径：拿不到 token 就装不了。
+    const record = modpackGuard.consume(payload && payload.token);
+    const requestedName = sanitizeDisplayName(payload.name);
+
+    await modpackGuard.assertUnchanged(record);
 
     const gameDir = await mcdl.detectGameDir();
     const bufferState = { value: '' };
@@ -1183,11 +1304,22 @@ function registerIpcHandlers() {
 
     try {
       const result = await mcdl.installModpack({
-        file,
+        file: record.file,
         name: requestedName,
         gameDir,
         onData: sendDownloadOutput(win, bufferState)
       });
+
+      // 解压后核对：不允许出现链接 / 指到目录外的条目（防"解压器某天被改坏"）。
+      try {
+        const checked = await modpackGuard.verifyExtractedTree(result.instanceDir);
+        console.log(`[downloads] 解压核对通过：${checked.files} 个文件，${checked.bytes} 字节`);
+      } catch (error) {
+        console.error('[downloads] 解压结果未通过核对，已删除该实例：', error.message);
+        await fs.rm(result.instanceDir, { recursive: true, force: true }).catch(() => {});
+        send(`安装已中止：${error.message}`);
+        throw error;
+      }
 
       const aliases = await readAliases();
       aliases[path.resolve(result.instanceDir)] = requestedName || result.instanceId;
@@ -1494,7 +1626,7 @@ function registerIpcHandlers() {
   ipcMain.handle('instances:rename', async (event, payload = {}) => {
     assertAppWindow(event);
     const instanceId = String(payload.instanceId || '');
-    const name = String(payload.name || '').trim();
+    const name = sanitizeDisplayName(payload.name);
 
     if (!name) throw new Error('名称不能为空');
     if (name.length > 48) throw new Error('名称不能超过 48 个字符');
@@ -1536,7 +1668,8 @@ function registerIpcHandlers() {
 
     const aliases = await readAliases();
     const sourceAlias = aliases[instance.path] || instance.displayName || baseName;
-    aliases[target] = payload.name ? String(payload.name).trim() : `${sourceAlias} · 副本`;
+    const copyName = sanitizeDisplayName(payload.name);
+    aliases[target] = copyName || `${sourceAlias} · 副本`;
     await writeAliases(aliases);
 
     const snapshot = await rescanInstances();
@@ -1572,7 +1705,9 @@ function registerIpcHandlers() {
 
     const target = String(payload.path || '');
     if (target) {
-      return { path: await openFolderPath(target) };
+      // 渲染进程可以自己传路径（例如启动脚本目录），但只允许落在启动器数据目录
+      // 或已登记的游戏目录之内，且不能是 UNC / 设备路径。
+      return { path: await openFolderPath(await assertOpenablePath(target)) };
     }
 
     const { instance } = await findInstance(String(payload.instanceId || ''));
@@ -1583,6 +1718,10 @@ function registerIpcHandlers() {
   /**
    * 生成启动脚本：命令行可能超过 cmd 的 8191 字符上限，
    * 所以主体写成 .ps1（参数数组，一行一个），再用 .bat 转调。
+   *
+   * .ps1 是固定模板，实例名 / 参数 / Java 路径都在同目录的 launch-data.json 里：
+   * 数据永远不拼进脚本源码，实例名里有什么字符都不会变成代码。
+   * 令牌也不落盘，模板运行时从启动器账号数据里读。
    */
   ipcMain.handle('instances:launch-script', async (event, payload = {}) => {
     assertAppWindow(event);
@@ -1600,42 +1739,34 @@ function registerIpcHandlers() {
     const versionId = path.basename(instance.path);
     const settings = await effectiveSettings(instance.path);
 
+    // 用占位符代替真实令牌：plan.args 里所有出现令牌的地方都会被替换掉。
+    const scriptAccount = { ...account, accessToken: launchScript.TOKEN_PLACEHOLDER };
+
     const plan = await launcher.buildLaunchPlan({
       gameDir: instance.gameDir,
       instanceId: versionId,
-      account,
+      account: scriptAccount,
       settings,
       dataDir: app.getPath('userData'),
       resolveJava: (options) => resolveJavaRuntime({ ...options, javaPath: settings.javaPath })
     });
 
-    const psQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
-    const script = [
-      '# 由 MCDL Launcher 生成，可直接双击运行',
-      `# 实例：${instance.displayName || versionId}`,
-      `Set-Location -LiteralPath ${psQuote(plan.gameDir)}`,
-      `$java = ${psQuote(plan.javaPath)}`,
-      '$javaArgs = @(',
-      ...plan.args.map((arg) => `  ${psQuote(arg)}`),
-      ')',
-      '& $java @javaArgs',
-      "Write-Host ''",
-      "Read-Host '按 Enter 关闭窗口'",
-      ''
-    ].join('\r\n');
+    const files = launchScript.buildLaunchScriptFiles({
+      plan,
+      displayName: instance.displayName || versionId,
+      accountId: account.id,
+      accountsFile: path.join(app.getPath('userData'), 'accounts.json')
+    });
 
     const writeInto = async (dir) => {
-      const target = path.join(dir, `启动-${versionId}.ps1`);
-      const batTarget = path.join(dir, `启动-${versionId}.bat`);
+      const target = path.join(dir, files.names.ps1);
+      const batTarget = path.join(dir, files.names.bat);
+      const dataTarget = path.join(dir, files.names.data);
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(target, '\uFEFF' + script, 'utf8');
-      await fs.writeFile(batTarget, [
-        '@echo off',
-        'chcp 65001 >nul',
-        `powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(target)}"`,
-        ''
-      ].join('\r\n'), 'utf8');
-      return { ps1: target, bat: batTarget, dir };
+      await fs.writeFile(target, '\uFEFF' + files.ps1Text, 'utf8');
+      await fs.writeFile(batTarget, files.batText, 'utf8');
+      await fs.writeFile(dataTarget, files.dataText, 'utf8');
+      return { ps1: target, bat: batTarget, data: dataTarget, dir };
     };
 
     let written;
@@ -1646,13 +1777,18 @@ function registerIpcHandlers() {
     } catch (error) {
       // 实例目录可能只读或被安全软件拦住：退到启动器数据目录，别把整件事判失败。
       if (!['EPERM', 'EACCES', 'EROFS', 'EBUSY'].includes(error && error.code)) throw error;
-      const fallbackDir = path.join(app.getPath('userData'), 'launch-scripts');
+      // 文件和文件名都是固定的，所以回退目录按实例分子目录，避免互相覆盖。
+      const fallbackDir = path.join(
+        app.getPath('userData'),
+        'launch-scripts',
+        launchScript.fileStem(versionId)
+      );
       written = await writeInto(fallbackDir);
       fallback = true;
       console.warn('[launch-script] instance folder not writable, wrote to', fallbackDir);
     }
 
-    return { ...written, fallback, warnings: plan.warnings };
+    return { ...written, fallback, needsToken: files.needsToken, warnings: plan.warnings };
   });
 
   // ---------------- 游戏目录管理 ----------------
@@ -1664,9 +1800,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('gamedirs:save', async (event, payload = {}) => {
     assertAppWindow(event);
+    // UNC / 设备路径在 stat 阶段就会外发认证，这里直接拒掉。
+    const dirPath = pathGuard.assertLocalPath(payload && payload.path, '游戏文件夹路径');
     return getGameDirStore().save({
       id: payload && payload.id ? String(payload.id) : '',
-      dirPath: payload && payload.path,
+      dirPath,
       useRelativePath: Boolean(payload && payload.useRelativePath)
     });
   });
@@ -1710,6 +1848,13 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     const instance = await requireInstance(payload);
     const patch = payload && payload.patch && typeof payload.patch === 'object' ? payload.patch : {};
+
+    // 实例级 javaPath 同样会进入 spawn，必须过同一个授权校验。
+    if (typeof patch.javaPath === 'string' && patch.javaPath.trim()) {
+      const selected = await javaRuntime.assertJavaSelection(patch.javaPath.trim());
+      patch.javaPath = selected.real;
+    }
+
     const overrides = await getInstanceStore().saveSettings(instance.path, patch);
     return { overrides, effective: await effectiveSettings(instance.path) };
   });
@@ -1759,8 +1904,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle('instances:content-toggle', async (event, payload = {}) => {
     assertAppWindow(event);
-    await requireInstance(payload);
-    return getInstanceStore().setModEnabled(String(payload.path || ''), Boolean(payload.enabled));
+    const instance = await requireInstance(payload);
+    return getInstanceStore().setModEnabled(instance, String(payload.path || ''), Boolean(payload.enabled));
   });
 
   ipcMain.handle('instances:content-delete', async (event, payload = {}) => {
@@ -1777,7 +1922,7 @@ function registerIpcHandlers() {
   /** 批量启用 / 禁用（模组），失败项会记在 failed 里，不整体回滚。 */
   ipcMain.handle('instances:content-set-many', async (event, payload = {}) => {
     assertAppWindow(event);
-    await requireInstance(payload);
+    const instance = await requireInstance(payload);
 
     const enabled = Boolean(payload && payload.enabled);
     const paths = Array.isArray(payload && payload.paths) ? payload.paths : [];
@@ -1785,7 +1930,7 @@ function registerIpcHandlers() {
 
     for (const item of paths) {
       try {
-        await getInstanceStore().setModEnabled(String(item), enabled);
+        await getInstanceStore().setModEnabled(instance, String(item), enabled);
       } catch (error) {
         failed.push({ path: String(item), message: error.message });
       }
@@ -1824,11 +1969,8 @@ function registerIpcHandlers() {
     const gameDir = path.resolve(instance.gameDir);
 
     if (target) {
-      const resolved = path.resolve(target);
-      const inside = path.relative(gameDir, resolved);
-      if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) {
-        throw new Error('只能定位游戏目录内的文件');
-      }
+      // 用 realpath 判定：游戏目录里的 junction 不能把它带到目录外。
+      const resolved = await pathGuard.assertInsideReal(gameDir, target, '要定位的文件');
       return { path: await revealPath(resolved) };
     }
 
@@ -2182,6 +2324,30 @@ function registerIpcHandlers() {
     return writeSettings(patch || {});
   });
 
+  /**
+   * 自定义 Java 的唯一登记入口。
+   *
+   * 走系统对话框：返回值由主进程拿到，渲染进程伪造不了一个"用户真的选过"的文件。
+   * 这里会真的执行一次 `-version` 确认它是 JVM（假 Java 改名也过不了），
+   * 成功后连同指纹记入授权表，后续启动只做指纹比对、不再执行。
+   */
+  ipcMain.handle('settings:pick-java', async (event) => {
+    const win = assertAppWindow(event);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择 Java 可执行文件',
+      buttonLabel: '使用这个 Java',
+      properties: ['openFile'],
+      filters: process.platform === 'win32'
+        ? [{ name: 'Java', extensions: ['exe'] }, { name: '全部文件', extensions: ['*'] }]
+        : [{ name: '全部文件', extensions: ['*'] }]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) return null;
+
+    const { info, record } = await javaRuntime.registerJava(result.filePaths[0]);
+    return { path: record.real, info, identity: await javaRuntime.javaAuthorization(record.real) };
+  });
+
   /** 启动时只读偏好，不触发 Java 扫描。 */
   ipcMain.handle('settings:preferences', async (event) => {
     assertAppWindow(event);
@@ -2250,6 +2416,27 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
 
+  // 「写了不等于生效」：启动参数里的 --no-sandbox / --disable-web-security 会覆盖
+  // webPreferences，所以这里把实际生效的值打出来，一眼能看出底线有没有被抹掉。
+  try {
+    const effective = mainWindow.webContents.getLastWebPreferences() || {};
+    console.log(
+      `[security] webPreferences: contextIsolation=${effective.contextIsolation} ` +
+      `nodeIntegration=${effective.nodeIntegration} sandbox=${effective.sandbox}`
+    );
+    const unsafeSwitches = process.argv.filter((arg) =>
+      /^--(no-sandbox|disable-web-security|disable-site-isolation-trials|allow-running-insecure-content)$/.test(arg)
+    );
+    if (unsafeSwitches.length > 0) {
+      console.warn(`[security] 启动参数里有关闭安全边界的开关：${unsafeSwitches.join(' ')}`);
+    }
+    if (effective.nodeIntegration || !effective.contextIsolation) {
+      console.warn('[security] 渲染进程没有跑在 contextIsolation + 无 nodeIntegration 的配置下');
+    }
+  } catch (error) {
+    console.warn('[security] 无法读取生效的 webPreferences:', error.message);
+  }
+
   mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
     console.error('[main] preload failed:', preloadPath, error);
   });
@@ -2296,6 +2483,13 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
+
+  // will-navigate 不覆盖子框架；将来一旦有内嵌页面，这里就是它唯一的门。
+  mainWindow.webContents.on('will-frame-navigate', (event) => {
+    if (!/^file:\/\//i.test(String(event.url || ''))) {
       event.preventDefault();
     }
   });
@@ -2357,12 +2551,32 @@ if (!gotSingleInstanceLock) {
     // 无边框窗口下移除 Electron 默认菜单栏
     Menu.setApplicationMenu(null);
 
+    // 渲染层不需要任何网页权限（摄像头 / 通知 / 剪贴板读取 / 地理位置…），一律拒绝。
+    // 不设的话走 Chromium 默认行为，等于给将来出现的内嵌页面留了口子。
+    try {
+      const ses = electronSession.defaultSession;
+      ses.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+      ses.setPermissionCheckHandler(() => false);
+    } catch (error) {
+      console.warn('[security] 无法设置权限处理器:', error.message);
+    }
+
     registerIpcHandlers();
     createWindow();
 
     readSettings()
       .then((settings) => applySettingsSideEffects(settings))
       .catch((error) => console.warn('[settings] could not load on startup:', error.message));
+
+    // 从设置里的指纹恢复 Java 授权（只比对指纹，不执行任何程序）。
+    // 对不上就丢掉授权，让下次启动明确报"请重新选择 Java"。
+    readJavaIdentity()
+      .then((identity) => javaRuntime.restoreJavaAuthorization(identity))
+      .then((record) => {
+        if (!record) return;
+        console.log(`[security] Java 授权已恢复：${record.real}（major=${record.major}）`);
+      })
+      .catch((error) => console.warn('[security] Java 授权恢复失败:', error.message));
 
     console.log('[main] BrowserWindow created');
     console.log(`[mcdl] jar: ${mcdl.MCDL_JAR}`);

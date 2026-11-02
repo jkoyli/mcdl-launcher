@@ -65,7 +65,9 @@ if (-not (Test-Path $electron)) {
     }
 }
 
-$arguments = @('--no-stdio-init', '--no-sandbox', '.')
+# 不带 --no-sandbox：那个参数会关掉整个 Chromium 进程沙箱，webPreferences.sandbox
+# 也随之失效（见 docs/security-audit.md · F2）。排查问题时再临时手动追加。
+$arguments = @('--no-stdio-init', '.')
 if ($Dev) {
     $arguments += '--dev'
 }

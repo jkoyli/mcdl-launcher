@@ -7,13 +7,15 @@
   "type": "commonjs",
   "scripts": {
     "start": "electron --no-stdio-init .",
-    "start:local": "electron --no-stdio-init --no-sandbox .",
-    "dev": "electron --no-stdio-init --no-sandbox . --dev"
+    "start:local": "electron --no-stdio-init .",
+    "dev": "electron --no-stdio-init . --dev",
+    "start:troubleshoot": "electron --no-stdio-init --no-sandbox .",
+    "dev:troubleshoot": "electron --no-stdio-init --no-sandbox . --dev"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "electron": "^45.2.1"
+    "electron": "45.2.1"
   }
 }

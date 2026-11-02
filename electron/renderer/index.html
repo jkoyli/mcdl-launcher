@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<!--
+  内容安全策略（第二道防线）：
+  页面只加载自己的脚本，不联网，不允许对象/内联脚本。
+  样式是内联 <style>，皮肤和实例图标是 data URL，所以 style-src / img-src 要放行它们。
+  即使将来某处退化成 innerHTML 拼字符串，注入的 <script> / onerror 也不会执行。
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; media-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'" />
 <title>MCDL Launcher · 空心囗</title>
 <!--
   ============================================================
@@ -5606,6 +5613,13 @@
     background: rgba(255, 255, 255, .015);
   }
 
+  /* 拖拽整合包时的落点提示 */
+  .download-pack.is-drop-target {
+    border-color: rgba(120, 190, 255, .55);
+    background: rgba(120, 190, 255, .07);
+    box-shadow: inset 0 0 0 1px rgba(120, 190, 255, .25);
+  }
+
   .download-pack__head {
     display: flex;
     align-items: center;
@@ -6742,7 +6756,7 @@
               </button>
             </div>
 
-            <div class="download-pack">
+            <div class="download-pack" id="packDropZone">
               <div class="download-pack__head">
                 <span class="download-pack__file" id="packFile">尚未选择整合包</span>
                 <button class="download-action" id="packPick" type="button">
@@ -6750,7 +6764,7 @@
                   <span aria-hidden="true">＋</span>
                 </button>
               </div>
-              <p class="download-pack__meta" id="packMeta">选择 .zip / .mrpack 后这里显示包内条目、mod 数量与解压后的实例名。</p>
+              <p class="download-pack__meta" id="packMeta">选择或拖入 .zip / .mrpack 后这里显示包内条目、mod 数量与解压后的实例名。</p>
               <label class="create-field download-pack__name" for="packName">
                 <span class="create-label">Instance name / 实例名称</span>
                 <input class="create-control" id="packName" type="text" maxlength="48" placeholder="留空则使用整合包里的名字" autocomplete="off">
@@ -6979,11 +6993,14 @@
                   <span>重新扫描</span>
                   <span aria-hidden="true">↻</span>
                 </button>
+                <button class="download-action" id="settingsJavaPick" type="button" title="选择启动器扫描不到的 JDK（会验证并登记）">
+                  选择 Java…
+                </button>
                 <button class="download-action" id="settingsJavaInstall" type="button" disabled title="自动安装 Java 还没接入">安装 Java</button>
                 <span class="settings-status" id="settingsJavaStatus">—</span>
               </div>
 
-              <p class="settings-note">自动下载 / 恢复 Java 还没接入；先在下方选一个已有运行时，或把 Java 装到 PATH 后点「重新扫描」。</p>
+              <p class="settings-note">自动下载 / 恢复 Java 还没接入；先在下方选一个已有运行时，或点「选择 Java…」指定一个 JDK（需要你手动选一次，之后记住指纹）。</p>
             </div>
           </div>
 

@@ -15,6 +15,8 @@ const { execFile } = require('node:child_process');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
+const { assertJavaExecutableShape } = require('./launch-spec');
+
 const IS_WINDOWS = process.platform === 'win32';
 const JAVA_EXE = IS_WINDOWS ? 'java.exe' : 'java';
 const PROBE_TIMEOUT = 8000;
@@ -355,6 +357,222 @@ function clearCache() {
   cache = null;
 }
 
+// ---------------------------------------------------------------------
+// Java 授权表（javaPath 的可信边界）
+// ---------------------------------------------------------------------
+//
+// 为什么不是"入口白名单"：javaPath 只要是渲染进程能写的一个字符串，
+// `probe()` / `spawn()` 里就有一个"任意可执行文件"的执行点（F1）。
+// 真正的边界在使用点——启动时把路径换成真实路径，再查这张表。
+//
+// 指纹的时机与失效策略
+// --------------------
+// 时机（唯一会执行"尚未授权"的可执行文件的两个时刻）：
+//   1) settings:pick-java —— 用户通过系统对话框显式选择。对话框返回值由主进程拿到，
+//      渲染进程伪造不了"用户真的选过"；随后 realpath + stat + probe('-version') 各一次，
+//      确认它真是 JVM 并读出 major，成功后连同指纹写入授权表。
+//   2) 启动器自己枚举出来的 Java（JAVA_HOME / PATH / MCDL_JAVA / SCAN_ROOTS / 上次扫描结果）——
+//      这些本来就是启动器探过的，保存设置时 probe 一次入表。
+//
+// 指纹：{ size, mtimeMs }。授权的是"这个文件"，不是"这个路径"——
+// 任何一项变化都视为授权作废（防止"授权 java.exe 之后把文件替换成别的 exe"）。
+//
+// 失效：
+//   - 作废后**不自动重跑 probe**（那等于执行一个可能已被替换的二进制），
+//     直接报错要求用户重新选择；
+//   - settings.json 里保存 javaIdentity；启动时只做指纹比对（这是"不执行也能续授权"的
+//     唯一途径），对不上就丢弃记录并提示重选；
+//   - 启动过程本身不触发 probe：buildLaunchPlan 用的 info 来自授权记录缓存。
+//
+// 使用点：launch-spec.createLaunchSpec 通过 assertJava 回调校验（见 launch.js），
+// 新增调用方也绕不过这张表。
+
+const authorizedJava = new Map(); // realpath(lower) -> { real, size, mtimeMs, major, version, at }
+
+function javaKey(realPath) {
+  return IS_WINDOWS ? String(realPath).toLowerCase() : String(realPath);
+}
+
+function fingerprintOf(stat) {
+  return { size: stat.size, mtimeMs: Math.round(stat.mtimeMs) };
+}
+
+function sameFingerprint(record, stat) {
+  if (!record || !stat) return false;
+  const current = fingerprintOf(stat);
+  return record.size === current.size && record.mtimeMs === current.mtimeMs;
+}
+
+/**
+ * 这个可执行文件是不是"启动器自己枚举出来的 Java"？
+ *
+ * 比的是**可执行文件的真实路径**，不是它所在目录：Oracle 的 JDK 会建
+ * `java8path_target_<n>` 这类 junction 目录，realpath 之后目录名整个变了，
+ * 用目录白名单会误伤正常安装。
+ */
+async function isEnumeratorProvidedJava(realTarget) {
+  const candidates = dedupe([
+    ...(await environmentCandidates()),
+    ...(await scannedCandidates()),
+    ...(Array.isArray(cache) ? cache.map((item) => item && item.path) : [])
+  ]);
+
+  const key = javaKey;
+  const target = key(realTarget);
+
+  for (const candidate of candidates) {
+    const real = await fs.realpath(candidate).catch(() => null);
+    if (real && key(real) === target) return true;
+  }
+  return false;
+}
+
+/**
+ * 查授权表（不执行任何程序）。
+ * @returns {Promise<{state:'ok'|'missing'|'stale', record?:object}>}
+ *   ok      —— 已授权且指纹一致
+ *   missing —— 从没登记过
+ *   stale   —— 登记过，但文件被替换 / 改动过
+ */
+async function lookupAuthorization(realPath) {
+  const record = authorizedJava.get(javaKey(realPath));
+  if (!record) return { state: 'missing' };
+
+  const stat = await fs.stat(realPath).catch(() => null);
+  if (!sameFingerprint(record, stat)) {
+    authorizedJava.delete(javaKey(realPath));
+    return { state: 'stale' };
+  }
+  return { state: 'ok', record };
+}
+
+/** 授权记录（不含多余信息），用于写入 settings.json。 */
+async function javaAuthorization(javaPath) {
+  try {
+    const real = await fs.realpath(await assertJavaExecutableShape(javaPath));
+    const found = await lookupAuthorization(real);
+    if (found.state !== 'ok') return null;
+    const { record } = found;
+    return { real: record.real, size: record.size, mtimeMs: record.mtimeMs, major: record.major };
+  } catch {
+    return null;
+  }
+}
+
+/** 执行一次 probe 并登记授权。只应在 pick 流程或"启动器自己枚举到的路径"上调用。 */
+async function registerJava(javaPath) {
+  const resolved = await assertJavaExecutableShape(javaPath);
+  const real = await fs.realpath(resolved);
+  const stat = await fs.stat(real);
+
+  const info = await probe(real);
+  if (!info || !info.major) {
+    throw new Error(`这个程序没有返回 Java 版本信息，不是可用的 Java 运行时：${real}`);
+  }
+
+  const record = {
+    real,
+    ...fingerprintOf(stat),
+    major: info.major,
+    version: info.version,
+    at: new Date().toISOString()
+  };
+  authorizedJava.set(javaKey(real), record);
+  return { info: { ...info, path: real }, record };
+}
+
+/** 启动时从 settings.json 的 javaIdentity 恢复授权（只比对指纹，不执行）。 */
+async function restoreJavaAuthorization(identity) {
+  if (!identity || typeof identity !== 'object' || !identity.real) return null;
+  try {
+    const stat = await fs.stat(identity.real);
+    if (identity.size !== stat.size || identity.mtimeMs !== Math.round(stat.mtimeMs)) return null;
+    const record = {
+      real: identity.real,
+      size: identity.size,
+      mtimeMs: identity.mtimeMs,
+      major: Number(identity.major) || 0,
+      version: '',
+      at: new Date().toISOString()
+    };
+    authorizedJava.set(javaKey(record.real), record);
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+/** 保存设置时用：已授权的直接用；启动器枚举到的可以就地 probe 入表；其余拒绝。 */
+async function assertJavaSelection(javaPath) {
+  const resolved = await assertJavaExecutableShape(javaPath);
+  const real = await fs.realpath(resolved);
+
+  const found = await lookupAuthorization(real);
+  if (found.state === 'ok') {
+    return { real: found.record.real, major: found.record.major, version: found.record.version };
+  }
+  if (found.state === 'stale') {
+    throw new Error(
+      `这个 Java 在授权之后被修改过（文件已变化）：${real}\n` +
+        '确认是你自己更新了 JDK 的话，请重新用「选择 Java…」指定一次。'
+    );
+  }
+
+  if (await isEnumeratorProvidedJava(real)) {
+    const { info } = await registerJava(real);
+    return { real: info.path, major: info.major, version: info.version };
+  }
+
+  throw new Error(
+    `这个 Java 还没有被授权：${real}\n` +
+      '请在设置里用「选择 Java…」通过系统对话框指定，或把 JDK 目录加进 MCDL_JAVA / PATH。'
+  );
+}
+
+/**
+ * 使用点校验（启动前必过）：
+ *   - 已授权且指纹一致 → 直接返回缓存信息，**不执行**；
+ *   - 未授权但来自启动器自己的枚举 → probe 一次入表；
+ *   - 授权过但文件变了 → 明确报"被修改过"，要求重选（不自动重跑 probe）；
+ *   - 其余 → 拒绝。
+ */
+async function assertUsableJava(javaPath) {
+  const resolved = await assertJavaExecutableShape(javaPath);
+  const real = await fs.realpath(resolved);
+
+  const found = await lookupAuthorization(real);
+  if (found.state === 'ok') {
+    const { record } = found;
+    return {
+      path: record.real,
+      major: record.major,
+      version: record.version,
+      arch: IS_WINDOWS ? 'amd64' : process.arch,
+      bitness: 64,
+      vendor: ''
+    };
+  }
+  if (found.state === 'stale') {
+    throw new Error(`Java 文件在授权之后被修改过，请重新选择：${real}`);
+  }
+
+  if (await isEnumeratorProvidedJava(real)) {
+    const { info } = await registerJava(real);
+    return info;
+  }
+
+  throw new Error(`未授权的 Java 路径，请在设置里重新选择：${real}`);
+}
+
+/** 兼容旧调用方。 */
+function assertTrustedJava(javaPath) {
+  return assertUsableJava(javaPath);
+}
+
+function resetJavaAuthorizations() {
+  authorizedJava.clear();
+}
+
 module.exports = {
   scanJavaRuntimes,
   getJavaRuntimes,
@@ -362,5 +580,13 @@ module.exports = {
   probe,
   parseProperties,
   clearCache,
+  isEnumeratorProvidedJava,
+  registerJava,
+  restoreJavaAuthorization,
+  javaAuthorization,
+  assertJavaSelection,
+  assertUsableJava,
+  assertTrustedJava,
+  resetJavaAuthorizations,
   JAVA_EXE
 };
