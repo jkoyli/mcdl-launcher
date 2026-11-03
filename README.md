@@ -1,6 +1,6 @@
 # MCDL Launcher
 
-> **v0.3.1 · 首个内测包**
+> **v0.3.2 · 内测包**（修复下载中心版本列表拉不出来）
 > 当前以 **zip 免安装包**分发；更新方式是**文件覆盖**（解压新版本 → 覆盖到启动器目录），见[更新](#更新)。
 
 Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的无边框窗口（Hollow Frame），
@@ -58,7 +58,7 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
 
 ### 方式一：用内测包（推荐给测试者）
 
-1. 下载 `MCDL-Launcher-0.3.1-x64.zip`
+1. 下载 `MCDL-Launcher-0.3.2-x64.zip`
 2. 解压到任意目录（不要放进 `C:\Program Files`，避免写入受限）
 3. 双击目录里的 `MCDL Launcher.exe`
 
