@@ -353,6 +353,38 @@ ERROR: ... Failed to create network context data directory ...\mcdl-launcher-ele
 
 > 清理后，来自被清掉目录的实例会立刻从列表消失——**目录本身仍在磁盘上**，重新点「扫描实例」就能找回。
 
+## 下载中心提示「mcdl 没有返回可解析的版本列表」
+
+下载页拉不到版本、最新正式版/快照是空的，主进程日志里能看到：
+
+```text
+[mcdl] 版本列表解析失败：stdout=gb18030 行数=928
+```
+
+**根因是 mcdl 的 stdout 编码，不是网络。** JDK 18 起 `-Dfile.encoding=UTF-8` 不再决定
+重定向到管道/文件时的 `System.out` 编码，改由 `-Dstdout.encoding` 控制，默认取系统本地编码；
+中文 Windows 上就是 **GBK/CP936**。mcdl 的版本表格是中文表头（`正式版 / 快照 / 远古 Alpha`），
+Node 侧按 UTF-8 解会拿到一堆 `U+FFFD`，`listVersions()` 的正则 0 命中。
+
+0.3.2 起两层都堵上了：
+
+1. `runMcdl()` 同时传 `-Dstdout.encoding=UTF-8` / `-Dstderr.encoding=UTF-8`（JDK 18+ 生效）
+   和 `-Dfile.encoding=UTF-8`（JDK 17 生效）；
+2. Node 侧不再 `setEncoding('utf8')`，而是收集 Buffer 后探测编码（UTF-8 / GBK / UTF-16LE /
+   UTF-16BE），版本表格再解析。所以就算换了个不认这些参数的 JVM，也还能解析出来。
+
+排查时手动复现，**不要在 PowerShell 5.1 里用 `>`**：它会把重定向文件写成 UTF-16LE，
+看起来就像「mcdl 输出 UTF-16LE」，其实是 PowerShell 转码的假象。用 cmd 重定向再看原始字节：
+
+```bat
+java -Dfile.encoding=UTF-8 -jar <resources>\mcdl\mcdl.jar --list --type all --source auto > out.txt
+```
+
+```powershell
+# 看前 16 字节：GBK 是 D7 EE D0 C2…（中文双字节），UTF-8 是 E6 AD A3…，UTF-16LE 会是 X 00 X 00
+Format-Hex -Path out.txt -Count 16
+```
+
 ## 点关闭后窗口要停几秒才退出
 
 这是**预期行为**，不是卡死。点关闭（或系统关机）时，**只要还有安装 / 下载 / 导入任务在跑，

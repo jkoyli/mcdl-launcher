@@ -226,6 +226,188 @@ function dedupeWorkDirs(dirs) {
   return result;
 }
 
+// ---------------- 子进程输出编码 ----------------
+
+// JDK 18 起，-Dfile.encoding 不再决定重定向到管道/文件时的 System.out 编码：
+// 它改由 -Dstdout.encoding 控制，默认取「本地编码」（中文 Windows = GBK/CP936）。
+// 本机实测（JDK 25 + Node spawn 管道）：只给 -Dfile.encoding=UTF-8 时 stdout 是 GBK；
+// 补上 -Dstdout.encoding=UTF-8 立刻变成 UTF-8。JDK 17 只认 file.encoding，
+// 两条参数一起给，17 和 18+ 都能拿到 UTF-8。
+const MCDL_JVM_OPTS = [
+  '-Dfile.encoding=UTF-8',
+  '-Dstdout.encoding=UTF-8',
+  '-Dstderr.encoding=UTF-8'
+];
+
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true });
+let gb18030Decoder = null;
+let gb18030Probed = false;
+
+/** gb18030 解码器是否可用（Node / Electron 带 full ICU 时可用，纯 UTF-8 构建时没有）。 */
+function gb18030Available() {
+  if (gb18030Probed) return Boolean(gb18030Decoder);
+  gb18030Probed = true;
+  try {
+    gb18030Decoder = new TextDecoder('gb18030');
+  } catch {
+    gb18030Decoder = null;
+  }
+  return Boolean(gb18030Decoder);
+}
+
+/**
+ * 是不是 UTF-8。允许末尾缺 1~3 个字节：流式解码时一个多字节字符可能被切在
+ * 两个 chunk 中间，不能因为这点就把编码判成 GBK。
+ */
+function looksLikeUtf8(buf) {
+  if (!buf.length) return true;
+  const probe = buf.subarray(0, Math.min(buf.length, 64 * 1024));
+  for (let cut = 0; cut <= 3 && probe.length - cut > 0; cut += 1) {
+    try {
+      STRICT_UTF8.decode(probe.subarray(0, probe.length - cut));
+      return true;
+    } catch {
+      // 换更短的尾巴再试
+    }
+  }
+  return false;
+}
+
+/**
+ * 探测 mcdl 输出用的编码。
+ *
+ * 首选（正常情况下）是 JVM 参数保证的 UTF-8；这里兜底的是历史/异常情况：
+ *   - UTF-16LE（无 BOM，ASCII 字符低字节在高位位置全是 0x00）
+ *   - 带 BOM 的 UTF-8 / UTF-16LE / UTF-16BE
+ *   - 中文 Windows 的 GBK（MCDL 输出全是中文表头，GBK 不是合法 UTF-8）
+ *
+ * @param {Buffer} buf
+ * @returns {'utf-8'|'utf-16le'|'utf-16be'|'gb18030'|'latin1'}
+ */
+function sniffMcdlEncoding(buf) {
+  if (!buf || buf.length === 0) return 'utf-8';
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return 'utf-8';
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return 'utf-16le';
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return 'utf-16be';
+
+  // 无 BOM 的 UTF-16：文本里出现 0x00 只可能来自 UTF-16（UTF-8 / GBK 的正文
+  // 都不会有 NUL）。ASCII 字符（版本号、日期、表格空格）的高字节是 0，
+  // 看 0 落在偶数位还是奇数位就能分出 LE / BE。
+  const sample = buf.subarray(0, Math.min(buf.length, 4096));
+  if (sample.includes(0)) {
+    let evenZero = 0;
+    let oddZero = 0;
+    for (let i = 0; i < sample.length; i += 1) {
+      if (sample[i] !== 0) continue;
+      if (i % 2 === 0) evenZero += 1;
+      else oddZero += 1;
+    }
+    if (oddZero > evenZero * 2) return 'utf-16le';
+    if (evenZero > oddZero * 2) return 'utf-16be';
+    return oddZero >= evenZero ? 'utf-16le' : 'utf-16be';
+  }
+
+  if (looksLikeUtf8(buf)) return 'utf-8';
+  return gb18030Available() ? 'gb18030' : 'latin1';
+}
+
+/** 按探测出来的编码造一个流式解码器（TextDecoder，chunk 边界由 stream:true 处理）。 */
+function createDecoder(encoding) {
+  if (encoding === 'latin1') {
+    return { decode: (buf) => (buf && buf.length ? buf.toString('latin1') : '') };
+  }
+
+  if (encoding === 'utf-16be') {
+    // Node 的 TextDecoder 支持 utf-16be，但不保证每个 Electron/ICU 构建都有；
+    // 手动按字节交换更稳，还能顺手处理奇数长度 chunk 的半个字符。
+    const le = new TextDecoder('utf-16le');
+    let carry = null;
+    return {
+      decode(buf, options) {
+        if (!buf || buf.length === 0) {
+          const rest = carry ? carry.toString('utf16le') : '';
+          carry = null;
+          return rest;
+        }
+        let chunk = buf;
+        if (carry) {
+          chunk = Buffer.concat([carry, buf]);
+          carry = null;
+        }
+        if (chunk.length % 2 === 1) {
+          carry = Buffer.from(chunk.subarray(chunk.length - 1));
+          chunk = chunk.subarray(0, chunk.length - 1);
+        }
+        if (!chunk.length) return '';
+        const swapped = Buffer.from(chunk);
+        swapped.swap16();
+        return le.decode(swapped, options);
+      }
+    };
+  }
+
+  return new TextDecoder(encoding);
+}
+
+/**
+ * 把一段 mcdl 输出按实际编码解成字符串。
+ * @param {Buffer|string} input
+ * @returns {{text:string, encoding:string}}
+ */
+function decodeMcdlOutput(input) {
+  const buf = Buffer.isBuffer(input) ? input : Buffer.from(String(input ?? ''), 'utf8');
+  const encoding = sniffMcdlEncoding(buf);
+  return { text: createDecoder(encoding).decode(buf), encoding };
+}
+
+/**
+ * 流式解码器：编码要在看到首批字节后才能确定，所以先攒一小段再决定；
+ * 拿到结尾时如果整段缓冲的判定和流式判定不一致，用整段重解（runMcdl 里这么用）。
+ */
+function createOutputDecoder() {
+  let encoding = '';
+  let decoder = null;
+  let pending = [];
+  let pendingLength = 0;
+
+  const start = (probe) => {
+    encoding = sniffMcdlEncoding(probe);
+    decoder = createDecoder(encoding);
+  };
+
+  return {
+    get encoding() {
+      return encoding;
+    },
+    push(chunk) {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (!decoder) {
+        pending.push(buf);
+        pendingLength += buf.length;
+        // 有换行就说明开头这些字节是完整的（0x0A 不会出现在多字节字符中间）；
+        // 没有换行就一直攒到 4KB，避免把一个 UTF-8 字符切在中间误判成 GBK。
+        if (pendingLength < 4096 && !buf.includes(0x0a) && !buf.includes(0x0d)) return '';
+        const head = Buffer.concat(pending);
+        pending = [];
+        pendingLength = 0;
+        start(head);
+        return decoder.decode(head, { stream: true });
+      }
+      return decoder.decode(buf, { stream: true });
+    },
+    end() {
+      if (!decoder) {
+        const head = Buffer.concat(pending);
+        pending = [];
+        pendingLength = 0;
+        start(head);
+        return decoder.decode(head);
+      }
+      return decoder.decode();
+    }
+  };
+}
+
 async function runMcdl(args, options = {}) {
   const jar = await assertMcdlJar(options.jar || resolveMcdlJar(options));
   const javaBin = await resolveJavaBinary(options);
@@ -234,7 +416,12 @@ async function runMcdl(args, options = {}) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
+    let stdoutEncoding = 'utf-8';
+    let stderrEncoding = 'utf-8';
     let finished = false;
+
+    const stdoutChunks = [];
+    const stderrChunks = [];
 
     const env = { ...process.env };
     // Avoid polluted JVM options and the "Picked up ..." stderr noise.
@@ -243,7 +430,7 @@ async function runMcdl(args, options = {}) {
     delete env._JAVA_OPTIONS;
     delete env.JAVA_OPTIONS;
 
-    const child = spawn(javaBin, ['-Dfile.encoding=UTF-8', '-jar', jar, ...args], {
+    const child = spawn(javaBin, [...MCDL_JVM_OPTS, '-jar', jar, ...args], {
       cwd: workDir,
       windowsHide: true,
       env
@@ -265,8 +452,13 @@ async function runMcdl(args, options = {}) {
       else options.signal.addEventListener('abort', onAbort, { once: true });
     }
 
-    const emit = (chunk, stream) => {
-      const text = String(chunk);
+    // 进度回调走流式解码（边收边给），最终解析用整段缓冲重解一次：
+    // 编码在 4KB 时可能还判不准，整段缓冲才是唯一可靠依据。
+    const stdoutDecoder = createOutputDecoder();
+    const stderrDecoder = createOutputDecoder();
+
+    const emit = (text, stream) => {
+      if (!text) return;
       if (stream === 'stdout') stdout += text;
       else stderr += text;
       if (typeof options.onData === 'function') {
@@ -274,15 +466,31 @@ async function runMcdl(args, options = {}) {
       }
     };
 
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => emit(chunk, 'stdout'));
-    child.stderr.on('data', (chunk) => emit(chunk, 'stderr'));
+    const decodeAll = () => {
+      const out = decodeMcdlOutput(Buffer.concat(stdoutChunks));
+      const err = decodeMcdlOutput(Buffer.concat(stderrChunks));
+      stdout = out.text;
+      stderr = err.text;
+      stdoutEncoding = out.encoding;
+      stderrEncoding = err.encoding;
+    };
+
+    child.stdout.on('data', (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stdoutChunks.push(buf);
+      emit(stdoutDecoder.push(buf), 'stdout');
+    });
+    child.stderr.on('data', (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      stderrChunks.push(buf);
+      emit(stderrDecoder.push(buf), 'stderr');
+    });
 
     child.on('error', (error) => {
       if (finished) return;
       finished = true;
       if (options.signal) options.signal.removeEventListener('abort', onAbort);
+      decodeAll();
 
       // ENOENT 说明 resolveJavaBinary 找到的路径在执行前被移走了（或被安全软件拦掉）。
       // 仍然转成明确文案，不让裸 ENOENT 冒到渲染层。
@@ -305,6 +513,7 @@ async function runMcdl(args, options = {}) {
       if (finished) return;
       finished = true;
       if (options.signal) options.signal.removeEventListener('abort', onAbort);
+      decodeAll();
 
       if (aborted) {
         const cancelled = new Error('已取消');
@@ -317,18 +526,25 @@ async function runMcdl(args, options = {}) {
       }
 
       if (code === 0) {
-        resolve({ stdout, stderr });
+        // 把实际编码带出去：版本列表解析不到时，错误信息里要能看出
+        // 「到底是没数据，还是编码不对」。
+        resolve({ stdout, stderr, stdoutEncoding, stderrEncoding });
       } else {
         const detail = (stderr || stdout).trim().split(/\r?\n/).slice(-8).join('\n');
         const error = new Error(`mcdl 执行失败（退出码 ${code}）${detail ? `\n${detail}` : ''}`);
         error.stdout = stdout;
         error.stderr = stderr;
+        error.stdoutEncoding = stdoutEncoding;
+        error.stderrEncoding = stderrEncoding;
         error.exitCode = code;
         error.javaBin = javaBin;
         error.jar = jar;
         // 把实际用的 java 打进日志：mcdl.jar 需要 Java 17+，如果挑到 Java 8，
         // 栈里只会是 checkAndLoadMain 的 ClassNotFound，看不出根因。
-        console.error(`[mcdl] 调用失败：java=${javaBin} exit=${code}`);
+        console.error(
+          `[mcdl] 调用失败：java=${javaBin} exit=${code} `
+          + `stdout=${stdoutEncoding} stderr=${stderrEncoding}`
+        );
         reject(error);
       }
     });
@@ -664,26 +880,29 @@ function normalizeVersionType(label) {
   return 'release';
 }
 
-async function listVersions({ source = 'auto' } = {}) {
-  const now = Date.now();
-  const sourceKey = normalizeSource(source);
-  if (versionCache && versionCacheSource === sourceKey && now - versionCacheAt < 10 * 60 * 1000) {
-    return versionCache;
-  }
-
-  const result = await runMcdl(['--list', '--type', 'all', '--source', sourceKey]);
+/**
+ * 解析 mcdl `--list` 的文本表格（纯函数，测试直接喂字符串）。
+ *
+ * 输出形如：
+ *   最新正式版：1.21.8    最新快照：25w31a
+ *   1.21.8             正式版     2025-07-17
+ *   25w31a             快照       2025-07-29
+ *   1.14.2 Pre-Release 4  快照    2019-05-13
+ *
+ * @param {string} output
+ * @returns {{versions:Array<{id:string,date:string,type:string,typeLabel:string}>, latestRelease:string, latestSnapshot:string}}
+ */
+function parseVersionTable(output) {
+  const text = String(output || '');
   const versions = [];
 
   // mcdl 的列表头写着「最新正式版：1.21.8    最新快照：25w31a」，
   // 下载页的「最新」两张卡直接用这两行，不再自己按日期猜。
-  const latest = String(result.stdout).match(
-    /最新正式版[：:]\s*([^\s]+)\s+最新快照[：:]\s*([^\s]+)/
-  );
-  if (latest) {
-    versionMeta = { latestRelease: latest[1], latestSnapshot: latest[2] };
-  }
+  const latest = text.match(/最新正式版[：:]\s*([^\s]+)\s+最新快照[：:]\s*([^\s]+)/);
+  const latestRelease = latest ? latest[1] : '';
+  const latestSnapshot = latest ? latest[2] : '';
 
-  for (const line of result.stdout.split(/\r?\n/)) {
+  for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     // 版本 ID 本身可能包含空格（如 1.14.2 Pre-Release 4 / 3D Shareware v1.34），
     // 所以从右侧的已知类型标签和日期反解，而不是按第一个空格切分。
@@ -699,8 +918,42 @@ async function listVersions({ source = 'auto' } = {}) {
     });
   }
 
+  return { versions, latestRelease, latestSnapshot };
+}
+
+async function listVersions({ source = 'auto' } = {}) {
+  const now = Date.now();
+  const sourceKey = normalizeSource(source);
+  if (versionCache && versionCacheSource === sourceKey && now - versionCacheAt < 10 * 60 * 1000) {
+    return versionCache;
+  }
+
+  const result = await runMcdl(['--list', '--type', 'all', '--source', sourceKey]);
+  const { versions, latestRelease, latestSnapshot } = parseVersionTable(result.stdout);
+
+  if (latestRelease && latestSnapshot) {
+    versionMeta = { latestRelease, latestSnapshot };
+  }
+
   if (versions.length === 0) {
-    throw new Error('mcdl 没有返回可解析的版本列表');
+    // 上一版这里只有「没有返回可解析的版本列表」一句，看不出是网络没数据、
+    // 还是 stdout 编码不对（UTF-16LE / GBK 都曾让正则 0 命中）。
+    const lines = String(result.stdout)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const head = lines.slice(0, 5).map((line) => line.slice(0, 160)).join('\n');
+    const error = new Error(
+      'mcdl 没有返回可解析的版本列表'
+        + `（stdout 编码 ${result.stdoutEncoding || '未知'}，共 ${lines.length} 行）`
+        + (head ? `\n${head}` : '')
+    );
+    error.code = 'EMCDLLIST';
+    error.stdout = result.stdout;
+    error.stderr = result.stderr;
+    error.stdoutEncoding = result.stdoutEncoding;
+    console.error(`[mcdl] 版本列表解析失败：stdout=${result.stdoutEncoding} 行数=${lines.length}`);
+    throw error;
   }
 
   versionCache = versions;
@@ -1020,7 +1273,13 @@ module.exports = {
   listJavaPaths,
   parseGameDirs,
   normalizeSource,
-  clearCaches
+  clearCaches,
+  // 编码层：给测试和排查用（子进程输出到底被当成什么编码解出来的）。
+  decodeMcdlOutput,
+  sniffMcdlEncoding,
+  createOutputDecoder,
+  parseVersionTable,
+  MCDL_JVM_OPTS
 };
 
 // 兼容旧调用方（main.js 的启动日志 / 脚本）：MCDL_JAR 现在是"按当前配置解析一次"的只读视图。
