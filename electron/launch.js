@@ -29,7 +29,9 @@ const gameWindow = require('./game-window');
 const { createLaunchSpec } = require('./launch-spec');
 
 const LAUNCHER_BRAND = 'MCDL Launcher';
-const LAUNCHER_VERSION = '0.2.0';
+// 版本号只从 package.json 取：覆盖式更新时只需要改那一处，
+// 不会出现 -Dminecraft.launcher.version 还是上一个版本号的情况。
+const LAUNCHER_VERSION = require('./package.json').version;
 const DEFAULT_MEMORY_MB = 2048;
 const DEFAULT_WIDTH = 854;
 const DEFAULT_HEIGHT = 480;

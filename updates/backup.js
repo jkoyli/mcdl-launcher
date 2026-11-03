@@ -147,6 +147,12 @@ const manifest = {
 
 fs.writeFileSync(path.join(target, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
 
+// 覆盖式更新规则跟着快照走：每个快照目录里都能直接看到当前遵守的规则。
+const rulesFile = path.join(updatesDir, '覆盖式更新规则.md');
+if (fs.existsSync(rulesFile)) {
+  fs.copyFileSync(rulesFile, path.join(target, '覆盖式更新规则.md'));
+}
+
 const changelog = path.join(target, 'CHANGELOG.md');
 if (!fs.existsSync(changelog)) {
   fs.writeFileSync(

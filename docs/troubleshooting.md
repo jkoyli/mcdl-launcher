@@ -377,7 +377,7 @@ ERROR: ... Failed to create network context data directory ...\mcdl-launcher-ele
 中文 Windows 上就是 **GBK/CP936**。mcdl 的版本表格是中文表头（`正式版 / 快照 / 远古 Alpha`），
 Node 侧按 UTF-8 解会拿到一堆 `U+FFFD`，`listVersions()` 的正则 0 命中。
 
-0.3.2 起两层都堵上了：
+0.3.3 起两层都堵上了：
 
 1. `runMcdl()` 同时传 `-Dstdout.encoding=UTF-8` / `-Dstderr.encoding=UTF-8`（JDK 18+ 生效）
    和 `-Dfile.encoding=UTF-8`（JDK 17 生效）；

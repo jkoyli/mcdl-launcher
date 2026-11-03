@@ -14,7 +14,8 @@ const crypto = require('node:crypto');
 const { writeFileAtomic } = require('./atomic-write');
 
 const API_ROOT = 'https://api.modrinth.com/v2';
-const USER_AGENT = 'mcdl-launcher/0.2.0 (Electron; +https://modrinth.com)';
+// 同 launch.js：版本号从 package.json 取，发版只改一处。
+const USER_AGENT = `mcdl-launcher/${require('./package.json').version} (Electron; +https://modrinth.com)`;
 const REQUEST_TIMEOUT = 20000;
 
 /** 界面上的内容类型 → Modrinth 的 project_type。 */
