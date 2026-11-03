@@ -33,7 +33,12 @@ const repo = path.resolve(__dirname, '..');
 const updatesDir = __dirname;
 
 function git(args) {
-  return execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim();
+  // core.quotepath=false：中文路径按原样输出，否则 git 会转义成
+  // "\350\246..."，既复制不到文件、也会被误判成删除。
+  return execFileSync('git', ['-c', 'core.quotepath=false', ...args], {
+    cwd: repo,
+    encoding: 'utf8'
+  }).trim();
 }
 
 function readJson(file, fallback) {
