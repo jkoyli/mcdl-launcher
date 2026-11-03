@@ -1,4 +1,4 @@
-﻿# Electron
+# Electron
 /electron/node_modules/
 /electron/dist/
 /electron/out/
@@ -35,4 +35,7 @@ Thumbs.db
 
 # electron-builder 输出（dist/win-unpacked、安装包、zip）
 /dist/
+
+# 更新快照：updates/<name>/ 只留本机（README.md / backup.js 仍入库）
+/updates/*/
 

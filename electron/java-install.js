@@ -9,6 +9,9 @@
  * 为什么是 Adoptium：公开 API、无需 key、assets 接口同时给出下载直链、
  * SHA-256 校验值与字节数，失败可以直接报错而不是留下半个 JDK。
  *
+ * 国内镜像：默认 auto = 先走清华 TUNA 的 Adoptium 镜像、失败回退 GitHub；
+ * 校验值始终来自官方 assets 接口，镜像只搬字节（见 mirrorUrlFor / downloadUrlsFor）。
+ *
  * 完整性校验是必须的：下载落盘后先比对 size / SHA-256，通过才允许解压。
  * 拿不到 SHA-256（assets 接口不可用，或包本身没带 checksum）时**中止安装**、
  * 不再下载解压：JDK 解压后是要直接执行的 java.exe，不能接受未校验的二进制。
@@ -27,6 +30,11 @@ const { spawn } = require('node:child_process');
 
 const ADOPTIUM_BIN = 'https://api.adoptium.net/v3/binary/latest';
 const ADOPTIUM_ASSETS = 'https://api.adoptium.net/v3/assets/latest';
+// 国内镜像：清华 TUNA 对 Adoptium 的 GitHub release 资产做了同步，目录结构和
+// 文件名与官方完全一致（<major>/jdk/<arch>/windows/<同一个 zip>），
+// 所以校验值仍然来自官方 assets 接口，镜像只负责搬字节。
+const TUNA_ADOPTIUM = 'https://mirrors.tuna.tsinghua.edu.cn/Adoptium';
+const JAVA_SOURCE_KEYS = ['auto', 'official', 'mirror'];
 const SUPPORTED_MAJORS = [8, 11, 17, 21, 25];
 const MAX_DOWNLOAD_BYTES = 400 * 1024 * 1024;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
@@ -50,6 +58,66 @@ function adoptiumAssetsUrl(major) {
     `?os=windows&architecture=${adoptiumArch()}&image_type=jdk`
   );
 }
+
+/**
+ * 下载源：auto = 镜像优先、失败回退官方；official = 只走官方；mirror = 只走镜像。
+ * 非法值一律按 auto 处理，避免坏设置把安装卡死。
+ */
+function normalizeJavaSource(value) {
+  const key = String(value == null ? '' : value).trim().toLowerCase();
+  return JAVA_SOURCE_KEYS.includes(key) ? key : 'auto';
+}
+
+/**
+ * 从 Adoptium 的 GitHub 直链推导清华 TUNA 镜像地址。
+ *
+ * 官方 API 给的 link 形如
+ *   https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip
+ * 镜像上的同一份文件是
+ *   https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/windows/OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip
+ * 只取文件名重新拼：链接里其它部分（tag、host）不参与，避免被伪造链接带偏。
+ * 文件名不符合 Adoptium 的命名时返回空串（调用方回退官方）。
+ *
+ * @param {string} link
+ * @param {number} major
+ * @param {string} [arch]
+ * @returns {string}
+ */
+function mirrorUrlFor(link, major, arch) {
+  let name = '';
+  try {
+    name = decodeURIComponent(new URL(String(link)).pathname.split('/').pop() || '');
+  } catch {
+    return '';
+  }
+  if (!/^OpenJDK\d+U-jdk_[A-Za-z0-9]+_windows_hotspot_[A-Za-z0-9._+-]+\.zip$/i.test(name)) {
+    return '';
+  }
+  const feature = Number(major) || 21;
+  const targetArch = arch || adoptiumArch();
+  return `${TUNA_ADOPTIUM}/${feature}/jdk/${targetArch}/windows/${name}`;
+}
+
+/**
+ * 按下载源模式给出候选地址（按顺序尝试）。
+ *
+ * - auto：镜像 → 官方
+ * - official：官方
+ * - mirror：镜像（推不出镜像地址时仍回退官方，宁可慢也不要装不上）
+ *
+ * @param {{url?:string, mirrorUrl?:string}} source
+ * @param {string} mode
+ * @returns {string[]}
+ */
+function downloadUrlsFor(source, mode) {
+  const key = normalizeJavaSource(mode);
+  const urls = [];
+  if (key !== 'official' && source && source.mirrorUrl) urls.push(source.mirrorUrl);
+  if (key !== 'mirror' && source && source.url) urls.push(source.url);
+  if (urls.length === 0 && source && source.url) urls.push(source.url);
+  return urls;
+}
+
 
 function stamp() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -302,7 +370,7 @@ function isAbortError(error) {
  * HTTP 非 2xx、结构变化、没有可用包、缺 checksum）都直接抛可操作的错误，
  * 绝不开始下载。
  *
- * @returns {Promise<{url:string, sha256:string, size:number, degraded:boolean, reason:string}>}
+ * @returns {Promise<{url:string, mirrorUrl:string, sha256:string, size:number, degraded:boolean, reason:string}>}
  */
 async function resolveDownloadSource(major, { signal, fetchImpl } = {}) {
   // fetchImpl 只是为了单测能注入假响应，正常调用永远是全局 fetch。
@@ -334,6 +402,8 @@ async function resolveDownloadSource(major, { signal, fetchImpl } = {}) {
 
   return {
     url: asset.link,
+    // 镜像地址只是「同一份文件」的另一个来源，校验值不变；推不出来就是空串。
+    mirrorUrl: mirrorUrlFor(asset.link, major),
     sha256: asset.checksum,
     size: asset.size,
     degraded: false,
@@ -362,11 +432,13 @@ async function findInstalled(root, major) {
 /**
  * 安装一个 JDK。
  *
- * 调用链：assets/latest（拿不到 SHA-256 就抛错中止）→ 下载到临时文件
- * → verifyDownload（size + SHA-256，失败删文件并抛错）→ tar 解压 → 定位 java.exe。
+ * 调用链：assets/latest（拿不到 SHA-256 就抛错中止）→ 按下载源逐个尝试
+ * （auto：国内镜像 → 官方；official：官方；mirror：镜像）→ 每个候选下载后都
+ * 用同一份官方 SHA-256 + size 校验 → tar 解压 → 定位 java.exe。
+ * 镜像失败（404 / 断流 / 校验不过）会自动换下一个源，不会把坏包留下。
  *
- * @param {{major:number, destRoot:string, onProgress?:Function, signal?:AbortSignal}} options
- * @returns {Promise<{javaPath:string, home:string, major:number, url:string, reused:boolean,
+ * @param {{major:number, destRoot:string, source?:string, onProgress?:Function, signal?:AbortSignal}} options
+ * @returns {Promise<{javaPath:string, home:string, major:number, url:string, source:string, reused:boolean,
  *   downloadedBytes:number, verified:boolean, unverified:boolean, sha256:string}>}
  */
 async function installJava(options = {}) {
@@ -385,6 +457,7 @@ async function installJava(options = {}) {
       home: path.dirname(path.dirname(existing)),
       major,
       url: '',
+      source: '',
       reused: true,
       downloadedBytes: 0,
       verified: false,
@@ -395,7 +468,8 @@ async function installJava(options = {}) {
 
   report(`正在查询 Adoptium（Java ${major}）…`, null);
   const source = await resolveDownloadSource(major, options);
-  const url = source.url;
+  const mode = normalizeJavaSource(options.source);
+  const urls = downloadUrlsFor(source, mode);
 
   if (source.size > MAX_DOWNLOAD_BYTES) {
     throw new Error(`下载包过大（${formatMb(source.size)}），已中止`);
@@ -406,14 +480,50 @@ async function installJava(options = {}) {
 
   try {
     const zipFile = path.join(work, 'jdk.zip');
-    report(`正在下载 Java ${major}…`, null);
-    const bytes = await downloadToFile(url, zipFile, options);
+    let bytes = 0;
+    let integrity = null;
+    let usedUrl = '';
+    let usedSource = '';
+    let lastError = null;
 
-    report('下载完成，正在校验 SHA-256…', null);
-    const integrity = await verifyDownload(zipFile, {
-      sha256: source.sha256,
-      size: source.size
-    });
+    for (let i = 0; i < urls.length; i += 1) {
+      const candidate = urls[i];
+      const fromMirror = Boolean(source.mirrorUrl) && candidate === source.mirrorUrl;
+      report(
+        fromMirror
+          ? `正在从国内镜像下载 Java ${major}…`
+          : `正在下载 Java ${major}…`,
+        null
+      );
+
+      try {
+        bytes = await downloadToFile(candidate, zipFile, options);
+        report('下载完成，正在校验 SHA-256…', null);
+        integrity = await verifyDownload(zipFile, {
+          sha256: source.sha256,
+          size: source.size
+        });
+        usedUrl = candidate;
+        usedSource = fromMirror ? 'mirror' : 'official';
+        break;
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        lastError = error;
+        await fs.rm(zipFile, { force: true }).catch(() => {});
+        if (i < urls.length - 1) {
+          report(
+            fromMirror
+              ? '国内镜像不可用，改从官方源重试…'
+              : '下载失败，正在重试…',
+            null
+          );
+        }
+      }
+    }
+
+    if (!usedUrl || !integrity) {
+      throw lastError || new Error('下载 Java 失败（没有可用的下载源）');
+    }
     report('校验通过，正在解压…', null);
 
     const extractDir = path.join(work, 'extract');
@@ -448,7 +558,8 @@ async function installJava(options = {}) {
       javaPath: finalPath,
       home,
       major,
-      url,
+      url: usedUrl,
+      source: usedSource,
       reused: false,
       downloadedBytes: bytes,
       verified: true,
@@ -463,9 +574,14 @@ async function installJava(options = {}) {
 module.exports = {
   SUPPORTED_MAJORS,
   MAX_DOWNLOAD_BYTES,
+  JAVA_SOURCE_KEYS,
+  TUNA_ADOPTIUM,
   adoptiumUrl,
   adoptiumAssetsUrl,
   adoptiumArch,
+  normalizeJavaSource,
+  mirrorUrlFor,
+  downloadUrlsFor,
   normalizeSha256,
   sha256Matches,
   pickAdoptiumAsset,

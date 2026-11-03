@@ -1,6 +1,6 @@
 # MCDL Launcher
 
-> **v0.3.2 · 内测包**（修复下载中心版本列表拉不出来）
+> **v0.3.3 · 内测包**（本地音乐播放器 / Java 国内镜像 / 重影与卡片动效修复）
 > 当前以 **zip 免安装包**分发；更新方式是**文件覆盖**（解压新版本 → 覆盖到启动器目录），见[更新](#更新)。
 
 Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的无边框窗口（Hollow Frame），
@@ -37,10 +37,13 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
   账号页包含微软登录、添加账户（离线 / 正版登录页签）、认证服务器向导、离线皮肤与删除确认五个弹窗。
   令牌仅存本机，不进入渲染进程。
 - **设置** — 六个页签：游戏设置（预设 / 内存 / 窗口 / JVM 参数 / 默认版本隔离策略）、Java 管理（扫描、指定运行时、
-  从 Adoptium 一键安装 JDK、选错或失效时一键「恢复默认」）、通用（语言 / 日志目录 / NBT 编辑器）、
+  从 Adoptium 一键安装 JDK（默认国内镜像优先、失败回退官方）、选错或失效时一键「恢复默认」）、通用（语言 / 日志目录 / NBT 编辑器）、
   外观（主题模式 跟随系统·浅色·深色 / 色彩模式与自定义主色 / 导出主题快照 / 自上传壁纸）、
-  下载（版本列表源 / 下载源 / 附加内容源）、关于（版本与开源许可）。
-- **数据安全** — 所有状态文件（账号、实例设置、别名、扫描缓存、启动脚本、设置）都走
+  下载（版本列表源 / 下载源 / 附加内容源 / Java 下载源）、关于（版本与开源许可）。
+- **本地音乐** — 右上角圆钮：悬停展开面板（可图钉固定），支持 mp3 / flac / wav / m4a / aac / ogg / opus；
+  播放列表由主进程维护（`<userData>/music-playlist.json`，上限 500 首），可拖动进度、调音量、
+  随机 / 列表循环 / 单曲循环；收起面板后继续播放，圆钮上显示电平条与进度环，文件丢失的曲目会标灰并可移除。
+- **数据安全** — 所有状态文件（账号、实例设置、别名、扫描缓存、启动脚本、音乐播放列表、设置）都走
   **原子写**：同目录临时文件 → `fsync` → `rename` 覆盖，断电或强杀不会留下 0 字节 / 半截 JSON；
   关闭窗口时若还有安装 / 下载任务在跑、或刚保存的写入还没落盘，先取消任务并等它们收尾（≤5 秒）、
   再等排队写入落盘（≤3 秒）才退出；两者都没有时和以前一样，立即关。
@@ -58,7 +61,7 @@ Windows 上的 Minecraft: Java Edition 启动器。界面为 Electron 自绘的�
 
 ### 方式一：用内测包（推荐给测试者）
 
-1. 下载 `MCDL-Launcher-0.3.2-x64.zip`
+1. 下载 `MCDL-Launcher-0.3.3-x64.zip`
 2. 解压到任意目录（不要放进 `C:\Program Files`，避免写入受限）
 3. 双击目录里的 `MCDL Launcher.exe`
 
@@ -91,11 +94,24 @@ cd mcdl-launcher
 ## 更新
 
 当前阶段**没有自动更新**（更新通道的骨架已在代码里，默认关闭；没有配置更新源）。
-更新方式为**文件覆盖式**：
 
-1. 下载新版本的 zip
-2. 解压到一个空目录
-3. 把解压出来的所有文件**复制进原来的启动器目录**，覆盖同名文件
+### 已安装用户：用小版本更新包（推荐）
+
+只覆盖这次改动到的程序文件，不动你的账号 / 设置 / 游戏：
+
+1. 下载 `MCDL-Launcher-0.3.3-update.zip` 并解压
+2. 进入解压出来的 `MCDL-Launcher-0.3.3-update` 文件夹，**全选**里面的所有文件和文件夹
+3. 复制到原来的启动器目录（和 `MCDL Launcher.exe` 同一层），选择「替换目标中的文件」
+4. 重新打开 `MCDL Launcher.exe`
+
+更新包里只有 `MCDL Launcher.exe`、`resources/app.asar`、`resources/mcdl/mcdl.jar`，
+没有 `resources/jre`（内置 JRE 没变）和用户数据，复制很快。
+
+### 第一次安装 / 目录损坏：用完整 zip
+
+1. 下载 `MCDL-Launcher-0.3.3-x64.zip`
+2. 解压到一个空目录（或直接覆盖原目录）
+3. 把里面的所有文件**复制进原来的启动器目录**，覆盖同名文件
 4. 重新打开 `MCDL Launcher.exe`
 
 需要注意：
@@ -117,7 +133,9 @@ npm run dist:dir      # 只出目录（最快，用于验证包结构）
 可选：把精简版 JRE 一起打进去（没装 Java 的机器也能开箱即用）
 
 ```powershell
-npm run fetch:jre     # 下载 Temurin JRE 21 到 electron\jre\
+npm run fetch:jre              # 下载 Temurin JRE 21 到 electron\jre\（默认国内镜像优先）
+npm run fetch:jre -- --official  # 只走 Adoptium / GitHub
+npm run fetch:jre -- --mirror    # 只走清华 TUNA 镜像
 ```
 
 发版、签名、更新源、冒烟清单见 [docs/packaging.md](docs/packaging.md)。

@@ -53,11 +53,14 @@ Get-ChildItem ..\dist\win-unpacked\resources   # 必须有 app.asar / mcdl\mcdl.
 ## 2. 内置 JRE（可选，但推荐）
 
 ```powershell
-npm run fetch:jre      # 流式下载 Temurin JRE 21 → 解压到 electron\jre\ → 校验 bin\java.exe
-npm run fetch:jre -- --force   # 覆盖已存在的
+npm run fetch:jre                 # 下载 Temurin JRE 21（默认国内镜像优先，失败回退官方）
+npm run fetch:jre -- --official   # 只走 Adoptium / GitHub
+npm run fetch:jre -- --mirror     # 只走清华 TUNA 镜像
+npm run fetch:jre -- --force      # 覆盖已存在的
 ```
 
 - 下载约 46 MB，**不要提交进仓库**（`.gitignore` 已排除 `/electron/jre/*`，只保留 `README.txt` 占位）。
+- 脚本会先查 Adoptium assets 接口拿 SHA-256 / size，下载后校验通过才解压。
 - 目录不存在会导致 `extraResources` 打包报错，所以 `jre/README.txt` 必须留着。
 - 运行时解析顺序（`java-runtime.js`）：
 

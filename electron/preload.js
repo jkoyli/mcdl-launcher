@@ -444,6 +444,24 @@ const launcherAPI = {
   relaunchApp: () => ipcRenderer.invoke('app:relaunch'),
 
   /**
+   * 本地音乐播放器（右上角圆钮）。
+   *
+   * 播放列表只能通过原生对话框增删：list 拿到的曲目带 mcdl-media://music/<id>
+   * 的播放地址，渲染层没有「按路径读文件」的能力。
+   *   list()        → { version, tracks: [{ id, name, fileName, url, missing }] }
+   *   pick()        → { canceled, added, dropped, skipped, limit, tracks }
+   *                   added 是真正入库的条数；列表满时没写进去的算 dropped
+   *   remove(id)    → { version, tracks }
+   *   clear()       → { version, tracks }
+   */
+  music: {
+    list: () => ipcRenderer.invoke('music:list'),
+    pick: () => ipcRenderer.invoke('music:pick'),
+    remove: (id) => ipcRenderer.invoke('music:remove', String(id || '')),
+    clear: () => ipcRenderer.invoke('music:clear')
+  },
+
+  /**
    * 崩溃恢复页（renderer/recovery.html）专用的最小接口。
    *
    * 恢复页刻意不加载 renderer.js / 主包（主包本身可能就是崩溃原因），

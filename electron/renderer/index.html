@@ -25,8 +25,8 @@
     · 右侧悬浮控制台纵向排列：实例列表、当前配置、启动按钮
     · 窗口控制固定在屏幕最右上角
   约束：
-    · .ring / .face / aurora 的流光视觉 CSS 原封不动
-    · 启动按钮的悬停、loading、焦点 JS 原封不动
+    · .ring / .face / aurora 是启动按钮的流光重影；几何改走 transform，松开时弹簧回弹
+    · 启动按钮的悬停、loading、焦点语义不变（重影实现见 renderer.js 的 ring 逻辑）
     · 新增的实例选择 / 导航为独立 UI 状态，不侵入按钮动效
     · 窄屏（≤768px）隐藏方框，改为纵向流式布局
   ============================================================
@@ -1600,44 +1600,48 @@
     opacity: 1;
   }
 
-  /* 底层重影：尺寸、圆角与本体完全一致，只靠 transform 缩放 */
+  /* 底层重影：尺寸、圆角与本体完全一致，只靠 transform 缩放。
+     几何全部走 transform（JS 只写 scale / transform-origin），
+     避免原来的 width/height/inset 六个属性每帧触发 layout。 */
   .ring {
     position: absolute;
     inset: 0;
     border-radius: 9px;
     transform-origin: 100% 100%;
     transform: scale(1);
-    transition: transform 100ms ease-out, border-radius 100ms ease-out;
+    transition: none;
     background-color: transparent;
+    /* 高频彩虹：约 90px 一个完整色环，拉出来的十几像素窄条也能同时看到
+       2~3 个色相；原先一整块 conic + 一堆白色高光，blur 之后只剩一片薄荷绿。 */
     background-image:
-      conic-gradient(from 140deg at 50% 50%,
-        rgba(255, 154, 220, .82) 0deg,
-        rgba(255, 240, 170, .72) 62deg,
-        rgba(166, 255, 214, .76) 128deg,
-        rgba(154, 206, 255, .82) 196deg,
-        rgba(211, 178, 255, .78) 268deg,
-        rgba(255, 154, 220, .82) 360deg),
-      radial-gradient(24% 24% at 13%  9%, rgba(255,255,255,1)    0%, rgba(255,255,255,0) 70%),
-      radial-gradient(22% 22% at 38% 15%, rgba(255,232,242,.95)  0%, rgba(255,232,242,0) 68%),
-      radial-gradient(25% 25% at 63%  8%, rgba(234,242,255,.95)  0%, rgba(234,242,255,0) 70%),
-      radial-gradient(23% 23% at 88% 16%, rgba(255,248,222,.95)  0%, rgba(255,248,222,0) 68%),
-      radial-gradient(23% 23% at  6% 34%, rgba(230,255,244,.90)  0%, rgba(230,255,244,0) 68%),
-      radial-gradient(26% 26% at 31% 31%, rgba(242,234,255,.95)  0%, rgba(242,234,255,0) 70%),
-      radial-gradient(22% 22% at 56% 37%, rgba(255,240,230,.95)  0%, rgba(255,240,230,0) 68%),
-      radial-gradient(25% 25% at 81% 33%, rgba(238,248,255,.95)  0%, rgba(238,248,255,0) 70%),
-      radial-gradient(25% 25% at 18% 58%, rgba(247,240,255,.95)  0%, rgba(247,240,255,0) 70%),
-      radial-gradient(22% 22% at 43% 62%, rgba(255,242,247,.95)  0%, rgba(255,242,247,0) 68%),
-      radial-gradient(26% 26% at 68% 56%, rgba(237,255,246,.95)  0%, rgba(237,255,246,0) 70%),
-      radial-gradient(22% 22% at 93% 63%, rgba(255,247,234,.95)  0%, rgba(255,247,234,0) 68%),
-      radial-gradient(24% 24% at  9% 84%, rgba(240,244,255,.95)  0%, rgba(240,244,255,0) 70%),
-      radial-gradient(22% 22% at 34% 88%, rgba(253,234,255,.95)  0%, rgba(253,234,255,0) 68%),
-      radial-gradient(25% 25% at 59% 83%, rgba(233,255,249,.95)  0%, rgba(233,255,249,0) 70%),
-      radial-gradient(23% 23% at 84% 90%, rgba(255,245,240,.95)  0%, rgba(255,245,240,0) 68%);
-    background-size: 200% 200%;
+      radial-gradient(150% 180% at 12% 14%, rgba(255, 96, 202, .82) 0%, rgba(255, 96, 202, 0) 56%),
+      radial-gradient(150% 180% at 88% 86%, rgba(86, 178, 255, .78) 0%, rgba(86, 178, 255, 0) 56%),
+      repeating-linear-gradient(112deg,
+        rgba(255, 108, 210, .96) 0px,
+        rgba(255, 196, 108, .94) 18px,
+        rgba(108, 255, 190, .94) 36px,
+        rgba(108, 164, 255, .96) 54px,
+        rgba(198, 128, 255, .96) 72px,
+        rgba(255, 108, 210, .96) 90px);
     /* 发光：降低白光、提高饱和度，让极光颜色真正显出来 */
-    filter: blur(14px) brightness(1.1) saturate(2.4);
-    animation: aurora 26s linear infinite;
+    filter: blur(12px) saturate(1.55);
+    animation: aurora 9s linear infinite;
+    /* 不悬停时停住：background-position 动画会让 blur 每帧重算，
+       常驻运行会一直占着 GPU，和界面其它动画抢帧。 */
+    animation-play-state: paused;
+    will-change: transform;
     pointer-events: none;
+  }
+
+  /* 指针离开时的回弹：轻微过冲（cubic-bezier 的 y 超过 1），
+     先缩回一点再弹平，而不是旧实现的「瞬间清零行内样式」。 */
+  .ring.is-settling {
+    transition: transform 520ms cubic-bezier(.22, 1.4, .36, 1);
+  }
+
+  /* 只有一个时机需要流光：鼠标在按钮上（此时本来就在重绘重影）。 */
+  .cta-box:hover .ring {
+    animation-play-state: running;
   }
 
   /* 牛奶罩层收薄：只保留少量白色高光，不再盖掉极光色 */
@@ -1647,15 +1651,17 @@
     inset: 0;
     border-radius: inherit;
     background: radial-gradient(circle at 50% 50%,
-      rgba(255, 255, 255, .12) 0%,
-      rgba(255, 255, 255, .03) 45%,
+      rgba(255, 255, 255, .08) 0%,
+      rgba(255, 255, 255, .02) 45%,
       rgba(255, 255, 255, 0) 70%);
     pointer-events: none;
   }
 
+  /* 一个完整色环 = 90px；位移取 90px 在 112deg 方向上的投影，
+     首尾正好同一个色相，循环不跳帧。 */
   @keyframes aurora {
-    0%   { background-position: 0% 0%; }
-    100% { background-position: 200% 200%; }
+    from { background-position: 0 0, 0 0, 0 0; }
+    to   { background-position: 0 0, 0 0, 83px 34px; }
   }
 
   /* 前景本体：毛玻璃（半透明蓝 + 背景模糊 + 玻璃切边 + 大投影） */
@@ -2040,6 +2046,7 @@
   @media (prefers-reduced-motion: reduce) {
     .ring { transition: none; }
     .ring { animation: none; }
+    .ring.is-settling { transition: none; }
     .voxel,
     .voxel-float,
     .voxel-orbit,
@@ -3918,6 +3925,11 @@
     overflow-x: hidden;
     display: grid;
     gap: 12px;
+    /* 卡片 hover 会 translateY(-5px) + 外发光，滚动容器不留出上/下边距就会把
+       抬起的那一截和阴影一起裁断（v0.3.1 实例列表实测）。 */
+    padding-top: 12px;
+    padding-right: 10px;
+    padding-bottom: 10px;
     padding-left: clamp(22px, 2.6vw, 40px);
     border-left: 1px solid rgba(255, 255, 255, .09);
     scrollbar-width: thin;
@@ -5549,7 +5561,7 @@
   /* 极光层：动画改的是 background-position，软件模式下每帧重绘 + 重跑 blur */
   body.is-software .ring {
     animation: none !important;
-    filter: brightness(1.06) saturate(2.1);
+    filter: saturate(1.35);
   }
 
   /* 3D 方块的面是动画元素，背景模糊每帧都要重算。
@@ -7350,6 +7362,719 @@
     border-color: rgba(255, 255, 255, .8);
   }
 
+  /* ---------------------------------------------------------
+     L6 本地音乐播放器（右上角圆钮 → 悬停展开）
+     ---------------------------------------------------------
+     收起：58px 圆钮（音符 / 播放中电平条 / 进度圆环）
+     展开：344px 面板（悬停触发；图钉固定后移开不收起）
+     面板本体固定 344×294，由外层 .music-dock 用 width/height + overflow:hidden
+     裁出「从圆钮长成面板」的过程——内容不参与尺寸动画，不会每帧重排。
+     --------------------------------------------------------- */
+  .music-dock {
+    position: fixed;
+    top: 58px;
+    right: 22px;
+    z-index: 45;
+    width: 58px;
+    height: 58px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .19);
+    border-radius: 50%;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, .095) 0%, rgba(255, 255, 255, .03) 46%, rgba(255, 255, 255, .014) 100%),
+      rgba(10, 15, 23, .5);
+    -webkit-backdrop-filter: blur(22px) saturate(120%);
+    backdrop-filter: blur(22px) saturate(120%);
+    box-shadow: 0 22px 54px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .13);
+    transition:
+      width 260ms cubic-bezier(.22, .8, .3, 1),
+      height 300ms cubic-bezier(.22, .8, .3, 1),
+      border-radius 220ms ease,
+      border-color 160ms linear,
+      box-shadow 220ms ease;
+  }
+
+  .music-dock:hover,
+  .music-dock:focus-within {
+    border-color: rgba(var(--accent-rgb), .42);
+  }
+
+  .music-dock.is-playing {
+    box-shadow:
+      0 22px 54px rgba(0, 0, 0, .3),
+      0 0 26px rgba(var(--accent-rgb), .14),
+      inset 0 1px 0 rgba(255, 255, 255, .13);
+  }
+
+  .music-dock[data-state="expanded"] {
+    width: 344px;
+    height: 150px;
+    border-radius: 7px;
+  }
+
+  .music-dock[data-state="expanded"][data-list="open"] {
+    height: 294px;
+  }
+
+  /* 收起的圆钮 */
+  .music-orb {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: rgba(214, 233, 252, .82);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 150ms ease, transform 240ms ease, color 140ms linear;
+  }
+
+  .music-orb:hover {
+    color: #f4faff;
+  }
+
+  .music-dock[data-state="expanded"] .music-orb {
+    opacity: 0;
+    transform: scale(.82);
+    pointer-events: none;
+  }
+
+  .music-orb__note svg {
+    width: 19px;
+    height: 19px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .music-orb__bars {
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+  }
+
+  .music-orb__bars i {
+    width: 2px;
+    height: 16px;
+    border-radius: 1px;
+    background: var(--accent);
+    transform-origin: 50% 100%;
+    animation: music-eq 900ms ease-in-out infinite;
+  }
+
+  .music-orb__bars i:nth-child(2) { animation-delay: 140ms; }
+  .music-orb__bars i:nth-child(3) { animation-delay: 280ms; }
+
+  .music-dock.is-playing .music-orb__note { display: none; }
+  .music-dock.is-playing .music-orb__bars { display: flex; }
+
+  @keyframes music-eq {
+    0%, 100% { transform: scaleY(.35); opacity: .55; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+
+  .music-orb__progress {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+    fill: none;
+    pointer-events: none;
+  }
+
+  .music-orb__track {
+    stroke: rgba(255, 255, 255, .1);
+    stroke-width: 1.5;
+  }
+
+  .music-orb__beat {
+    stroke: rgba(var(--accent-rgb), .82);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 160ms linear;
+  }
+
+  /* 展开的面板 */
+  .music-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 344px;
+    height: 294px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 150ms ease, transform 240ms cubic-bezier(.22, .8, .3, 1);
+    pointer-events: none;
+  }
+
+  .music-dock[data-state="expanded"] .music-panel {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    transition: opacity 200ms 70ms ease, transform 300ms 50ms cubic-bezier(.22, .8, .3, 1);
+  }
+
+  .music-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 0 0 auto;
+    height: 18px;
+  }
+
+  .music-tabs {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .music-tab {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: rgba(199, 212, 230, .36);
+    font: inherit;
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .music-tab.is-active {
+    color: rgba(236, 245, 255, .86);
+  }
+
+  .music-tab.is-active::after {
+    content: "";
+    display: block;
+    height: 1px;
+    margin-top: 4px;
+    background: rgba(var(--accent-rgb), .75);
+  }
+
+  .music-tab:disabled {
+    color: rgba(199, 212, 230, .18);
+    cursor: default;
+  }
+
+  .music-head__actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .music-icon-btn {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: rgba(199, 212, 230, .5);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 120ms linear, background-color 120ms linear, border-color 120ms linear;
+  }
+
+  .music-icon-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .music-icon-btn:hover {
+    color: #f2f8ff;
+    background: rgba(255, 255, 255, .06);
+    border-color: rgba(255, 255, 255, .12);
+  }
+
+  .music-icon-btn[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), .35);
+    background: rgba(var(--accent-rgb), .09);
+  }
+
+  .music-icon-btn:focus-visible,
+  .music-tab:focus-visible,
+  .music-play:focus-visible,
+  .music-text-btn:focus-visible {
+    outline: 1px dashed rgba(var(--accent-rgb), .7);
+    outline-offset: 1px;
+  }
+
+  .music-dock .music-icon-btn:disabled {
+    opacity: .3;
+    cursor: default;
+  }
+
+  .music-pin[aria-pressed="true"] {
+    color: var(--accent);
+  }
+
+  /* 正在播放 */
+  .music-now {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    height: 44px;
+    margin-top: 7px;
+  }
+
+  .music-disc {
+    position: relative;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, .22);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 50% 50%,
+        rgba(9, 13, 20, .92) 0 22%,
+        rgba(var(--accent-rgb), .3) 23% 60%,
+        rgba(255, 255, 255, .07) 61%);
+  }
+
+  .music-disc i {
+    position: absolute;
+    inset: 6px;
+    border: 1px dashed rgba(255, 255, 255, .16);
+    border-radius: 50%;
+  }
+
+  .music-dock.is-playing .music-disc {
+    animation: music-spin 6s linear infinite;
+  }
+
+  @keyframes music-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .music-meta {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .music-title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: .01em;
+    color: #eef5ff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .music-sub {
+    margin: 3px 0 0;
+    font-size: 8px;
+    line-height: 1.2;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .42);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .music-sub.is-error {
+    color: #ff9a9a;
+    letter-spacing: .04em;
+    text-transform: none;
+  }
+
+  .music-clock {
+    flex: 0 0 auto;
+    font-size: 8px;
+    letter-spacing: .08em;
+    color: rgba(199, 212, 230, .4);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 进度 / 音量都是 1px 轨道 + 空心点，和设置页的 LineSlider 同一种手感 */
+  .music-seek,
+  .music-volume {
+    margin: 0;
+    padding: 0;
+    height: 14px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .music-seek {
+    width: 100%;
+    flex: 0 0 auto;
+    margin-top: 5px;
+  }
+
+  .music-seek::-webkit-slider-runnable-track {
+    height: 2px;
+    border-radius: 1px;
+    background:
+      linear-gradient(to right,
+        rgba(var(--accent-rgb), .85) calc(var(--p, 0) * 100%),
+        rgba(255, 255, 255, .14) 0);
+  }
+
+  .music-seek::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 8px;
+    height: 8px;
+    margin-top: -3px;
+    border: 1px solid rgba(207, 230, 255, .9);
+    border-radius: 50%;
+    background: #0d131c;
+  }
+
+  .music-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    height: 30px;
+    margin-top: 2px;
+  }
+
+  .music-play {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(var(--accent-rgb), .5);
+    border-radius: 50%;
+    background: rgba(var(--accent-rgb), .1);
+    color: #eaf6ff;
+    cursor: pointer;
+    transition: background-color 140ms linear, border-color 140ms linear, color 140ms linear;
+  }
+
+  .music-play:hover {
+    background: rgba(var(--accent-rgb), .2);
+    border-color: rgba(var(--accent-rgb), .75);
+    color: #fff;
+  }
+
+  .music-play__icon {
+    width: 13px;
+    height: 13px;
+    display: block;
+  }
+
+  .music-play__icon--play {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .music-play__icon--pause {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .music-dock.is-playing .music-play__icon--play,
+  .music-dock:not(.is-playing) .music-play__icon--pause {
+    display: none;
+  }
+
+  .music-sep {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 12px;
+    margin: 0 3px;
+    background: rgba(255, 255, 255, .12);
+  }
+
+  .music-volume {
+    width: 58px;
+    flex: 0 0 auto;
+  }
+
+  .music-volume::-webkit-slider-runnable-track {
+    height: 1px;
+    background: rgba(255, 255, 255, .2);
+  }
+
+  .music-volume::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 7px;
+    height: 7px;
+    margin-top: -3px;
+    border: 1px solid rgba(207, 230, 255, .85);
+    border-radius: 50%;
+    background: #0d131c;
+  }
+
+  .music-vol__slash {
+    display: none;
+  }
+
+  .music-vol[aria-pressed="true"] .music-vol__wave {
+    display: none;
+  }
+
+  .music-vol[aria-pressed="true"] .music-vol__slash {
+    display: inline;
+  }
+
+  .music-add {
+    margin-left: auto;
+    color: rgba(var(--accent-rgb), .85);
+    border-color: rgba(var(--accent-rgb), .28);
+  }
+
+  .music-add:hover {
+    color: #fff;
+    background: rgba(var(--accent-rgb), .16);
+    border-color: rgba(var(--accent-rgb), .55);
+  }
+
+  /* 播放列表：高度留到「列表」按钮打开后才露出来（dock 由 150 长到 294） */
+  .music-list-wrap {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    top: 150px;
+    height: 132px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    opacity: 0;
+    /* 收起时只降不透明度不够：列表行仍然可聚焦，浏览器为了露出焦点会去滚
+       overflow:hidden 的 .music-dock，把整个面板顶出可视区（实测 scrollTop 110）。
+       visibility:hidden 把整棵子树移出焦点顺序，收起后 Tab 不会再进来。 */
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 150ms ease, visibility 0s linear 150ms;
+  }
+
+  .music-dock[data-list="open"] .music-list-wrap {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 200ms 70ms ease, visibility 0s linear;
+  }
+
+  .music-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 0 0 auto;
+    height: 18px;
+    font-size: 8px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .4);
+  }
+
+  .music-text-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: rgba(199, 212, 230, .36);
+    font: inherit;
+    font-size: 8px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 120ms linear;
+  }
+
+  .music-text-btn:hover {
+    color: #ff9a9a;
+  }
+
+  .music-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--accent-rgb), .24) transparent;
+  }
+
+  .music-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 26px;
+    padding: 0 4px 0 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: rgba(214, 228, 246, .72);
+    cursor: pointer;
+    transition: background-color 120ms linear, border-color 120ms linear, color 120ms linear;
+  }
+
+  .music-row:hover {
+    background: rgba(255, 255, 255, .05);
+    border-color: rgba(255, 255, 255, .08);
+  }
+
+  .music-row.is-active {
+    color: #f2f8ff;
+    border-color: rgba(var(--accent-rgb), .35);
+    background: rgba(var(--accent-rgb), .08);
+  }
+
+  .music-row.is-missing {
+    opacity: .45;
+  }
+
+  .music-row__index {
+    flex: 0 0 auto;
+    width: 15px;
+    font-size: 8px;
+    letter-spacing: .04em;
+    color: rgba(199, 212, 230, .34);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .music-row.is-active .music-row__index {
+    color: var(--accent);
+  }
+
+  .music-row__text {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .music-row__name {
+    font-size: 10px;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .music-row__artist {
+    font-size: 7px;
+    line-height: 1.2;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: rgba(199, 212, 230, .34);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .music-row__remove {
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    background: none;
+    color: rgba(199, 212, 230, .4);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 120ms linear, color 120ms linear, background-color 120ms linear;
+  }
+
+  .music-row:hover .music-row__remove,
+  .music-row:focus-within .music-row__remove {
+    opacity: 1;
+  }
+
+  .music-row__remove:hover {
+    color: #ff9a9a;
+    background: rgba(255, 92, 92, .12);
+  }
+
+  .music-row__remove svg {
+    width: 10px;
+    height: 10px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  .music-empty {
+    margin: auto;
+    padding: 6px 0;
+    text-align: center;
+    font-size: 8px;
+    line-height: 1.7;
+    letter-spacing: .08em;
+    color: rgba(199, 212, 230, .34);
+  }
+
+  .music-empty b {
+    display: block;
+    margin-bottom: 2px;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .12em;
+    color: rgba(214, 228, 246, .55);
+  }
+
+  /* 窄屏：贴着右上角，面板宽度跟着窗口收 */
+  @media (max-width: 768px) {
+    .music-dock {
+      top: 46px;
+      right: 12px;
+    }
+
+    .music-dock[data-state="expanded"] {
+      width: min(344px, calc(100vw - 24px));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .music-dock,
+    .music-orb,
+    .music-panel,
+    .music-list-wrap,
+    .music-disc {
+      transition-duration: .01ms !important;
+    }
+
+    .music-orb__bars i,
+    .music-dock.is-playing .music-disc {
+      animation: none;
+    }
+  }
+
+
 </style>
 </head>
 <body>
@@ -8791,6 +9516,18 @@
                 </span>
               </label>
 
+              <label class="create-field" for="settingsJavaSource">
+                <span class="create-label">Java download source / Java 下载源</span>
+                <span class="create-control-wrap">
+                  <select class="create-control" id="settingsJavaSource">
+                    <option value="auto" selected>自动（国内镜像优先，失败回退官方）</option>
+                    <option value="mirror">国内镜像 · 清华 TUNA</option>
+                    <option value="official">官方 Adoptium（GitHub）</option>
+                  </select>
+                  <span class="create-select-arrow" aria-hidden="true"></span>
+                </span>
+              </label>
+
               <label class="create-field" for="settingsAddonSource">
                 <span class="create-label">Default addon source / 附加内容默认下载源</span>
                 <span class="create-control-wrap">
@@ -8806,7 +9543,7 @@
                 <span class="settings-status" id="settingsDownloadStatus">修改后立即生效</span>
               </div>
 
-              <p class="settings-note">版本列表源与下载源会作为 `--source` 传给 mcdl；附加内容下载源目前只有 Modrinth 可用。</p>
+              <p class="settings-note">版本列表源与下载源会作为 `--source` 传给 mcdl；附加内容下载源目前只有 Modrinth 可用。Java 下载源只影响「设置 → Java 管理 → 安装 Java」：镜像地址是清华 TUNA 的 Adoptium 同步，SHA-256 仍以 Adoptium 官方接口为准。</p>
             </div>
           </div>
 
@@ -8920,6 +9657,88 @@
     <section class="page page--a" id="pageA"></section>
     <section class="page page--b gone" id="pageB"></section>
     <div class="hint" id="hint"></div>
+  </div>
+
+  <!-- 右上角：本地音乐播放器。收起 = 圆钮；悬停展开成面板；图钉固定后移开不收起。
+       放在 .stage 内（和弹窗层同一层叠上下文）：z 45 在右侧控制台（9）之上、
+       弹窗（60）之下，标题栏窗口按钮在 .stage 之外（z 50），始终可点。 -->
+  <div class="music-dock" id="musicDock" data-state="collapsed" data-list="closed">
+    <button class="music-orb" id="musicOrb" type="button" aria-label="本地音乐播放器" aria-expanded="false" title="本地音乐（悬停展开）">
+      <span class="music-orb__note" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9.2 17V6.2l7.2-1.6v10.6"/><circle cx="6.8" cy="17.3" r="2.3"/><circle cx="14" cy="15.1" r="2.3"/></svg>
+      </span>
+      <span class="music-orb__bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <svg class="music-orb__progress" viewBox="0 0 58 58" aria-hidden="true">
+        <circle class="music-orb__track" cx="29" cy="29" r="27.5"/>
+        <circle class="music-orb__beat" id="musicOrbBeat" cx="29" cy="29" r="27.5" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+      </svg>
+    </button>
+
+    <section class="music-panel" id="musicPanel" aria-hidden="true" aria-label="本地音乐播放器" inert>
+      <header class="music-head">
+        <div class="music-tabs" role="tablist" aria-label="音乐来源">
+          <button class="music-tab is-active" type="button" role="tab" aria-selected="true">本地</button>
+          <button class="music-tab" type="button" role="tab" aria-selected="false" disabled title="网络音乐稍后支持">网络</button>
+        </div>
+        <div class="music-head__actions">
+          <button class="music-icon-btn" id="musicListBtn" type="button" aria-label="播放列表" aria-expanded="false" title="播放列表">
+            <svg viewBox="0 0 24 24"><path d="M4 7h2M4 12h2M4 17h2M9 7h11M9 12h11M9 17h11"/></svg>
+          </button>
+          <button class="music-icon-btn music-pin" id="musicPin" type="button" aria-label="固定面板" aria-pressed="false" title="固定：鼠标移开也不收起">
+            <svg viewBox="0 0 24 24"><path d="M9 3.5h6l-1 5 3 3.2V14H7v-2.3l3-3.2-1-5Z"/><path d="M12 14v6.5"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="music-now">
+        <span class="music-disc" id="musicDisc" aria-hidden="true"><i></i></span>
+        <div class="music-meta">
+          <p class="music-title" id="musicTitle">还没有曲目</p>
+          <p class="music-sub" id="musicSub">点「+」添加本机音乐</p>
+        </div>
+        <span class="music-clock" id="musicClock">0:00</span>
+      </div>
+
+      <input class="music-seek" id="musicSeek" type="range" min="0" max="1000" step="1" value="0" aria-label="播放进度" />
+
+      <div class="music-controls">
+        <button class="music-icon-btn" id="musicPrev" type="button" aria-label="上一首" title="上一首">
+          <svg viewBox="0 0 24 24"><path d="M17.5 6.5v11L9 12z"/><path d="M7 6.5v11"/></svg>
+        </button>
+        <button class="music-play" id="musicPlay" type="button" aria-label="播放" title="播放 / 暂停">
+          <svg class="music-play__icon music-play__icon--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13l10-6.5z"/></svg>
+          <svg class="music-play__icon music-play__icon--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5.5v13M15 5.5v13"/></svg>
+        </button>
+        <button class="music-icon-btn" id="musicNext" type="button" aria-label="下一首" title="下一首">
+          <svg viewBox="0 0 24 24"><path d="M6.5 6.5v11L15 12z"/><path d="M17 6.5v11"/></svg>
+        </button>
+        <span class="music-sep" aria-hidden="true"></span>
+        <button class="music-icon-btn" id="musicShuffle" type="button" aria-label="随机播放" aria-pressed="false" title="随机播放">
+          <svg viewBox="0 0 24 24"><path d="M4 7h3.2l9.6 10H20"/><path d="M4 17h3.2l9.6-10H20"/><path d="m17.6 4.4 2.6 2.6-2.6 2.6"/><path d="m17.6 14.4 2.6 2.6-2.6 2.6"/></svg>
+        </button>
+        <button class="music-icon-btn music-repeat" id="musicRepeat" type="button" aria-label="循环播放" aria-pressed="false" data-mode="off" title="循环：关">
+          <svg viewBox="0 0 24 24"><path d="M6 9.5V7.5h12v4"/><path d="m15.2 5.7 2.8 2.8-2.8 2.8"/><path d="M18 14.5v2H6v-4"/><path d="m8.8 18.3-2.8-2.8 2.8-2.8"/></svg>
+        </button>
+        <span class="music-sep" aria-hidden="true"></span>
+        <button class="music-icon-btn music-vol" id="musicMute" type="button" aria-label="静音" aria-pressed="false" title="静音">
+          <svg viewBox="0 0 24 24"><path d="M4.5 9.5h3l4-3.2v11.4l-4-3.2h-3z"/><path class="music-vol__wave" d="M15.2 9a4 4 0 0 1 0 6"/><path class="music-vol__slash" d="m15 9 4 6"/></svg>
+        </button>
+        <input class="music-volume" id="musicVolume" type="range" min="0" max="100" step="1" value="70" aria-label="音量" />
+        <button class="music-icon-btn music-add" id="musicAdd" type="button" aria-label="添加本地音乐" title="添加本地音乐">
+          <svg viewBox="0 0 24 24"><path d="M12 5.5v13M5.5 12h13"/></svg>
+        </button>
+      </div>
+
+      <div class="music-list-wrap" id="musicListWrap">
+        <div class="music-list-head">
+          <span id="musicListCount">播放列表 · 0 首</span>
+          <button class="music-text-btn" id="musicClear" type="button" title="清空播放列表">清空</button>
+        </div>
+        <div class="music-list" id="musicList" role="list" aria-label="播放列表"></div>
+      </div>
+    </section>
+
+    <audio id="musicAudio" preload="metadata" hidden></audio>
   </div>
 
   <!-- L5 弹窗层：账户页的 5 个弹窗（微软登录 / 添加账户 / 认证服务器 / 离线皮肤 / 确认） -->
@@ -9436,8 +10255,9 @@
       </div>
       <div class="dialog-body">
         <p class="dialog-text">
-          启动器需要一份 Java 才能启动游戏。下载会从 Eclipse Adoptium 的官方接口取 Temurin JDK，
-          存到启动器数据目录（不改系统 PATH / JAVA_HOME），装好后自动登记并选中。
+          启动器需要一份 Java 才能启动游戏。下载会从 Eclipse Adoptium 的官方接口取 Temurin JDK
+          （默认国内镜像优先、失败回退官方），存到启动器数据目录（不改系统 PATH / JAVA_HOME），
+          装好后自动登记并选中。
         </p>
         <label class="create-field" for="javaDownloadVersion">
           <span class="create-label">Java 主版本</span>
@@ -9627,6 +10447,8 @@
 
 </div>
 
+<script src="./music-playlist.js"></script>
 <script src="./renderer.js"></script>
+<script src="./music-player.js"></script>
 </body>
 </html>

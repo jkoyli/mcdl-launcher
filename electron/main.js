@@ -644,6 +644,7 @@ const DEFAULT_EXTRA_SETTINGS = {
   language: 'zh-CN',
   versionListSource: 'auto',   // auto | official | bmclapi
   downloadSource: 'auto',
+  javaSource: 'auto',          // auto（镜像优先，失败回退官方）| official | mirror
   addonSource: 'modrinth',     // modrinth（curseforge 需要 API Key）
   disableAnimations: false,
   // 壁纸（L0 数据契约）：默认样式与改动前逐像素一致，全部默认值都不启用任何新图层。
@@ -727,6 +728,8 @@ function normalizeExtraSettings(raw) {
     language: 'zh-CN',
     versionListSource: source(raw.versionListSource, 'auto'),
     downloadSource: source(raw.downloadSource, 'auto'),
+    // Java 下载源：和 mcdl 的 --source 无关，是 Adoptium / 清华镜像的选择。
+    javaSource: javaInstall.normalizeJavaSource(raw.javaSource),
     addonSource: ADDON_SOURCES.has(addon) ? addon : 'modrinth',
     disableAnimations: Boolean(raw.disableAnimations),
     wallMode: WALL_MODES.has(String(raw.wallMode || '').trim())
@@ -1843,10 +1846,10 @@ function parseByteRange(header, size) {
 }
 
 /**
- * 返回可被 <video> 拖动的响应：Range → 206 + Content-Range。
+ * 返回可被 <video> / <audio> 拖动的响应：Range → 206 + Content-Range。
  * 用 fs.createReadStream 而不是 readFile：几百 MB 的视频不能整段进内存。
  */
-async function streamWallpaperMedia(request, filePath, mime, cacheMode) {
+async function streamMediaFile(request, filePath, mime, cacheMode) {
   let stat;
   try {
     stat = await fs.stat(filePath);
@@ -1886,7 +1889,7 @@ async function streamWallpaperMedia(request, filePath, mime, cacheMode) {
   // 否则会冒泡成 uncaughtException。
   stream.on('error', (error) => {
     if (error && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-      console.warn('[wallpaper] 读取中断:', error.message);
+      console.warn('[media] 读取中断:', error.message);
     }
   });
   return new Response(Readable.toWeb(stream), {
@@ -1919,7 +1922,7 @@ async function serveWallpaperMedia(request) {
 
     const target = path.join(root, segment);
     const real = await pathGuard.assertInsideReal(root, target, '壁纸文件');
-    return streamWallpaperMedia(
+    return streamMediaFile(
       request,
       real,
       WALL_MIME[path.extname(real).toLowerCase()] || 'application/octet-stream',
@@ -1949,10 +1952,160 @@ async function serveWallpaperMedia(request) {
     }
 
     const real = await fs.realpath(resolved);
-    return streamWallpaperMedia(request, real, WALL_MIME[ext] || 'video/mp4', 'no-cache');
+    return streamMediaFile(request, real, WALL_MIME[ext] || 'video/mp4', 'no-cache');
   }
 
   throw new Error(`未知的壁纸 host：${host}`);
+}
+
+// ---------------- 本地音乐播放器：播放列表授权 + 媒体协议 ----------------
+//
+// 播放列表就是「用户用原生对话框选过的文件」的授权清单：
+// mcdl-media://music/<id> 只服务清单里的 id，渲染进程无法凭路径读任意本地文件
+// （和视频壁纸 "只服务当前那一个" 是同一条思路）。
+//
+// 列表落在 <userData>/music-playlist.json，不放 settings：音乐是独立功能，
+// 不该因为设置文件写坏而丢，也不想让渲染层能通过 settings:save 改它。
+const MUSIC_EXTS = new Set(['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.oga', '.opus']);
+const MUSIC_MIME = {
+  '.mp3': 'audio/mpeg',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/ogg'
+};
+const MUSIC_MAX_TRACKS = 500;
+const MUSIC_HOST = 'music';
+
+let musicPlaylistCache = null;
+
+function musicPlaylistFile() {
+  return path.join(app.getPath('userData'), 'music-playlist.json');
+}
+
+/** 稳定 id：同一条路径（大小写不敏感，Windows）永远得到同一个 id。 */
+function musicTrackId(filePath) {
+  return crypto.createHash('sha1')
+    .update(path.resolve(String(filePath)).toLowerCase())
+    .digest('hex')
+    .slice(0, 20);
+}
+
+function musicMediaUrl(id) {
+  return `mcdl-media://${MUSIC_HOST}/${id}`;
+}
+
+/** 读盘时重新校验：id 必须和路径对得上，扩展名必须在白名单。 */
+function normalizeMusicTrack(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = String(raw.id || '');
+  const filePath = String(raw.path || '');
+  if (!/^[a-f0-9]{20}$/.test(id)) return null;
+  if (!filePath || !path.isAbsolute(filePath)) return null;
+  if (!MUSIC_EXTS.has(path.extname(filePath).toLowerCase())) return null;
+  if (musicTrackId(filePath) !== id) return null;
+  return { id, path: filePath, addedAt: Number(raw.addedAt) || 0 };
+}
+
+async function readMusicPlaylist() {
+  if (musicPlaylistCache) return musicPlaylistCache;
+
+  let raw = null;
+  try {
+    raw = JSON.parse(await fs.readFile(musicPlaylistFile(), 'utf8'));
+  } catch {
+    raw = null;
+  }
+
+  const list = raw && Array.isArray(raw.tracks) ? raw.tracks : [];
+  const seen = new Set();
+  const tracks = [];
+  for (const entry of list) {
+    const track = normalizeMusicTrack(entry);
+    if (!track || seen.has(track.id)) continue;
+    seen.add(track.id);
+    tracks.push(track);
+  }
+
+  musicPlaylistCache = tracks;
+  return tracks;
+}
+
+async function saveMusicPlaylist(tracks) {
+  const file = musicPlaylistFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await writeFileAtomic(file, JSON.stringify({ version: 1, tracks }, null, 2), 'utf8');
+  musicPlaylistCache = tracks;
+}
+
+/**
+ * 把一个用户选中的文件变成曲目记录；扩展名 / 文件类型不对返回 null。
+ * 用 realpath 存盘：junction / 短路径指向同一个文件时不会出现两条记录。
+ */
+async function musicTrackFromPath(filePath) {
+  const resolved = path.resolve(String(filePath || ''));
+  if (!MUSIC_EXTS.has(path.extname(resolved).toLowerCase())) return null;
+
+  let stat;
+  try {
+    stat = await fs.stat(resolved);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile()) return null;
+
+  const real = await fs.realpath(resolved);
+  return { id: musicTrackId(real), path: real, addedAt: Date.now() };
+}
+
+/** 给渲染层的视图：不带绝对路径，只给 id / 文件名 / 可播放 URL / 是否丢失。 */
+async function musicTracksForUi() {
+  const tracks = await readMusicPlaylist();
+  const view = await Promise.all(tracks.map(async (track) => {
+    let exists = true;
+    try {
+      await fs.access(track.path);
+    } catch {
+      exists = false;
+    }
+    return {
+      id: track.id,
+      name: path.basename(track.path, path.extname(track.path)),
+      fileName: path.basename(track.path),
+      url: exists ? musicMediaUrl(track.id) : '',
+      missing: !exists
+    };
+  }));
+  return { version: 1, tracks: view };
+}
+
+async function serveMusicMedia(request) {
+  const raw = new URL(request.url).pathname.replace(/^\/+/, '');
+  let id;
+  try {
+    id = decodeURIComponent(raw);
+  } catch {
+    throw new Error('曲目 id 编码非法');
+  }
+  if (!/^[a-f0-9]{20}$/.test(id)) throw new Error('曲目 id 非法');
+
+  const tracks = await readMusicPlaylist();
+  const track = tracks.find((item) => item.id === id);
+  if (!track) throw new Error('曲目不在本地播放列表里');
+
+  let real;
+  try {
+    real = await fs.realpath(track.path);
+  } catch {
+    throw new Error('曲目文件不存在');
+  }
+  const ext = path.extname(real).toLowerCase();
+  if (!MUSIC_EXTS.has(ext)) throw new Error('音频扩展名不在白名单');
+
+  return streamMediaFile(request, real, MUSIC_MIME[ext] || 'application/octet-stream', 'no-cache');
 }
 
 // ---------------- 内容图标代理（mcdl-media://addon-icon/…） ----------------
@@ -2010,9 +2163,9 @@ async function serveAddonIcon(request) {
 function registerMediaProtocol() {
   protocol.handle('mcdl-media', async (request) => {
     try {
-      if (new URL(request.url).hostname.toLowerCase() === ADDON_ICON_HOST) {
-        return await serveAddonIcon(request);
-      }
+      const host = new URL(request.url).hostname.toLowerCase();
+      if (host === ADDON_ICON_HOST) return await serveAddonIcon(request);
+      if (host === MUSIC_HOST) return await serveMusicMedia(request);
       return await serveWallpaperMedia(request);
     } catch (error) {
       console.warn('[media] 拒绝媒体请求:', request.url, error.message);
@@ -4012,6 +4165,7 @@ function registerIpcHandlers() {
     const major = javaInstall.SUPPORTED_MAJORS.includes(Number(payload.major))
       ? Number(payload.major)
       : 21;
+    const settings = await readSettings();
 
     const task = beginTask(payload.taskId);
     const send = (message, percent) => {
@@ -4022,6 +4176,8 @@ function registerIpcHandlers() {
       const installed = await javaInstall.installJava({
         major,
         destRoot: path.join(app.getPath('userData'), 'java'),
+        // 设置 → 下载 → Java 下载源：auto / official / mirror
+        source: settings.javaSource,
         onProgress: send,
         signal: task.signal
       });
@@ -5224,6 +5380,82 @@ function registerIpcHandlers() {
     assertAppWindow(event);
     await openFolderPath(wallpaperRoot());
     return true;
+  });
+
+  // ---------------- 本地音乐播放器 ----------------
+  //
+  // 列表的增删只从这里走：pick 用原生对话框把文件登记进授权清单，
+  // 渲染层永远拿不到「按路径读文件」的能力，只有播放列表里的 id 对应的 URL。
+
+  ipcMain.handle('music:list', async (event) => {
+    assertAppWindow(event);
+    return musicTracksForUi();
+  });
+
+  ipcMain.handle('music:pick', async (event) => {
+    const win = assertAppWindow(event);
+    const current = await readMusicPlaylist();
+
+    const result = await dialog.showOpenDialog(win, {
+      title: '添加本地音乐',
+      buttonLabel: '添加到播放列表',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '音频文件', extensions: [...MUSIC_EXTS].map((ext) => ext.slice(1)) }]
+    });
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { canceled: true, added: 0, dropped: 0, skipped: [], limit: MUSIC_MAX_TRACKS, ...(await musicTracksForUi()) };
+    }
+
+    const seen = new Set(current.map((track) => track.id));
+    const added = [];
+    const skipped = [];
+    for (const file of result.filePaths) {
+      const track = await musicTrackFromPath(file);
+      if (!track) {
+        skipped.push(path.basename(String(file)));
+        continue;
+      }
+      if (seen.has(track.id)) continue;
+      seen.add(track.id);
+      added.push(track);
+    }
+
+    // 上限只影响「真正写进列表」的数量：added 必须报实际入库的条数，
+    // 否则列表已满时会出现「已添加 3 首」但其实一首都没加。
+    const room = Math.max(0, MUSIC_MAX_TRACKS - current.length);
+    const accepted = added.slice(0, room);
+    const dropped = added.length - accepted.length;
+
+    let next = current;
+    if (accepted.length > 0) {
+      next = current.concat(accepted);
+      await saveMusicPlaylist(next);
+    }
+
+    return {
+      canceled: false,
+      added: accepted.length,
+      dropped,
+      skipped,
+      limit: MUSIC_MAX_TRACKS,
+      ...(await musicTracksForUi())
+    };
+  });
+
+  ipcMain.handle('music:remove', async (event, id) => {
+    assertAppWindow(event);
+    const key = String(id || '');
+    const tracks = await readMusicPlaylist();
+    const next = tracks.filter((track) => track.id !== key);
+    if (next.length !== tracks.length) await saveMusicPlaylist(next);
+    return musicTracksForUi();
+  });
+
+  ipcMain.handle('music:clear', async (event) => {
+    assertAppWindow(event);
+    await saveMusicPlaylist([]);
+    return musicTracksForUi();
   });
 
   /** 关于页：版本、运行时与数据目录。 */

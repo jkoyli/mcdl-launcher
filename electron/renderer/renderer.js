@@ -562,91 +562,110 @@
     });
   });
 
-  // 鼠标方向 -> 被钉死的角（对角）
-  var ORIGINS = {
-    'left-top':    '100% 100%',   // 鼠标左上 -> 钉右下
-    'right-top':   '0% 100%',     // 鼠标右上 -> 钉左下
-    'left-bottom': '100% 0%',     // 鼠标左下 -> 钉右上
-    'right-bottom':'0% 0%'        // 鼠标右下 -> 钉左上
-  };
-
+  // 重影（.ring）的几何全部走 transform：只改 scale + transform-origin。
+  // 旧实现每来一个 pointermove 就写 width/height/left/right/top/bottom + 六个 100ms
+  // 过渡，等于每帧一次 layout + 重跑 blur，鼠标一动就掉帧；这里改成 rAF 节流 +
+  // 合成器可处理的 transform，松开时再用弹簧过渡回弹，而不是清空行内样式瞬移。
   var MAX_STRETCH = 15;   // 最大拉伸像素
-  var CORNER = 9;         // 与按钮一致的圆角（被钉住的角）
-  var SHARP = 2;          // 露出那条边的锐利圆角
-  var TUCK = 6;           // 大圆角比拉伸量多出的余量，保证缩回本体后面
+
+  var ringRaf = 0;
+  var ringSettleTimer = 0;
+  var ringTarget = { nx: 0, ny: 0 };
+  var ringLive = false;     // 指针是否还在按钮上
+  var ringSettling = false; // 是否正在回弹
+  var ringBase = { w: 220, h: 56 };
+
+  function measureRingBase() {
+    ringBase.w = cta.clientWidth || 220;
+    ringBase.h = cta.clientHeight || 56;
+  }
 
   function applyStack(nx, ny) {
-    var style = ring.style;
-    var baseWidth = cta.clientWidth;
-    var baseHeight = cta.clientHeight;
-
     var stretchX = Math.abs(nx) * MAX_STRETCH;
     var stretchY = Math.abs(ny) * MAX_STRETCH;
+    var sx = (ringBase.w + stretchX) / ringBase.w;
+    var sy = (ringBase.h + stretchY) / ringBase.h;
 
-    // 1) 宽高拉伸
-    style.width = (baseWidth + stretchX) + 'px';
-    style.height = (baseHeight + stretchY) + 'px';
-
-    // 2) 钉死对角：鼠标在左钉右边，在上钉下边
-    var pinRight = nx < 0;
-    var pinBottom = ny < 0;
-    style.left = pinRight ? 'auto' : '0';
-    style.right = pinRight ? '0' : 'auto';
-    style.top = pinBottom ? 'auto' : '0';
-    style.bottom = pinBottom ? '0' : 'auto';
-
-    // 3) 逐角处理：
-    //    两条拉伸边夹住的角 -> 锐利直角，这是真正露出来的棱
-    //    只有一条拉伸边的角  -> 圆角略大于该方向拉伸量，刚好缩回本体后面
-    //    被钉住的角          -> 与本体一致，藏在按钮圆角下
-    var leftStretched = nx < -0.02;
-    var rightStretched = nx > 0.02;
-    var topStretched = ny < -0.02;
-    var bottomStretched = ny > 0.02;
-    var maxRadius = Math.min(baseWidth + stretchX, baseHeight + stretchY) * 0.42;
-
-    function cornerRadius(horizontal, vertical) {
-      if (horizontal && vertical) return SHARP;
-      if (vertical) return Math.min(stretchY + TUCK, maxRadius);
-      if (horizontal) return Math.min(stretchX + TUCK, maxRadius);
-      return CORNER;
-    }
-
-    style.borderTopLeftRadius = cornerRadius(leftStretched, topStretched) + 'px';
-    style.borderTopRightRadius = cornerRadius(rightStretched, topStretched) + 'px';
-    style.borderBottomLeftRadius = cornerRadius(leftStretched, bottomStretched) + 'px';
-    style.borderBottomRightRadius = cornerRadius(rightStretched, bottomStretched) + 'px';
-
-    style.transition = 'width 100ms ease-out, height 100ms ease-out, ' +
-      'left 100ms ease-out, right 100ms ease-out, top 100ms ease-out, bottom 100ms ease-out, ' +
-      'border-radius 100ms ease-out';
+    // 往鼠标方向拉伸，对角钉死：鼠标在左 -> 以右边缘为原点。
+    var style = ring.style;
+    style.transformOrigin = (nx < 0 ? '100%' : '0%') + ' ' + (ny < 0 ? '100%' : '0%');
+    style.transform = 'translateZ(0) scale(' + sx.toFixed(4) + ', ' + sy.toFixed(4) + ')';
   }
+
+  function cancelRingFrame() {
+    if (!ringRaf) return;
+    cancelAnimationFrame(ringRaf);
+    ringRaf = 0;
+  }
+
+  function scheduleRingFrame() {
+    if (ringRaf) return;
+    ringRaf = requestAnimationFrame(function () {
+      ringRaf = 0;
+      if (!ringLive) return;
+      applyStack(ringTarget.nx, ringTarget.ny);
+    });
+  }
+
+  // 完全复位：清掉行内 transform，回到 .ring 的 CSS 默认值（scale(1)）。
+  function resetRing() {
+    cancelRingFrame();
+    if (ringSettleTimer) {
+      clearTimeout(ringSettleTimer);
+      ringSettleTimer = 0;
+    }
+    ringSettling = false;
+    ring.classList.remove('is-settling');
+    ring.style.transform = '';
+    ring.style.transformOrigin = '';
+  }
+
+  // 指针离开：从当前拉伸量弹回 1（CSS 里 .is-settling 带过冲的 spring）。
+  function settleRing() {
+    cancelRingFrame();
+    if (!ring.style.transform) return;
+    if (reduceMotion.matches) {
+      resetRing();
+      return;
+    }
+    ringSettling = true;
+    ring.classList.add('is-settling');
+    // 先让浏览器记住当前值，再改成 1，否则同一帧内加类 + 改值不会触发过渡。
+    void ring.offsetWidth;
+    ring.style.transform = 'translateZ(0) scale(1, 1)';
+    // transitionend 在窗口被遮挡时可能不派发，兜底 700ms 后强制清干净。
+    ringSettleTimer = setTimeout(resetRing, 700);
+  }
+
+  cta.addEventListener('pointerenter', measureRingBase);
+
   cta.addEventListener('pointermove', function (event) {
     if (isLoading || reduceMotion.matches) return;
     var rect = cta.getBoundingClientRect();
     var nx = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     var ny = ((event.clientY - rect.top) / rect.height) * 2 - 1;
-    nx = Math.max(-1, Math.min(1, nx));
-    ny = Math.max(-1, Math.min(1, ny));
-    applyStack(nx, ny);
+
+    if (!ringLive) {
+      ringLive = true;
+      measureRingBase();
+      // 回弹途中又移回来：立刻接管，不再回弹。
+      ringSettling = false;
+      ring.classList.remove('is-settling');
+      if (ringSettleTimer) {
+        clearTimeout(ringSettleTimer);
+        ringSettleTimer = 0;
+      }
+    }
+
+    ringTarget.nx = Math.max(-1, Math.min(1, nx));
+    ringTarget.ny = Math.max(-1, Math.min(1, ny));
+    scheduleRingFrame();
   });
 
-  var RING_STYLE_PROPS = [
-    'width', 'height',
-    'left', 'right', 'top', 'bottom',
-    'borderTopLeftRadius', 'borderTopRightRadius',
-    'borderBottomLeftRadius', 'borderBottomRightRadius'
-  ];
-
-  // 完全清空 applyStack 写入的行内几何量，回到 .ring 的 CSS 默认值。
-  function resetRing() {
-    var style = ring.style;
-    for (var i = 0; i < RING_STYLE_PROPS.length; i++) {
-      style[RING_STYLE_PROPS[i]] = '';
-    }
-    style.transform = '';
-    style.transition = '';
-  }
+  ring.addEventListener('transitionend', function (event) {
+    if (event.propertyName !== 'transform' || !ringSettling) return;
+    resetRing();
+  });
 
   // 启动 loading：按钮禁用、文案切换、立即复位重影。
   function setLaunchLoading(loading) {
@@ -715,8 +734,14 @@
     return lines.length === 1 ? lines[0] : lines[0] + ' ' + lines[1];
   }
 
-  cta.addEventListener('pointerleave', resetRing);
-  window.addEventListener('blur', resetRing);
+  cta.addEventListener('pointerleave', function () {
+    ringLive = false;
+    settleRing();
+  });
+  window.addEventListener('blur', function () {
+    ringLive = false;
+    resetRing();
+  });
 
   // 只在 Tab 导航获得焦点时显示虚线；任何鼠标/触控按下都立即撤销。
   document.addEventListener('keydown', function (event) {
@@ -2144,6 +2169,7 @@
   var settingsDisableAnimations = document.getElementById('settingsDisableAnimations');
   var settingsVersionSource = document.getElementById('settingsVersionSource');
   var settingsDownloadSource = document.getElementById('settingsDownloadSource');
+  var settingsJavaSource = document.getElementById('settingsJavaSource');
   var settingsAddonSource = document.getElementById('settingsAddonSource');
   var settingsDownloadStatus = document.getElementById('settingsDownloadStatus');
   var settingsAboutVersion = document.getElementById('settingsAboutVersion');
@@ -4957,6 +4983,7 @@
 
     if (settingsVersionSource) settingsVersionSource.value = settings.versionListSource || 'auto';
     if (settingsDownloadSource) settingsDownloadSource.value = settings.downloadSource || 'auto';
+    if (settingsJavaSource) settingsJavaSource.value = settings.javaSource || 'auto';
     if (settingsAddonSource) settingsAddonSource.value = settings.addonSource || 'modrinth';
 
     renderPresets(settings);
@@ -6421,6 +6448,7 @@
   [
     [settingsVersionSource, 'versionListSource'],
     [settingsDownloadSource, 'downloadSource'],
+    [settingsJavaSource, 'javaSource'],
     [settingsAddonSource, 'addonSource']
   ].forEach(function (pair) {
     if (!pair[0]) return;

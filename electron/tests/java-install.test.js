@@ -432,3 +432,92 @@ test('resolveDownloadSource：AbortError 必须往上抛，不能当成降级继
     return true;
   });
 });
+
+// ---------------- 国内镜像（清华 TUNA） ----------------
+
+const MIRROR_LINK =
+  'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/' +
+  'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip';
+
+test('mirrorUrlFor：官方 GitHub 直链 → 清华 TUNA 同文件名路径', () => {
+  assert.equal(
+    javaInstall.mirrorUrlFor(MIRROR_LINK, 21, 'x64'),
+    'https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/windows/' +
+      'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip'
+  );
+  // Java 8 的命名风格（8u504b01）也要认
+  assert.equal(
+    javaInstall.mirrorUrlFor(
+      'https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u504-b01/' +
+        'OpenJDK8U-jdk_x64_windows_hotspot_8u504b01.zip',
+      8,
+      'x64'
+    ),
+    'https://mirrors.tuna.tsinghua.edu.cn/Adoptium/8/jdk/x64/windows/' +
+      'OpenJDK8U-jdk_x64_windows_hotspot_8u504b01.zip'
+  );
+});
+
+test('mirrorUrlFor：文件名不认识 / 非法 URL 返回空串（调用方回退官方）', () => {
+  assert.equal(javaInstall.mirrorUrlFor('https://cdn.example/jdk21.zip', 21, 'x64'), '');
+  assert.equal(javaInstall.mirrorUrlFor('not a url', 21, 'x64'), '');
+  assert.equal(javaInstall.mirrorUrlFor('', 21, 'x64'), '');
+  // 只要文件名，host / 路径里的伪装不会带进镜像地址
+  assert.equal(
+    javaInstall.mirrorUrlFor(
+      'https://evil.example/../../OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip',
+      21,
+      'x64'
+    ),
+    'https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/windows/' +
+      'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip'
+  );
+});
+
+test('downloadUrlsFor：auto 镜像优先、official 只官方、mirror 只镜像', () => {
+  const source = { url: 'https://github.com/x/jdk.zip', mirrorUrl: 'https://tuna/jdk.zip' };
+
+  assert.deepEqual(javaInstall.downloadUrlsFor(source, 'auto'), [
+    'https://tuna/jdk.zip',
+    'https://github.com/x/jdk.zip'
+  ]);
+  assert.deepEqual(javaInstall.downloadUrlsFor(source, 'official'), ['https://github.com/x/jdk.zip']);
+  assert.deepEqual(javaInstall.downloadUrlsFor(source, 'mirror'), ['https://tuna/jdk.zip']);
+  // 推不出镜像地址时，mirror 也要回退官方，不能直接失败
+  assert.deepEqual(javaInstall.downloadUrlsFor({ url: 'https://github.com/x/jdk.zip' }, 'mirror'), [
+    'https://github.com/x/jdk.zip'
+  ]);
+  // 坏模式按 auto 处理
+  assert.deepEqual(javaInstall.downloadUrlsFor(source, 'nope'), [
+    'https://tuna/jdk.zip',
+    'https://github.com/x/jdk.zip'
+  ]);
+});
+
+test('normalizeJavaSource：合法值原样、非法值回落 auto', () => {
+  assert.equal(javaInstall.normalizeJavaSource('auto'), 'auto');
+  assert.equal(javaInstall.normalizeJavaSource('OFFICIAL'), 'official');
+  assert.equal(javaInstall.normalizeJavaSource('mirror'), 'mirror');
+  assert.equal(javaInstall.normalizeJavaSource(''), 'auto');
+  assert.equal(javaInstall.normalizeJavaSource('tuna'), 'auto');
+  assert.equal(javaInstall.normalizeJavaSource(undefined), 'auto');
+});
+
+test('resolveDownloadSource：响应里带上镜像地址（官方 link 不变）', async (t) => {
+  const hex = 'd'.repeat(64);
+  const fetchImpl = await withFakeFetch(t, async () => ({
+    ok: true,
+    status: 200,
+    json: async () => [{ binary: { package: { link: MIRROR_LINK, checksum: hex, size: 1234 } } }]
+  }));
+
+  const source = await javaInstall.resolveDownloadSource(21, { fetchImpl });
+  assert.equal(source.url, MIRROR_LINK);
+  assert.equal(
+    source.mirrorUrl,
+    'https://mirrors.tuna.tsinghua.edu.cn/Adoptium/21/jdk/x64/windows/' +
+      'OpenJDK21U-jdk_x64_windows_hotspot_21.0.13_9.zip'
+  );
+  assert.equal(source.sha256, hex);
+});
+

@@ -8,11 +8,14 @@
  * 用户机器完全没装 Java 也能跑 mcdl（版本列表 / 安装 / 扫描）。
  *
  * 用法：
- *   npm run fetch:jre            已有的 JRE 直接跳过（幂等）
- *   npm run fetch:jre -- --force 重新下载覆盖
+ *   npm run fetch:jre            默认：先走清华 TUNA 镜像，失败回退官方（已有则跳过）
+ *   npm run fetch:jre -- --official  只走官方 Adoptium / GitHub
+ *   npm run fetch:jre -- --mirror    只走国内镜像
+ *   npm run fetch:jre -- --force     重新下载覆盖
  *
  * 实现要点：
- *   - 走 Adoptium 的 binary/latest 直链（跟随 302 到 GitHub release）；
+ *   - 校验值来自 Adoptium 的 assets 接口（link + SHA-256 + size），下载后先校验再解压；
+ *   - 国内镜像 = 清华 TUNA 对 Adoptium release 资产的同步，文件名与官方一致；
  *   - **流式**写临时文件，不把几十 MB 的包整个读进内存；
  *   - 用系统自带的 tar.exe（Windows 10+ 是 bsdtar，能解 zip），
  *     解完剥掉压缩包的顶层目录，最终必须是 electron/jre/bin/java.exe。
@@ -22,14 +25,25 @@ const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const JRE_MAJOR = 21;
-const DOWNLOAD_URL =
-  `https://api.adoptium.net/v3/binary/latest/${JRE_MAJOR}/ga/windows/x64/jre/hotspot/normal/eclipse`;
+const ASSETS_URL =
+  `https://api.adoptium.net/v3/assets/latest/${JRE_MAJOR}/hotspot` +
+  '?os=windows&architecture=x64&image_type=jre';
+const MIRROR_BASE = 'https://mirrors.tuna.tsinghua.edu.cn/Adoptium';
 const JRE_DIR = path.join(__dirname, '..', 'jre');
 const JAVA_EXE = process.platform === 'win32' ? 'java.exe' : 'java';
 const MAX_DOWNLOAD_BYTES = 300 * 1024 * 1024;
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+/** official | mirror | auto（默认镜像优先，失败回退官方）。 */
+function downloadSourceMode() {
+  if (process.argv.includes('--official')) return 'official';
+  if (process.argv.includes('--mirror')) return 'mirror';
+  return 'auto';
+}
 
 function formatMb(bytes) {
   return (Number(bytes || 0) / (1024 * 1024)).toFixed(1) + ' MB';
@@ -46,6 +60,73 @@ async function exists(target) {
 
 function stamp() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+/**
+ * 查 Adoptium assets 接口，拿官方直链 + SHA-256 + size，并推导清华镜像地址。
+ * @returns {Promise<{link:string, mirror:string, sha256:string, size:number, name:string}>}
+ */
+async function resolveAsset() {
+  let response;
+  try {
+    response = await fetch(ASSETS_URL, { headers: { accept: 'application/json' } });
+  } catch (error) {
+    throw new Error(`查询 Adoptium 失败：${error.message}（请检查网络 / 代理设置）`);
+  }
+  if (!response.ok) {
+    throw new Error(`查询 Adoptium 失败（HTTP ${response.status}）`);
+  }
+
+  const payload = await response.json();
+  const pkg = payload && payload[0] && payload[0].binary && payload[0].binary.package;
+  const link = pkg && typeof pkg.link === 'string' ? pkg.link.trim() : '';
+  const sha256 = String((pkg && pkg.checksum) || '').trim().toLowerCase();
+  const size = Number(pkg && pkg.size) || 0;
+
+  if (!link) throw new Error('Adoptium 响应里没有可用的 JRE 包（binary.package 缺失）');
+  if (!SHA256_HEX.test(sha256)) {
+    throw new Error('Adoptium 没有提供 JRE 的合法 SHA-256，已中止（不下载未校验的包）');
+  }
+
+  const name = decodeURIComponent(new URL(link).pathname.split('/').pop() || '');
+  if (!/^OpenJDK\d+U-jre_x64_windows_hotspot_[A-Za-z0-9._+-]+\.zip$/i.test(name)) {
+    throw new Error(`Adoptium 返回的 JRE 文件名不认识：${name || '(空)'}`);
+  }
+
+  return {
+    link,
+    name,
+    sha256,
+    size,
+    mirror: `${MIRROR_BASE}/${JRE_MAJOR}/jre/x64/windows/${name}`
+  };
+}
+
+/** 流式计算 SHA-256（不把 zip 读进内存）。 */
+async function computeSha256(file) {
+  const hash = createHash('sha256');
+  const stream = fsSync.createReadStream(file);
+  try {
+    for await (const chunk of stream) hash.update(chunk);
+  } catch (error) {
+    stream.destroy();
+    throw error;
+  }
+  return hash.digest('hex');
+}
+
+/** 解压前校验：先比 size，再比 SHA-256；失败删包并抛错。 */
+async function verifyZip(file, asset) {
+  const stat = await fs.stat(file);
+  if (asset.size > 0 && stat.size !== asset.size) {
+    await fs.rm(file, { force: true }).catch(() => {});
+    throw new Error(`JRE 校验失败：大小 ${stat.size}，期望 ${asset.size}`);
+  }
+  const actual = await computeSha256(file);
+  if (actual !== asset.sha256) {
+    await fs.rm(file, { force: true }).catch(() => {});
+    throw new Error(`JRE 校验失败：SHA-256 ${actual}，期望 ${asset.sha256}`);
+  }
 }
 
 /** 系统的 tar.exe（Windows 10+ 自带 bsdtar，能直接解 zip）。 */
@@ -187,15 +268,47 @@ async function main() {
   }
 
   console.log(`[fetch:jre] 下载 Temurin JRE ${JRE_MAJOR}（Windows x64）…`);
-  console.log(`[fetch:jre] ${DOWNLOAD_URL}`);
+
+  const mode = downloadSourceMode();
+  const asset = await resolveAsset();
+  const urls = [];
+  if (mode !== 'official') urls.push(asset.mirror);
+  if (mode !== 'mirror') urls.push(asset.link);
+  if (urls.length === 0) urls.push(asset.link);
+
+  console.log(`[fetch:jre] 下载源：${mode}（${asset.name}，${formatMb(asset.size)}）`);
+  if (mode !== 'official') console.log(`[fetch:jre] 国内镜像：${asset.mirror}`);
+  if (mode !== 'mirror') console.log(`[fetch:jre] 官方：${asset.link}`);
 
   const work = path.join(os.tmpdir(), `mcdl-fetch-jre-${stamp()}`);
   await fs.mkdir(work, { recursive: true });
 
   try {
     const zipFile = path.join(work, 'jre.zip');
-    const bytes = await downloadToFile(DOWNLOAD_URL, zipFile);
-    console.log(`[fetch:jre] 下载完成：${formatMb(bytes)}`);
+    let bytes = 0;
+    let used = '';
+    let lastError = null;
+
+    for (let i = 0; i < urls.length; i += 1) {
+      const url = urls[i];
+      const fromMirror = url === asset.mirror;
+      console.log(`[fetch:jre] ${fromMirror ? '从国内镜像下载' : '从官方下载'}…`);
+      try {
+        bytes = await downloadToFile(url, zipFile);
+        await verifyZip(zipFile, asset);
+        used = url;
+        break;
+      } catch (error) {
+        lastError = error;
+        await fs.rm(zipFile, { force: true }).catch(() => {});
+        if (i < urls.length - 1) {
+          console.log(`[fetch:jre] ${fromMirror ? '镜像不可用' : '下载失败'}：${error.message}，换下一个源重试…`);
+        }
+      }
+    }
+
+    if (!used) throw lastError || new Error('下载 JRE 失败（没有可用的下载源）');
+    console.log(`[fetch:jre] 下载完成：${formatMb(bytes)}（SHA-256 校验通过）`);
 
     const extractDir = path.join(work, 'extract');
     await fs.mkdir(extractDir, { recursive: true });

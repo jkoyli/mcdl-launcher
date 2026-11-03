@@ -20,7 +20,7 @@ electron/
 ├── app-log.js            # 启动器日志落盘：console.* / 崩溃写 <userData>/logs/launcher-*.log
 ├── mcdl-service.js       # 调用 mcdl/mcdl.jar：目录探测、实例扫描、版本列表、安装
 ├── java-runtime.js       # 本机 Java 探测与版本挑选
-├── java-install.js       # 从 Adoptium 下载 / 解压 JDK（安装 Java）
+├── java-install.js       # 从 Adoptium 下载 / 解压 JDK（默认国内镜像优先）
 ├── version-manifest.js   # 版本 JSON 解析：inheritsFrom / rules / classpath / natives
 ├── launch.js             # 真实启动：命令拼接、natives 解压、进程拉起
 ├── accounts.js           # 离线 / 微软 / authlib-injector 账号、认证服务器、离线皮肤
@@ -396,7 +396,7 @@ allowQuit=false  shutdownPromise=null
 | `accounts:skin-data` | renderer → main | 读取皮肤 PNG 的 data URL（预览） |
 | `settings:get` / `settings:save` | renderer → main | 读取 / 保存启动设置（含下载源、隔离策略、动画开关、游戏设置预设 `presets`） |
 | `settings:preferences` | renderer → main | 启动时只读偏好，不触发 Java 扫描（用于恢复「关闭动画」） |
-| `java:install` | renderer → main | 从 Adoptium 下载并安装指定主版本 JDK，登记授权后返回 `{ path, info }` |
+| `java:install` | renderer → main | 从 Adoptium 下载并安装指定主版本 JDK（按 `javaSource` 选镜像 / 官方），登记授权后返回 `{ path, info }` |
 | `java:install-progress` | main → renderer | Java 下载 / 解压进度 |
 | `nbt:pick` | renderer → main | 选 NBT 文件并返回一次性 token + 展平后的行；token 30 分钟有效 |
 | `nbt:save` | renderer → main | 只接受 token，按路径写回标量字段（先备份 `.bak`） |
@@ -639,6 +639,9 @@ CDN 地址时，卡片回落成项目名首字母。
 - **预设**：`#settingsPreset` 下拉 + `新建预设 / 应用 / 删除`。新建时把当前表单值存进 `presets`；
   应用会把预设写回表单并直接保存；主进程 `normalizePresets()` 做长度 / 数值范围 / 枚举校验。
 - 下载源三项会分别进入 `mcdl --list`、`--install`、`--install-loader`、`--list-loaders`。
+- 「下载」页签的 **Java 下载源**（`javaSource`：auto / mirror / official）只影响 Java 安装：
+  auto 先走清华 TUNA 的 Adoptium 镜像、失败回退 GitHub，mirror 只走镜像，official 只走官方；
+  校验值始终来自 Adoptium assets 接口，镜像只搬字节。
 - Java 管理页签列出 `settings:get` 扫描到的运行时，可指定固定 Java 或「重新扫描」；「选择 Java…」
   走系统对话框并登记指纹；「安装 Java」先弹 `dlgJavaDownload`（8 / 17 / 21 / 25），确认后
   `java:install` 从 Adoptium 下载 Temurin JDK 到 `<userData>/java/temurin-<主版本>`，
@@ -848,8 +851,9 @@ CDN 地址时，卡片回落成项目名首字母。
 - **更新整合包不认渲染层拼的路径**：`instances:merge-pack` 只用「同一 gameDir + versions 下文件夹名」
   定位临时实例，两边目录都必须在 `versions/` 下；`downloads:install-pack` 的 `gameDir` 必须是已登记的
   游戏目录（`assertGameDirAllowed`）。
-- **Java 安装**：从 `https://api.adoptium.net` 下载到启动器数据目录，解压后由主进程 `registerJava()`
-  登记授权；不改系统 PATH / JAVA_HOME，也不静默覆盖用户已选的 Java。
+- **Java 安装**：走 Adoptium assets 接口拿 SHA-256 / size，默认从清华 TUNA 镜像下载、失败回退
+  GitHub，落盘后先校验再解压，由主进程 `registerJava()` 登记授权；不改系统 PATH / JAVA_HOME，
+  也不静默覆盖用户已选的 Java。
 - 启动入口不要加 `--no-sandbox`：它会关掉整个 Chromium 进程沙箱，`webPreferences.sandbox` 随之失效。
   排查问题请用 `npm run start:troubleshoot`。
 

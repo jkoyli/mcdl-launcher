@@ -321,6 +321,17 @@ Get-ChildItem 'D:\你的\游戏目录' -ErrorAction Stop | Select-Object -First 
 `Failed to verify authentication`（HTTP 401）是离线账号的正常现象：游戏会尝试向官方校验会话，
 失败后仍可进入单人游戏。
 
+## 安装 Java 很慢或失败
+
+「设置 → 下载 → Java 下载源」默认是**自动（国内镜像优先，失败回退官方）**，镜像为清华 TUNA
+对 Adoptium release 资产的同步（文件名与官方一致，SHA-256 仍以 Adoptium 官方接口为准）。
+
+- 想强制走镜像 / 官方：分别选「国内镜像 · 清华 TUNA」/「官方 Adoptium（GitHub）」。
+- 镜像刚同步、最新版本还没到位时会 404，自动模式会回退官方源；只选「国内镜像」时会直接报错，
+  这时改「自动」即可。
+- 下载完成后会先校验大小和 SHA-256，校验不过会自动换源重试；仍然失败请检查代理 / 安全软件，
+  或改用「选择 Java…」指定本机已有的 JDK。
+
 ## 日志在哪
 
 | 日志 | 位置 |
@@ -384,6 +395,18 @@ java -Dfile.encoding=UTF-8 -jar <resources>\mcdl\mcdl.jar --list --type all --so
 # 看前 16 字节：GBK 是 D7 EE D0 C2…（中文双字节），UTF-8 是 E6 AD A3…，UTF-16LE 会是 X 00 X 00
 Format-Hex -Path out.txt -Count 16
 ```
+
+## 音乐播放器（右上角圆钮）
+
+- **曲目从哪来**：只认原生对话框里选过的文件（圆钮面板里的「+」），不会扫描音乐文件夹。
+  播放列表存在 `%APPDATA%\mcdl-launcher-electron\music-playlist.json`，最多 500 首；
+  列表满时再添加会提示「已达上限」并忽略多余文件。
+- **显示「文件丢失 · 请重新添加」**：文件被移动或删除。放回原路径后重启启动器即可恢复；
+  换了位置就重新添加新路径，再把标灰的那条移除。
+- **提示「格式不受支持」**：只支持 mp3 / flac / wav / m4a / aac / ogg / opus。
+  Chromium 解不了的编码（例如部分 WMA、APE、DSD）即使改成扩展名也放不出来。
+- **收起后还在播**：这是预期行为，播放不随面板收起停止；圆钮上的电平条和进度环会继续走。
+- **「网络」页签是灰的**：网络音乐还没做，当前只有本地播放。
 
 ## 点关闭后窗口要停几秒才退出
 
